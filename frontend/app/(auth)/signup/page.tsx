@@ -80,15 +80,13 @@ function SignupInner() {
     setMessage(null)
     setSuccess(false)
     try {
-      const base = (process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "https://kreismarketing-backend.onrender.com").replace(/\/$/, "")
-      const url = `${base}/auth/register`
-      const res = await fetch(url, {
+      // Use Next.js API proxy so Vercel never needs direct CORS access to the backend.
+      const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, token }),
         credentials: "include",
         cache: "no-store",
-        mode: "cors",
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
