@@ -2,11 +2,10 @@
 
 import * as React from "react"
 // import { SessionProvider } from "next-auth/react" // Disabled for demo
-import { Session } from "next-auth"
 
 interface AuthProviderProps {
   children: React.ReactNode
-  session?: Session | null
+  session?: any | null
 }
 
 export function AuthProvider({ children, session }: AuthProviderProps) {

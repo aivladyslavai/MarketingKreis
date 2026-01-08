@@ -136,16 +136,12 @@ export default function KanbanBoard({ columns = [], rows, items, onItemsChange, 
                 {grouped[col].map((item, index) => (
                   <Draggable draggableId={item.id} index={index} key={item.id}>
                     {(dragProvided, dragSnapshot) => (
-                      <motion.div
+                      <div
                         ref={dragProvided.innerRef}
                         {...dragProvided.draggableProps}
                         {...dragProvided.dragHandleProps}
-                        layout
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2 }}
-                          className={`group rounded-xl bg-white/80 dark:bg-neutral-800/70 p-3 shadow-sm hover:shadow-md transition border border-white/10 dark:border-white/10 ${
-                            dragSnapshot.isDragging ? "ring-1 ring-blue-500/30" : ""
+                        className={`group rounded-xl bg-white/80 dark:bg-neutral-800/70 p-3 shadow-sm hover:shadow-md transition border border-white/10 dark:border-white/10 ${
+                          dragSnapshot.isDragging ? "ring-1 ring-blue-500/30" : ""
                         }`}
                       >
                           <div className="flex items-start justify-between gap-3">
@@ -168,7 +164,7 @@ export default function KanbanBoard({ columns = [], rows, items, onItemsChange, 
                               </div>
                             </div>
                         </div>
-                      </motion.div>
+                      </div>
                     )}
                   </Draggable>
                 ))}

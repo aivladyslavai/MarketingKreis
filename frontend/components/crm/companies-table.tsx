@@ -789,9 +789,11 @@ export function CompaniesTable({
       <Dialog open={!!viewingCompany} onOpenChange={() => setViewingCompany(null)}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              {viewingCompany?.name}
+            <DialogTitle>
+              <span className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                {viewingCompany?.name}
+              </span>
             </DialogTitle>
           </DialogHeader>
           {viewingCompany && (

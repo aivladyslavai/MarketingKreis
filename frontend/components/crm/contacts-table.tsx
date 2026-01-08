@@ -720,9 +720,11 @@ export function ContactsTable({
       <Dialog open={!!viewingContact} onOpenChange={() => setViewingContact(null)}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              {viewingContact?.firstName} {viewingContact?.lastName}
+            <DialogTitle>
+              <span className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                {viewingContact?.firstName} {viewingContact?.lastName}
+              </span>
             </DialogTitle>
           </DialogHeader>
           {viewingContact && (

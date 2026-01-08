@@ -176,7 +176,7 @@ export function CreateActivityDialog({
                 <Calendar
                   mode="single"
                   selected={formData.start}
-                  onSelect={(date) => {
+                  onSelect={(date: Date | undefined) => {
                     setFormData(prev => ({ ...prev, start: date || new Date() }))
                     setStartDateOpen(false)
                   }}
@@ -210,7 +210,7 @@ export function CreateActivityDialog({
                 <Calendar
                   mode="single"
                   selected={formData.end}
-                  onSelect={(date) => {
+                  onSelect={(date: Date | undefined) => {
                     setFormData(prev => ({ ...prev, end: date }))
                     setEndDateOpen(false)
                   }}

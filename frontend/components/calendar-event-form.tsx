@@ -45,8 +45,10 @@ export function CalendarEventForm({
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent className="max-w-2xl bg-white text-slate-900 border-slate-200 dark:bg-slate-900/90 dark:text-slate-200 dark:border-slate-800">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold text-slate-900 dark:text-white">
-            {editingEvent ? '📅 Termin bearbeiten' : '📅 Neuer Termin'}
+          <DialogTitle>
+            <span className="text-2xl font-bold text-slate-900 dark:text-white">
+              {editingEvent ? '📅 Termin bearbeiten' : '📅 Neuer Termin'}
+            </span>
           </DialogTitle>
         </DialogHeader>
 

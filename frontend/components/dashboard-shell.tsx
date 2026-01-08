@@ -27,9 +27,9 @@ import {
   Menu,
   X,
 } from "lucide-react"
-import { api } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
+import { useAuth } from "@/hooks/use-auth"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -59,23 +59,11 @@ export function DashboardShell({
   const router = useRouter()
   const { toast } = useToast()
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
-  const [user, setUser] = React.useState<any>(null)
-
-  React.useEffect(() => {
-    async function loadUser() {
-      try {
-        const profile = await api.auth.getProfile()
-        setUser(profile)
-      } catch (error) {
-        console.error("Failed to load user profile:", error)
-      }
-    }
-    loadUser()
-  }, [])
+  const { user, logout } = useAuth()
 
   const handleLogout = async () => {
     try {
-      await api.auth.logout()
+      await logout()
       router.push("/signup?mode=login")
       toast({
         title: "Abgemeldet",
@@ -146,11 +134,11 @@ export function DashboardShell({
                 <Button variant="ghost" size="sm" className="gap-2">
                   <Avatar className="h-8 w-8">
                     <AvatarFallback>
-                      {user?.name?.charAt(0) || "U"}
+                      {(user as any)?.name?.charAt(0) || user?.email?.charAt(0) || "U"}
                     </AvatarFallback>
                   </Avatar>
                   <span className="hidden sm:inline text-sm font-medium">
-                    {user?.name || "User"}
+                    {(user as any)?.name || user?.email || "User"}
                   </span>
                 </Button>
               </DropdownMenuTrigger>

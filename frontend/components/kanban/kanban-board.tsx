@@ -138,7 +138,6 @@ function TaskCard({ task, onTaskClick, onDragStart }: {
       data-created={task.createdAt?.toISOString?.() || ''}
       data-updated={task.updatedAt?.toISOString?.() || ''}
       data-testid={`task-${task.id}`}
-      classNameItem="kanban-task-card"
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', task.id)

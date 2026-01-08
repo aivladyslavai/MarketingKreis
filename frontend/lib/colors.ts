@@ -21,6 +21,15 @@ export const CATEGORY_COLORS: Record<CategoryType, string> = {
   PR: '#6366f1', // indigo
 }
 
+// Default palette for performance charts and other visualizations
+export const chartColors: string[] = [
+  CATEGORY_COLORS.VERKAUFSFOERDERUNG,
+  CATEGORY_COLORS.IMAGE,
+  CATEGORY_COLORS.EMPLOYER_BRANDING,
+  CATEGORY_COLORS.KUNDENPFLEGE,
+  CATEGORY_COLORS.DIGITAL_MARKETING,
+]
+
 export function getCategoryColor(category: CategoryType | string): string {
   const normalizedCategory = category.toUpperCase().replace(/\s+/g, '_') as CategoryType
   return CATEGORY_COLORS[normalizedCategory] || '#6b7280' // default gray

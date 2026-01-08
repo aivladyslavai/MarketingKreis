@@ -4,10 +4,10 @@ import * as React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Plus, 
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
   Calendar as CalendarIcon,
   Filter,
   Download,
@@ -16,7 +16,7 @@ import {
   User,
   Coins,
   TrendingUp,
-  Activity
+  Activity as ActivityIcon,
 } from "lucide-react"
 import { 
   format, 
@@ -42,7 +42,11 @@ interface CalendarViewProps {
   onActivityClick?: (activity: Activity) => void
   onDateClick?: (date: Date) => void
   onCreateActivity?: (date: Date) => void
-  onUpdateActivity?: (id: string, updates: Partial<Activity>) => void | Promise<void>
+  onUpdateActivity?: (
+    id: string,
+    updates: Partial<Activity>,
+    opts?: { scope?: "series" | "only"; occurrenceDateISO?: string; sourceId?: string }
+  ) => void | Promise<void>
   onDeleteActivity?: (id: string) => void | Promise<void>
   onDuplicateActivity?: (activity: Activity) => void | Promise<void>
 }
@@ -258,9 +262,10 @@ export default function SimpleCalendarView({
                   <div className="space-y-1">
                     {dayActivities.slice(0, 3).map((activity) => {
                       const customColor = (activity as any).color as string | undefined
-                      const bgColor = customColor || getCategoryColor(activity.category, 'bg')
-                      const primaryColor = customColor || getCategoryColor(activity.category, 'primary')
-                      
+                      const baseColor = customColor || getCategoryColor(activity.category as any)
+                      const primaryColor = baseColor
+                      const bgColor = `${baseColor}20`
+
                       return (
                         <div
                           key={activity.id}
@@ -308,7 +313,7 @@ export default function SimpleCalendarView({
                   </div>
 
                   {/* Inline day details popover (opens on day click) */}
-                  {openDayIso === format(day, 'yyyy-MM-dd') && (
+                    {openDayIso === format(day, 'yyyy-MM-dd') && (
                     <div className="absolute inset-0 z-20 rounded-md sm:rounded-lg border border-white/10 bg-slate-900/90 p-2 flex flex-col backdrop-blur-md">
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-xs sm:text-sm font-semibold">
@@ -328,8 +333,9 @@ export default function SimpleCalendarView({
                         )}
                         {dayActivities.map((activity) => {
                           const customColor = (activity as any).color as string | undefined
-                          const bgColor = customColor || getCategoryColor(activity.category, 'bg')
-                          const primaryColor = customColor || getCategoryColor(activity.category, 'primary')
+                          const baseColor = customColor || getCategoryColor(activity.category as any)
+                          const primaryColor = baseColor
+                          const bgColor = `${baseColor}20`
                           return (
                             <div
                               key={`popover-${activity.id}`}
@@ -380,7 +386,7 @@ export default function SimpleCalendarView({
                 ) : (
                   <h3 className="font-semibold text-xl text-slate-100">{selectedActivity.title}</h3>
                 )}
-                <Badge variant="secondary" className="mt-3 bg-gradient-to-r from-blue-500/20 to-purple-500/20 text-blue-200 border border-white/10 px-3 py-1">
+                <Badge className="mt-3 bg-gradient-to-r from-blue-500/20 to-purple-500/20 text-blue-200 border border-white/10 px-3 py-1">
                   {selectedActivity.category}
                 </Badge>
               </div>
@@ -494,9 +500,9 @@ export default function SimpleCalendarView({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 md:p-5 min-h-[88px] flex items-start gap-3">
-                  <Activity className="h-4 w-4 text-blue-300 mt-0.5 shrink-0" />
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 md:p-5 min-h-[88px] flex items-start gap-3">
+                    <ActivityIcon className="h-4 w-4 text-blue-300 mt-0.5 shrink-0" />
                   <div>
                     <div className="text-xs text-slate-400">Status</div>
                     {isEditing ? (
@@ -575,7 +581,7 @@ export default function SimpleCalendarView({
                   <>
                     <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/30" onClick={()=> setIsEditing(true)}>Bearbeiten</Button>
                     <Button variant="outline" size="sm" className="border-white/20 bg-white/5" onClick={async ()=>{ await onDuplicateActivity?.(selectedActivity) }}>Duplizieren</Button>
-                    <Button variant="destructive" size="sm" className="shadow-lg shadow-red-500/20" onClick={async ()=>{ await onDeleteActivity?.(selectedActivity.id); setSelectedActivity(null) }}>Löschen</Button>
+                    <Button size="sm" className="shadow-lg shadow-red-500/20" onClick={async ()=>{ await onDeleteActivity?.(selectedActivity.id); setSelectedActivity(null) }}>Löschen</Button>
                   </>
                 )}
               </div>
