@@ -221,7 +221,7 @@
 
   const addTask = async (newTask: Omit<ContentTask, 'id' | 'backendId' | 'createdAt' | 'updatedAt' | 'source'>) => {
     try {
-      const payload: ContentTaskCreateDTO = {
+      const payload: any = {
         title: newTask.title,
         channel: newTask.channel,
         format: newTask.format,
@@ -269,7 +269,7 @@
     const current = tasks.find(t => t.id === taskId)
     if (current?.backendId && (current.source === 'manual' || !current.source)) {
       try {
-        const payload: ContentTaskUpdateDTO = {
+        const payload: any = {
           title: updates.title ?? current.title,
           channel: updates.channel ?? current.channel,
           format: updates.format ?? current.format,

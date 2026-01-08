@@ -69,10 +69,18 @@ export const companiesAPI = {
 
 export const contactsAPI = {
   getAll: () => request<any[]>(`/crm/contacts`),
+  create: (data: any) => request(`/crm/contacts`, { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, data: any) =>
+    request(`/crm/contacts/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  delete: (id: string) => request(`/crm/contacts/${id}`, { method: "DELETE" }),
 }
 
 export const dealsAPI = {
   getAll: () => request<any[]>(`/crm/deals`),
+  create: (data: any) => request(`/crm/deals`, { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, data: any) =>
+    request(`/crm/deals/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  delete: (id: string) => request(`/crm/deals/${id}`, { method: "DELETE" }),
 }
 
 export const crmAPI = {
@@ -222,5 +230,16 @@ export const adminAPI = {
       method: "DELETE",
     }),
 }
+
+// Legacy-style default export used by a few older hooks.
+// New code should prefer the named helpers above.
+const api = {
+  request,
+  jobs: {
+    get: (id: number) => request<any>(`/jobs/${id}`),
+  },
+}
+
+export default api
 
 

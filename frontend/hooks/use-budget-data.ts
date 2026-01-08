@@ -57,6 +57,11 @@ export function useBudgetData() {
           IMAGE: { planned: 0, actual: 0 },
           EMPLOYER_BRANDING: { planned: 0, actual: 0 },
           KUNDENPFLEGE: { planned: 0, actual: 0 },
+          DIGITAL_MARKETING: { planned: 0, actual: 0 },
+          EVENTS: { planned: 0, actual: 0 },
+          CONTENT: { planned: 0, actual: 0 },
+          SEO: { planned: 0, actual: 0 },
+          PR: { planned: 0, actual: 0 },
         }
 
         for (const d of deals) {

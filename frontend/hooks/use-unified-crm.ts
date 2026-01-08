@@ -31,6 +31,19 @@ export interface UnifiedCrmData {
   // Filtering
   setFilters: (filters: MarketingDataFilters) => void
   filters: MarketingDataFilters
+
+  // CRM CRUD
+  createCompany: (data: CreateCompanyData) => Promise<Company>
+  updateCompany: (id: string, data: Partial<CreateCompanyData>) => Promise<Company>
+  deleteCompany: (id: string) => Promise<void>
+
+  createContact: (data: CreateContactData) => Promise<Contact>
+  updateContact: (id: string, data: Partial<CreateContactData>) => Promise<Contact>
+  deleteContact: (id: string) => Promise<void>
+
+  createDeal: (data: CreateDealData) => Promise<Deal>
+  updateDeal: (id: string, data: Partial<CreateDealData>) => Promise<Deal>
+  deleteDeal: (id: string) => Promise<void>
 }
 
 const LOCALSTORAGE_KEY = 'marketing-data-table'

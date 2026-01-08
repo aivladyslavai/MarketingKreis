@@ -24,5 +24,12 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", ".storybook", "stories", "app/(dashboard)/activities/page-old-mock.tsx", "app/(dashboard)/performance/page-old-mock.tsx"]
+  "exclude": [
+    "node_modules",
+    "node_modules.bak*",
+    ".storybook",
+    "stories",
+    "app/(dashboard)/activities/page-old-mock.tsx",
+    "app/(dashboard)/performance/page-old-mock.tsx"
+  ]
 }

@@ -165,6 +165,7 @@ export function useActivities() {
 }
 
 // Mock данные по умолчанию
+const ACTIVITIES_STORAGE_KEY = 'mk_activities'
 const defaultMockActivities: Activity[] = [
   {
     id: '1',

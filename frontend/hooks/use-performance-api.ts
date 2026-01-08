@@ -17,7 +17,13 @@ export interface PerformanceMetrics {
   updated_at?: string
 }
 
-const fetcher = (url: string) => authFetch<PerformanceMetrics[]>(url)
+const fetcher = async (url: string): Promise<PerformanceMetrics[]> => {
+  const res = await authFetch(url)
+  if (!res.ok) {
+    throw new Error(`Performance API error: ${res.status}`)
+  }
+  return (await res.json()) as PerformanceMetrics[]
+}
 
 export function usePerformanceApi() {
   const { data, error, isLoading, mutate } = useSWR('/performance', fetcher, {
@@ -26,19 +32,27 @@ export function usePerformanceApi() {
   })
 
   const createMetric = async (metric: Omit<PerformanceMetrics, 'id'>) => {
-    const newMetric = await authFetch<PerformanceMetrics>('/performance', {
+    const res = await authFetch('/performance', {
       method: 'POST',
       body: JSON.stringify(metric),
     })
+    if (!res.ok) {
+      throw new Error(`Performance create error: ${res.status}`)
+    }
+    const newMetric = (await res.json()) as PerformanceMetrics
     mutate()
     return newMetric
   }
 
   const updateMetric = async (id: string, updates: Partial<PerformanceMetrics>) => {
-    const updated = await authFetch<PerformanceMetrics>(`/performance/${id}`, {
+    const res = await authFetch(`/performance/${id}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     })
+    if (!res.ok) {
+      throw new Error(`Performance update error: ${res.status}`)
+    }
+    const updated = (await res.json()) as PerformanceMetrics
     mutate()
     return updated
   }

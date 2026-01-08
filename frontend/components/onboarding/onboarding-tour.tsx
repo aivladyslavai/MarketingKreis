@@ -133,7 +133,7 @@ export default function OnboardingTour() {
 
   const handleJoyrideCallback = React.useCallback((data: CallBackProps) => {
     const { status } = data
-    const finished = [STATUS.FINISHED, STATUS.SKIPPED].includes(status as any)
+    const finished = status === STATUS.FINISHED || status === STATUS.SKIPPED
     if (finished) {
       try { localStorage.setItem('mkOnboardingDone', '1') } catch {}
       setRun(false)
