@@ -1,4 +1,9 @@
-export const apiBase = process.env.NEXT_PUBLIC_API_URL || "/api"
+// IMPORTANT:
+// In production we must stay same-origin ("/api") so browser cookies issued on the
+// frontend domain are sent correctly. If someone accidentally sets
+// NEXT_PUBLIC_API_URL to an absolute backend URL, we intentionally ignore it.
+const envBase = process.env.NEXT_PUBLIC_API_URL
+export const apiBase = envBase && envBase.startsWith("/") ? envBase : "/api"
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {

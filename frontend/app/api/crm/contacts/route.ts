@@ -10,20 +10,21 @@ function getBackendUrl() {
   throw new Error("BACKEND_URL is not configured")
 }
 
-async function forward(req: NextRequest, id: string) {
+async function forward(req: NextRequest) {
   const backendUrl = getBackendUrl()
-  const url = `${backendUrl}/calendar/${id}${req.nextUrl.search}`
-  const init: RequestInit = {
+  const url = `${backendUrl}/crm/contacts${req.nextUrl.search}`
+  const cookie = req.headers.get("cookie") || ""
+
+  const res = await fetch(url, {
     method: req.method,
     headers: {
       "Content-Type": "application/json",
-      cookie: req.headers.get("cookie") || "",
+      cookie,
     },
-    body: ["GET", "HEAD"].includes(req.method) ? undefined : await req.text(),
+    body: req.method === "GET" ? undefined : await req.text(),
     cache: "no-store",
-    credentials: "include",
-  }
-  const res = await fetch(url, init)
+  })
+
   const text = await res.text()
   const next = new NextResponse(text, { status: res.status })
   const setCookie = res.headers.get("set-cookie")
@@ -32,19 +33,11 @@ async function forward(req: NextRequest, id: string) {
   return next
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  return forward(req, params.id)
-}
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  return forward(req, params.id)
+export async function GET(req: NextRequest) {
+  return forward(req)
 }
 
-
-
-
-
-
-
-
-
+export async function POST(req: NextRequest) {
+  return forward(req)
+}
 
