@@ -133,7 +133,7 @@ export default function OnboardingTour() {
 
   const handleJoyrideCallback = React.useCallback((data: CallBackProps) => {
     const { status } = data
-    const finished = [STATUS.FINISHED, STATUS.SKIPPED].includes(status)
+    const finished = [STATUS.FINISHED, STATUS.SKIPPED].includes(status as any)
     if (finished) {
       try { localStorage.setItem('mkOnboardingDone', '1') } catch {}
       setRun(false)
@@ -158,7 +158,6 @@ export default function OnboardingTour() {
           primaryColor: "#ef4444", // kaboom red
           textColor: "var(--mk-joyride-text, #0f172a)",
           backgroundColor: "transparent",
-          spotlightColor: "rgba(248, 113, 113, 0.26)",
         },
         tooltipContainer: {
           textAlign: "left",
