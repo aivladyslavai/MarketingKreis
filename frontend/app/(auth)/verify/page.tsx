@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic"
 function VerifyInner() {
   const params = useSearchParams()
   const router = useRouter()
-  const token = params.get("token") || ""
+  const token = params?.get("token") || ""
   const [status, setStatus] = useState<"pending"|"ok"|"error">("pending")
   const [msg, setMsg] = useState<string>("")
 
