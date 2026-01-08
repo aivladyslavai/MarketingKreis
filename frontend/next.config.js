@@ -7,8 +7,8 @@ const nextConfig = {
     optimizePackageImports: [],
   },
   eslint: {
-    // Linting запускаем вручную; на Vercel не блокируем сборку.
-    ignoreDuringBuilds: true,
+    // In production we fail the build on any ESLint errors.
+    ignoreDuringBuilds: false,
   },
   typescript: {
     // In production we fail the build on any TS errors.

@@ -24,7 +24,7 @@ function VerifyInner() {
         setStatus("error"); setMsg(e?.message || "Unexpected error")
       }
     })()
-  }, [token])
+  }, [token, router])
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
