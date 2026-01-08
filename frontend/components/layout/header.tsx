@@ -1,10 +1,11 @@
 "use client"
 
-import { Sun, Moon, MonitorCog, Bell, Menu } from "lucide-react"
+import { Sun, Moon, MonitorCog, Bell, Menu, HelpCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useEffect, useState } from "react"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { AccountDrawer } from "@/components/account/AccountDrawer"
+import { restartOnboardingTour } from "@/components/onboarding/onboarding-tour"
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -71,6 +72,30 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         {/* Right side - Actions */}
         <div className="flex items-center gap-3">
+          {/* Help / Tour */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              openModal({
+                type: "confirm",
+                title: "Hilfe & Rundgang",
+                description: "Möchtest du den Willkommens-Rundgang erneut starten? Er zeigt dir die wichtigsten Funktionen der Plattform.",
+                icon: "info",
+                confirmText: "Rundgang starten",
+                cancelText: "Abbrechen",
+                onConfirm: () => {
+                  restartOnboardingTour()
+                },
+              })
+            }}
+            className="h-9 w-9 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title="Hilfe & Rundgang"
+            data-tour="help-button"
+          >
+            <HelpCircle className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+          </Button>
+
           {/* Notifications */}
           <Button
             variant="ghost"
