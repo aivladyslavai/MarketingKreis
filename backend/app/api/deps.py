@@ -1,0 +1,40 @@
+from fastapi import Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+from jose import jwt
+from typing import Callable
+
+from app.core.config import get_settings
+from app.db.session import get_db_session  # re-exported for convenience
+from app.models.user import User, UserRole
+
+
+def get_current_user(
+    request: Request,
+    db: Session = Depends(get_db_session),
+) -> User:
+    """Extract current user from access token cookie. Raises 401 if invalid."""
+    settings = get_settings()
+    token = request.cookies.get(settings.cookie_access_name)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        user_id = int(payload.get("sub"))
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+def require_role(*allowed_roles: UserRole) -> Callable:
+    """Create dependency that requires user to have one of the specified roles."""
+    def role_checker(user: User = Depends(get_current_user)) -> User:
+        if user.role not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return user
+    return role_checker
+
+

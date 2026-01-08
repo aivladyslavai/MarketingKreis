@@ -1,0 +1,50 @@
+node_modules/
+**/node_modules/**
+**/node_modules.bak.*/**
+.next/
+out/
+dist/
+build/
+*.log
+backups/**
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.env
+*.env.local
+.env.local
+frontend/.env.local
+#
+# Frontend artifacts
+#
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+
+#
+# Local runtime logs and PIDs
+#
+backend-dev.log
+frontend-dev.log
+backend_dev.pid
+frontend_dev.pid
+
+#
+# SQLite databases (do not commit local DBs)
+#
+backend/app.db
+backend/app.db-journal
+backend/*.sqlite
+backend/*.sqlite3
+
+#
+# Misc caches/uploads
+#
+.cache/
+uploads/
+
+# Local env files
+.env*
+backend/.env*

@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: kreismarketing-backend
+    env: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: BACKEND_CORS_ORIGINS
+        # Allow the production frontend (Vercel) and direct backend origin
+        value: https://kreismmmarketing.vercel.app,https://kreismarketing-backend.onrender.com
+      - key: ALLOWED_HOSTS
+        value: .onrender.com,.vercel.app,kreismmmarketing.vercel.app
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: DEBUG
+        value: "false"
+      # Fill these in the Render dashboard after creating the service
+      - key: DATABASE_URL
+        value: ""
+      - key: JWT_SECRET_KEY
+        value: ""
+      - key: CSRF_SECRET_KEY
+        value: ""
+      # Optional
+      - key: OPENAI_API_KEY
+        value: ""
+
+
+
+
+

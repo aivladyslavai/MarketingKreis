@@ -1,0 +1,1 @@
+const next=require("next"); const app=next({dev:true,hostname:"0.0.0.0",port:3000}); const handler=app.getRequestHandler(); app.prepare().then(()=>require("http").createServer((req,res)=>handler(req,res)).listen(3000,"0.0.0.0",()=>console.log("NEXT UP"))).catch(err=>{console.error(err); process.exit(1)});

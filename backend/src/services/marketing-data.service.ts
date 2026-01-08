@@ -1,0 +1,277 @@
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateMarketingDataDto, UpdateMarketingDataDto, MarketingDataPriority } from '../dto/marketing-data.dto';
+
+@Injectable()
+export class MarketingDataService {
+  constructor(private prisma: PrismaService) {}
+
+  async getAll(
+    userId: string,
+    page: number = 1,
+    limit: number = 50,
+    search?: string,
+    category?: string,
+    status?: string,
+    year?: number
+  ) {
+    const skip = (page - 1) * limit;
+    
+    const where: any = { userId };
+
+    // Add filters
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+        { category: { contains: search, mode: 'insensitive' } },
+        { subcategory: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    if (category) {
+      where.category = category;
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (year) {
+      where.year = year;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.marketingData.findMany({
+        where,
+        include: {
+          company: { select: { id: true, name: true } },
+          contact: { select: { id: true, firstName: true, lastName: true } },
+          deal: { select: { id: true, title: true, value: true } },
+          user: { select: { id: true, name: true, email: true } }
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' }
+      }),
+      this.prisma.marketingData.count({ where })
+    ]);
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  async getById(id: string, userId: string) {
+    const data = await this.prisma.marketingData.findFirst({
+      where: { id, userId },
+      include: {
+        company: { select: { id: true, name: true, website: true, industry: true } },
+        contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+        deal: { select: { id: true, title: true, value: true, stage: true } },
+        user: { select: { id: true, name: true, email: true } }
+      }
+    });
+
+    if (!data) {
+      throw new NotFoundException('Marketing data entry not found');
+    }
+
+    return data;
+  }
+
+  async create(userId: string, dto: CreateMarketingDataDto) {
+    // Validate CRM relations exist if provided
+    if (dto.companyId) {
+      const company = await this.prisma.company.findFirst({
+        where: { id: dto.companyId, ownerId: userId }
+      });
+      if (!company) {
+        throw new BadRequestException('Company not found or access denied');
+      }
+    }
+
+    if (dto.contactId) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: dto.contactId, ownerId: userId }
+      });
+      if (!contact) {
+        throw new BadRequestException('Contact not found or access denied');
+      }
+    }
+
+    if (dto.dealId) {
+      const deal = await this.prisma.deal.findFirst({
+        where: { id: dto.dealId, ownerId: userId }
+      });
+      if (!deal) {
+        throw new BadRequestException('Deal not found or access denied');
+      }
+    }
+
+    return this.prisma.marketingData.create({
+      data: {
+        ...dto,
+        userId,
+        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+        endDate: dto.endDate ? new Date(dto.endDate) : undefined
+      },
+      include: {
+        company: { select: { id: true, name: true } },
+        contact: { select: { id: true, firstName: true, lastName: true } },
+        deal: { select: { id: true, title: true, value: true } }
+      }
+    });
+  }
+
+  async update(id: string, userId: string, dto: UpdateMarketingDataDto) {
+    // Check if entry exists and belongs to user
+    const existing = await this.prisma.marketingData.findFirst({
+      where: { id, userId }
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Marketing data entry not found');
+    }
+
+    // Validate CRM relations exist if provided
+    if (dto.companyId) {
+      const company = await this.prisma.company.findFirst({
+        where: { id: dto.companyId, ownerId: userId }
+      });
+      if (!company) {
+        throw new BadRequestException('Company not found or access denied');
+      }
+    }
+
+    if (dto.contactId) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: dto.contactId, ownerId: userId }
+      });
+      if (!contact) {
+        throw new BadRequestException('Contact not found or access denied');
+      }
+    }
+
+    if (dto.dealId) {
+      const deal = await this.prisma.deal.findFirst({
+        where: { id: dto.dealId, ownerId: userId }
+      });
+      if (!deal) {
+        throw new BadRequestException('Deal not found or access denied');
+      }
+    }
+
+    return this.prisma.marketingData.update({
+      where: { id },
+      data: {
+        ...dto,
+        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+        endDate: dto.endDate ? new Date(dto.endDate) : undefined
+      },
+      include: {
+        company: { select: { id: true, name: true } },
+        contact: { select: { id: true, firstName: true, lastName: true } },
+        deal: { select: { id: true, title: true, value: true } }
+      }
+    });
+  }
+
+  async delete(id: string, userId: string) {
+    const existing = await this.prisma.marketingData.findFirst({
+      where: { id, userId }
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Marketing data entry not found');
+    }
+
+    await this.prisma.marketingData.delete({ where: { id } });
+    return { message: 'Marketing data entry deleted successfully' };
+  }
+
+  async getStats(userId: string, year?: number) {
+    const where: any = { userId };
+    if (year) {
+      where.year = year;
+    }
+
+    const data = await this.prisma.marketingData.findMany({ where });
+
+    const totalBudget = data.reduce((sum, item) => sum + item.budget, 0);
+    const totalActual = data.reduce((sum, item) => sum + item.actual, 0);
+    const totalValue = data.reduce((sum, item) => sum + item.value, 0);
+
+    const categoryBreakdown = data.reduce((acc, item) => {
+      acc[item.category] = (acc[item.category] || 0) + item.value;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const statusBreakdown = data.reduce((acc, item) => {
+      acc[item.status] = (acc[item.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const monthlyBreakdown = data.reduce((acc, item) => {
+      const key = `${item.month} ${item.year}`;
+      acc[key] = (acc[key] || 0) + item.value;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      totalBudget,
+      totalActual,
+      totalValue,
+      efficiency: totalBudget > 0 ? (totalActual / totalBudget) * 100 : 0,
+      categoryBreakdown,
+      statusBreakdown,
+      monthlyBreakdown,
+      totalEntries: data.length
+    };
+  }
+
+  async importFromLocalStorage(userId: string, localStorageData: any[]) {
+    // Import data from localStorage format
+    const imported = [];
+    
+    for (const item of localStorageData) {
+      try {
+        const data = await this.create(userId, {
+          category: item.category || 'Marketing',
+          subcategory: item.subcategory,
+          title: item.subcategory || item.category || 'Imported Activity',
+          description: item.notes,
+          budget: item.budget || 0,
+          actual: item.actual || 0,
+          value: item.value || 0,
+          month: item.month,
+          year: item.year || 2025,
+          status: item.status || 'planned',
+          priority: MarketingDataPriority.MEDIUM,
+          notes: item.notes
+        });
+        imported.push(data);
+      } catch (error) {
+        console.error('Failed to import item:', item, error);
+      }
+    }
+
+    return {
+      message: `Successfully imported ${imported.length} entries`,
+      imported: imported.length,
+      failed: localStorageData.length - imported.length
+    };
+  }
+}
+
+
+
+
+
+

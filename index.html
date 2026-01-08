@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MarketingKreis - CRM + Marketing Cockpit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: white; /* [[memory:5957256]] */
+        }
+        .dark body { background: #0f172a; }
+        .nav-link.active { color: #2563eb; background: #eff6ff; }
+        .chart-container { height: 300px; position: relative; }
+    </style>
+</head>
+<body class="bg-white text-gray-900">
+    <div id="app" class="min-h-screen flex">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-white border-r shadow-sm">
+            <div class="p-4 font-semibold text-xl border-b">
+                <span class="text-blue-600">Marketing</span><span class="text-gray-800">Kreis</span>
+            </div>
+            <nav class="px-2 py-4 space-y-1">
+                <a href="#dashboard" onclick="showPage('dashboard')" class="nav-link flex items-center gap-3 px-3 py-2 rounded text-blue-600 bg-blue-50">
+                    <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+                    Dashboard
+                </a>
+                <a href="#activities" onclick="showPage('activities')" class="nav-link flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100">
+                    <i data-lucide="activity" class="w-5 h-5"></i>
+                    Activities
+                </a>
+                <a href="#calendar" onclick="showPage('calendar')" class="nav-link flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100">
+                    <i data-lucide="calendar" class="w-5 h-5"></i>
+                    Calendar (KW1-52)
+                </a>
+                <a href="#performance" onclick="showPage('performance')" class="nav-link flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100">
+                    <i data-lucide="trending-up" class="w-5 h-5"></i>
+                    Performance
+                </a>
+                <a href="#uploads" onclick="showPage('uploads')" class="nav-link flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-100">
+                    <i data-lucide="upload" class="w-5 h-5"></i>
+                    Uploads
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+            <!-- Header -->
+            <header class="h-14 bg-white border-b flex items-center justify-between px-6">
+                <h1 id="page-title" class="font-semibold text-gray-900">Marketing Cockpit Dashboard</h1>
+                <div class="flex items-center gap-4">
+                    <button onclick="toggleTheme()" class="flex items-center gap-2 px-3 py-1 text-sm border rounded hover:bg-gray-50">
+                        <i data-lucide="sun" class="w-4 h-4"></i>
+                        Theme
+                    </button>
+                    <div class="text-sm text-gray-600">admin@mk.local</div>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <main class="p-6 flex-1">
+                <!-- Dashboard Page -->
+                <div id="dashboard-page" class="page space-y-6">
+                    <!-- KPI Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="bg-white rounded-lg border p-4 shadow-sm">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-600">Total Budget</p>
+                                    <p class="text-2xl font-semibold">€46,000</p>
+                                </div>
+                                <div class="p-2 bg-blue-100 rounded-lg">
+                                    <i data-lucide="euro" class="w-6 h-6 text-blue-600"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg border p-4 shadow-sm">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-600">Total Leads</p>
+                                    <p class="text-2xl font-semibold">324</p>
+                                </div>
+                                <div class="p-2 bg-green-100 rounded-lg">
+                                    <i data-lucide="users" class="w-6 h-6 text-green-600"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg border p-4 shadow-sm">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-600">Impressions</p>
+                                    <p class="text-2xl font-semibold">12.4K</p>
+                                </div>
+                                <div class="p-2 bg-purple-100 rounded-lg">
+                                    <i data-lucide="eye" class="w-6 h-6 text-purple-600"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg border p-4 shadow-sm">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm text-gray-600">Active Campaigns</p>
+                                    <p class="text-2xl font-semibold">4</p>
+                                </div>
+                                <div class="p-2 bg-orange-100 rounded-lg">
+                                    <i data-lucide="zap" class="w-6 h-6 text-orange-600"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white rounded-lg border p-6 shadow-sm">
+                            <h3 class="text-lg font-semibold mb-4">Soll vs Ist (Budget vs Spend)</h3>
+                            <div class="chart-container">
+                                <canvas id="lineChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg border p-6 shadow-sm">
+                            <h3 class="text-lg font-semibold mb-4">Weekly Performance</h3>
+                            <div class="chart-container">
+                                <canvas id="barChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Activities Page -->
+                <div id="activities-page" class="page hidden space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xl font-semibold">Activities Management</h2>
+                        <button onclick="addActivity()" class="rounded bg-blue-600 text-white px-4 py-2 hover:bg-blue-700">Add Activity</button>
+                    </div>
+                    <div class="bg-white rounded-lg border shadow-sm overflow-hidden">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="text-left px-4 py-3 font-medium">Title</th>
+                                    <th class="text-left px-4 py-3 font-medium">Type</th>
+                                    <th class="text-left px-4 py-3 font-medium">Budget</th>
+                                    <th class="text-left px-4 py-3 font-medium">Status</th>
+                                    <th class="text-left px-4 py-3 font-medium">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activities-table">
+                                <tr class="border-t">
+                                    <td class="px-4 py-3">Brand Campaign Q1</td>
+                                    <td class="px-4 py-3"><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">Branding</span></td>
+                                    <td class="px-4 py-3">€20,000</td>
+                                    <td class="px-4 py-3"><span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">Planned</span></td>
+                                    <td class="px-4 py-3">
+                                        <button class="text-blue-600 hover:text-blue-800 mr-2">Edit</button>
+                                        <button class="text-red-600 hover:text-red-800">Delete</button>
+                                    </td>
+                                </tr>
+                                <tr class="border-t">
+                                    <td class="px-4 py-3">Sales Push March</td>
+                                    <td class="px-4 py-3"><span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Sales</span></td>
+                                    <td class="px-4 py-3">€15,000</td>
+                                    <td class="px-4 py-3"><span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Active</span></td>
+                                    <td class="px-4 py-3">
+                                        <button class="text-blue-600 hover:text-blue-800 mr-2">Edit</button>
+                                        <button class="text-red-600 hover:text-red-800">Delete</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Calendar Page -->
+                <div id="calendar-page" class="page hidden space-y-4">
+                    <h2 class="text-xl font-semibold">Calendar Planning (KW1-KW52)</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3" id="calendar-grid">
+                        <!-- Calendar weeks will be generated by JS -->
+                    </div>
+                </div>
+
+                <!-- Performance Page -->
+                <div id="performance-page" class="page hidden space-y-4">
+                    <h2 class="text-xl font-semibold">Performance Analytics</h2>
+                    <div class="bg-white rounded-lg border p-6 shadow-sm">
+                        <h3 class="text-lg font-semibold mb-4">Performance Metrics</h3>
+                        <div class="chart-container">
+                            <canvas id="performanceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Uploads Page -->
+                <div id="uploads-page" class="page hidden space-y-4">
+                    <h2 class="text-xl font-semibold">Data Upload</h2>
+                    <div class="bg-white rounded-lg border p-6 shadow-sm">
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                            <i data-lucide="upload" class="w-12 h-12 mx-auto text-gray-400 mb-4"></i>
+                            <h3 class="text-lg font-medium mb-2">Upload CSV/Excel Files</h3>
+                            <p class="text-gray-600 mb-4">Drop your files here or click to browse</p>
+                            <input type="file" class="hidden" id="file-input" accept=".csv,.xlsx,.xls">
+                            <button onclick="document.getElementById('file-input').click()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                                Choose Files
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Theme management
+        function toggleTheme() {
+            document.body.classList.toggle('dark');
+        }
+
+        // Page navigation
+        function showPage(pageId) {
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => page.classList.add('hidden'));
+            // Show selected page
+            document.getElementById(pageId + '-page').classList.remove('hidden');
+            
+            // Update nav
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active', 'text-blue-600', 'bg-blue-50');
+                link.classList.add('hover:bg-gray-100');
+            });
+            event.target.classList.add('active', 'text-blue-600', 'bg-blue-50');
+            event.target.classList.remove('hover:bg-gray-100');
+
+            // Update title
+            const titles = {
+                dashboard: 'Marketing Cockpit Dashboard',
+                activities: 'Activities Management',
+                calendar: 'Calendar Planning',
+                performance: 'Performance Analytics',
+                uploads: 'Data Upload'
+            };
+            document.getElementById('page-title').textContent = titles[pageId];
+        }
+
+        // Initialize charts
+        function initCharts() {
+            // Line Chart - Soll vs Ist
+            const lineCtx = document.getElementById('lineChart').getContext('2d');
+            new Chart(lineCtx, {
+                type: 'line',
+                data: {
+                    labels: ['KW1', 'KW2', 'KW3', 'KW4', 'KW5', 'KW6', 'KW7', 'KW8'],
+                    datasets: [{
+                        label: 'Soll (Budget)',
+                        data: [5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000],
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        tension: 0.4
+                    }, {
+                        label: 'Ist (Spend)',
+                        data: [4500, 5800, 6200, 7500, 8200, 9800, 10500, 11200],
+                        borderColor: '#16a34a',
+                        backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    }
+                }
+            });
+
+            // Bar Chart - Weekly Performance
+            const barCtx = document.getElementById('barChart').getContext('2d');
+            new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['KW1', 'KW2', 'KW3', 'KW4', 'KW5', 'KW6'],
+                    datasets: [{
+                        label: 'Leads',
+                        data: [12, 19, 15, 25, 22, 30],
+                        backgroundColor: '#22c55e'
+                    }, {
+                        label: 'Impressions (K)',
+                        data: [2.1, 2.9, 2.5, 3.2, 2.8, 3.5],
+                        backgroundColor: '#3b82f6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    }
+                }
+            });
+
+            // Performance Chart
+            const perfCtx = document.getElementById('performanceChart').getContext('2d');
+            new Chart(perfCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Branding', 'Sales', 'Employer Branding', 'Kundenpflege'],
+                    datasets: [{
+                        data: [20000, 15000, 8000, 3000],
+                        backgroundColor: ['#2563eb', '#16a34a', '#f59e0b', '#ef4444']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        // Generate calendar
+        function initCalendar() {
+            const calendarGrid = document.getElementById('calendar-grid');
+            for (let week = 1; week <= 52; week++) {
+                const weekDiv = document.createElement('div');
+                weekDiv.className = 'border rounded p-2 bg-white hover:bg-gray-50 cursor-pointer';
+                weekDiv.innerHTML = `
+                    <div class="text-xs font-medium mb-1">KW${week}</div>
+                    <div class="text-xs text-gray-400">Empty</div>
+                `;
+                // Add some sample activities
+                if (week % 8 === 1) {
+                    weekDiv.innerHTML = `
+                        <div class="text-xs font-medium mb-1">KW${week}</div>
+                        <div class="text-xs bg-blue-100 text-blue-800 rounded px-1 py-0.5">Campaign</div>
+                    `;
+                    weekDiv.className = 'border rounded p-2 bg-blue-50 hover:bg-blue-100 cursor-pointer';
+                }
+                calendarGrid.appendChild(weekDiv);
+            }
+        }
+
+        // Add activity function
+        function addActivity() {
+            const title = prompt('Activity Title:');
+            if (title) {
+                const tbody = document.getElementById('activities-table');
+                const row = document.createElement('tr');
+                row.className = 'border-t';
+                row.innerHTML = `
+                    <td class="px-4 py-3">${title}</td>
+                    <td class="px-4 py-3"><span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">New</span></td>
+                    <td class="px-4 py-3">€0</td>
+                    <td class="px-4 py-3"><span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">Draft</span></td>
+                    <td class="px-4 py-3">
+                        <button class="text-blue-600 hover:text-blue-800 mr-2">Edit</button>
+                        <button class="text-red-600 hover:text-red-800">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            }
+        }
+
+        // Initialize everything
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                initCharts();
+                initCalendar();
+                lucide.createIcons();
+            }, 100);
+        });
+    </script>
+</body>
+</html>

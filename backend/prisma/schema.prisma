@@ -1,0 +1,402 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Role-based access control enum
+enum Role {
+  ADMIN
+  MANAGER
+  EDITOR
+  VIEWER
+}
+
+// User model with role-based access control
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String?  // For local auth
+  role      Role     @default(VIEWER)
+  avatar    String?
+  isActive  Boolean  @default(true)
+  lastLogin DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  activities    Activity[]
+  calendarItems CalendarItem[]
+  contentTasks  ContentTask[]
+  companies     Company[]
+  contacts      Contact[]
+  deals         Deal[]
+  marketingData MarketingData[]
+  auditLogs     AuditLog[]
+
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+  @@map("users")
+}
+
+// Marketing Activity model for the radial circle
+model Activity {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  category    String   // VERKAUFSFOERDERUNG, IMAGE, EMPLOYER_BRANDING, KUNDENPFLEGE
+  status      String   @default("PLANNED") // PLANNED, ACTIVE, PAUSED, DONE, CANCELLED
+  budget      Float?
+  actualSpend Float?   @default(0)
+  startDate   DateTime?
+  endDate     DateTime?
+  
+  // Circle positioning
+  ring        Int      @default(1) // 1-4 (inner to outer)
+  angle       Float?   // 0-360 degrees
+  
+  // Metrics
+  impressions Int?     @default(0)
+  clicks      Int?     @default(0)
+  conversions Int?     @default(0)
+  
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Calendar integration
+  calendarItems CalendarItem[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([category])
+  @@index([status])
+  @@index([startDate])
+  @@index([userId, category])
+  @@index([userId, status])
+  @@map("activities")
+}
+
+// Calendar item for planning view
+model CalendarItem {
+  id         String    @id @default(cuid())
+  title      String
+  startDate  DateTime
+  endDate    DateTime?
+  allDay     Boolean   @default(false)
+  color      String?
+  notes      String?
+  
+  // Relations
+  activityId String?
+  activity   Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([startDate])
+  @@index([activityId])
+  @@index([userId, startDate])
+  @@map("calendar_items")
+}
+
+// Budget planning and KPI tracking
+model BudgetPlan {
+  id          String   @id @default(cuid())
+  year        Int
+  quarter     Int?     // 1-4, null for yearly
+  category    String   // Activity category
+  budgetAmount Float
+  actualSpend Float    @default(0)
+  
+  // KPI targets
+  targetImpressions Int?     @default(0)
+  actualImpressions Int?     @default(0)
+  targetClicks      Int?     @default(0)
+  actualClicks      Int?     @default(0)
+  targetConversions Int?     @default(0)
+  actualConversions Int?     @default(0)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([year, quarter, category])
+  @@index([year])
+  @@index([category])
+  @@index([year, category])
+  @@map("budget_plans")
+}
+
+// Lead statistics for tracking
+model LeadStat {
+  id        String   @id @default(cuid())
+  date      DateTime
+  category  String
+  
+  // Metrics
+  spend     Float    @default(0)
+  leads     Int      @default(0)
+  cpl       Float?   // Cost per lead
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([date, category])
+  @@index([date])
+  @@index([category])
+  @@map("lead_stats")
+}
+
+// Content planning and workflow
+model ContentTask {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("TODO") // TODO, IN_PROGRESS, REVIEW, APPROVED, PUBLISHED, ARCHIVED
+  priority    String   @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  category    String   // Content category
+  
+  // Dates
+  dueDate     DateTime?
+  publishDate DateTime?
+  
+  // Content details
+  contentType String?  // blog, social, email, etc.
+  platform    String?  // Facebook, LinkedIn, etc.
+  wordCount   Int?
+  
+  // Relations
+  assigneeId  String
+  assignee    User     @relation(fields: [assigneeId], references: [id], onDelete: Cascade)
+  
+  // File attachments
+  files       File[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([assigneeId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([assigneeId, status])
+  @@index([assigneeId, dueDate])
+  @@map("content_tasks")
+}
+
+// CRM: Companies
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  website     String?
+  industry    String?
+  size        String?  // SMB, Enterprise, etc.
+  revenue     Float?
+  
+  // Address
+  street      String?
+  city        String?
+  state       String?
+  zipCode     String?
+  country     String?  @default("Switzerland")
+  
+  // Relations
+  contacts      Contact[]
+  deals         Deal[]
+  marketingData MarketingData[]
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([industry])
+  @@index([size])
+  @@index([name])
+  @@index([ownerId, industry])
+  @@map("companies")
+}
+
+// CRM: Contacts
+model Contact {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  position    String?
+  
+  // Relations
+  companyId     String?
+  company       Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  deals         Deal[]
+  marketingData MarketingData[]
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([email], name: "unique_contact_email")
+  @@index([ownerId])
+  @@index([companyId])
+  @@index([lastName])
+  @@index([ownerId, companyId])
+  @@map("contacts")
+}
+
+// CRM: Deals/Opportunities
+model Deal {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  value       Float
+  stage       String   @default("NEW") // NEW, QUALIFIED, PROPOSAL, NEGOTIATION, WON, LOST
+  probability Int      @default(50) // 0-100%
+  
+  // Dates
+  expectedCloseDate DateTime?
+  actualCloseDate   DateTime?
+  
+  // Relations
+  companyId     String?
+  company       Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contactId     String?
+  contact       Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  marketingData MarketingData[]
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([stage])
+  @@index([companyId])
+  @@index([contactId])
+  @@index([expectedCloseDate])
+  @@index([ownerId, stage])
+  @@index([stage, expectedCloseDate])
+  @@map("deals")
+}
+
+// File uploads for content
+model File {
+  id          String      @id @default(cuid())
+  filename    String
+  originalName String
+  mimeType    String
+  size        Int
+  path        String
+  
+  // Relations
+  taskId      String?
+  task        ContentTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  
+  createdAt   DateTime    @default(now())
+
+  @@index([taskId])
+  @@index([mimeType])
+  @@index([createdAt])
+  @@map("files")
+}
+
+// Marketing Data - unified data table for CRM
+model MarketingData {
+  id           String   @id @default(cuid())
+  category     String   // Marketing, Sales, Operations, Finance
+  subcategory  String?  // Digital Marketing, Content Creation, etc.
+  title        String   // Activity/Campaign title
+  description  String?  // Detailed description
+  
+  // Financial data
+  budget       Float    @default(0)
+  actual       Float    @default(0)
+  value        Float    @default(0) // Expected/projected value
+  
+  // Time tracking
+  month        String   // Januar, Februar, etc.
+  year         Int      @default(2025)
+  startDate    DateTime?
+  endDate      DateTime?
+  
+  // Status and priority
+  status       String   @default("planned") // planned, active, completed, cancelled
+  priority     String   @default("medium")  // low, medium, high, urgent
+  
+  // CRM relations
+  companyId    String?
+  company      Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contactId    String?
+  contact      Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  dealId       String?
+  deal         Deal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  
+  // Marketing metrics
+  impressions  Int?     @default(0)
+  clicks       Int?     @default(0)
+  conversions  Int?     @default(0)
+  ctr          Float?   // Click-through rate
+  cpc          Float?   // Cost per click
+  cpl          Float?   // Cost per lead
+  
+  // Additional data
+  notes        String?
+  tags         String?  // JSON array of tags
+  
+  // Relations
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([category])
+  @@index([year])
+  @@index([month])
+  @@index([status])
+  @@index([priority])
+  @@index([companyId])
+  @@index([contactId])
+  @@index([dealId])
+  @@index([userId, category])
+  @@index([userId, year])
+  @@index([category, year, month])
+  @@index([status, priority])
+  @@map("marketing_data")
+}
+
+// Audit log for compliance
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // CREATE, UPDATE, DELETE, VIEW, EXPORT
+  resource  String   // table name
+  resourceId String  // record id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metadata  String?  // JSON string with additional data
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([resource])
+  @@index([createdAt])
+  @@index([userId, action])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
+}

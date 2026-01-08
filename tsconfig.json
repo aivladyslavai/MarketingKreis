@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "types": []
+  },
+  "files": ["./tsconfig.base.d.ts"]
+}
+

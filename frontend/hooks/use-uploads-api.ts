@@ -1,0 +1,86 @@
+"use client"
+
+import useSWR from 'swr'
+import { useEffect } from 'react'
+import { authFetch, apiBase } from '@/lib/api'
+import { sync } from '@/lib/sync'
+
+export interface UploadItem {
+  id: string
+  original_name: string
+  file_type: string
+  file_size: number
+  created_at: string
+}
+
+export interface JobItem {
+  id: string
+  type: string
+  status: 'queued' | 'processing' | 'completed' | 'failed'
+  created_at: string
+  progress?: number
+}
+
+export function useUploadsApi() {
+  const { data, isLoading, error, mutate } = useSWR('/uploads', async (url) => {
+    const res = await authFetch(url)
+    try { return await res.json() } catch { return undefined }
+  }, {
+    refreshInterval: 0,
+    revalidateOnFocus: false,
+  })
+  // subscribe to global sync events (with cleanup)
+  useEffect(() => {
+    const u1 = sync.on('global:refresh', () => mutate())
+    const u2 = sync.on('uploads:changed', () => mutate())
+    return () => { u1(); u2() }
+  }, [mutate])
+
+  return {
+    uploads: (data?.items as UploadItem[]) || [],
+    isLoading,
+    error,
+    previewFile: async (file: File): Promise<{ headers: string[]; samples: any[]; suggested_mapping: Record<string, string | null> }> => {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`${apiBase}/uploads/preview`, { method: 'POST', body: fd, credentials: 'include' })
+      if (!res.ok) throw new Error(await res.text())
+      return await res.json()
+    },
+    uploadFile: async (file: File, onProgress?: (p: number) => void, mapping?: Record<string, string | null>) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      if (mapping) fd.append('mapping', JSON.stringify(mapping))
+      // Note: avoid authFetch to let browser set multipart headers
+      await fetch(`${apiBase}/uploads`, { method: 'POST', body: fd, credentials: 'include' })
+      await mutate()
+      sync.emit('uploads:changed')
+    },
+    refresh: async () => { await mutate(); sync.emit('uploads:changed') },
+  }
+}
+
+export function useJobsApi() {
+  const { data, isLoading, error, mutate } = useSWR('/jobs', async (url) => {
+    const res = await authFetch(url)
+    try { return await res.json() } catch { return undefined }
+  }, {
+    refreshInterval: 0,
+    revalidateOnFocus: false,
+  })
+  useEffect(() => {
+    const u1 = sync.on('global:refresh', () => mutate())
+    const u2 = sync.on('jobs:changed', () => mutate())
+    return () => { u1(); u2() }
+  }, [mutate])
+
+  return {
+    jobs: (data?.items as JobItem[]) || [],
+    isLoading,
+    error,
+    refresh: async () => { await mutate(); sync.emit('jobs:changed') },
+  }
+}
+
+
+
