@@ -3,10 +3,17 @@ import { NextRequest, NextResponse } from "next/server"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
+function getBackendUrl() {
+  const fromEnv = process.env.BACKEND_URL
+  if (fromEnv) return fromEnv.replace(/\/$/, "")
+  if (process.env.NODE_ENV !== "production") return "http://127.0.0.1:8000"
+  throw new Error("BACKEND_URL is not configured")
+}
+
 // Proxy for logout – clears backend auth cookies through the same origin.
 export async function POST(req: NextRequest) {
   try {
-    const apiUrl = (process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "https://kreismarketing-backend.onrender.com").replace(/\/$/, "")
+    const apiUrl = getBackendUrl()
     const cookie = req.headers.get("cookie") || ""
 
     const res = await fetch(`${apiUrl}/auth/logout`, {
@@ -30,7 +37,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (err: any) {
     console.error("Logout proxy error (api/auth/logout):", err)
-    return NextResponse.json({ detail: "Internal error" }, { status: 500 })
+    return NextResponse.json({ detail: err?.message || "Internal error" }, { status: 500 })
   }
 }
 

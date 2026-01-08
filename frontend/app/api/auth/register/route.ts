@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
+function getBackendUrl() {
+  const fromEnv = process.env.BACKEND_URL
+  if (fromEnv) return fromEnv.replace(/\/$/, "")
+  if (process.env.NODE_ENV !== "production") return "http://127.0.0.1:8000"
+  throw new Error("BACKEND_URL is not configured")
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const apiUrl = (process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'https://kreismarketing-backend.onrender.com').replace(/\/$/, '')
+    const apiUrl = getBackendUrl()
     // Use explicit AbortController to avoid platform 10s timeouts (set to 9s)
     const controller = new AbortController()
     const t = setTimeout(() => controller.abort(), 9000)
@@ -49,7 +59,7 @@ export async function POST(req: NextRequest) {
     if (setCookie) resp.headers.set('set-cookie', setCookie)
     return resp
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Unexpected error' }, { status: 500 })
+    return NextResponse.json({ error: e?.message || "Unexpected error" }, { status: 500 })
   }
 }
 

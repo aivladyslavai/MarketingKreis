@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 
-// Simple proxy for login to the Render backend.
-// This avoids any 127.0.0.1 calls in the Vercel environment.
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
+function getBackendUrl() {
+  const fromEnv = process.env.BACKEND_URL
+  if (fromEnv) return fromEnv.replace(/\/$/, "")
+  if (process.env.NODE_ENV !== "production") return "http://127.0.0.1:8000"
+  throw new Error("BACKEND_URL is not configured")
+}
+
+// Simple proxy for login to the backend.
 export async function POST(req: NextRequest) {
   try {
-    const apiUrl = (process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "https://kreismarketing-backend.onrender.com").replace(/\/$/, "")
+    const apiUrl = getBackendUrl()
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 9000)
 
@@ -31,7 +40,7 @@ export async function POST(req: NextRequest) {
     return resp
   } catch (err: any) {
     console.error("Login proxy error (api/auth/login):", err)
-    return NextResponse.json({ detail: "Internal error" }, { status: 500 })
+    return NextResponse.json({ detail: err?.message || "Internal error" }, { status: 500 })
   }
 }
 
