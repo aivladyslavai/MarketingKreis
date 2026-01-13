@@ -120,24 +120,11 @@ function SignupInner() {
         body: JSON.stringify({ email: loginEmail, password: loginPassword }),
         credentials: "include",
         cache: "no-store",
+        mode: "cors",
       })
       if (!res.ok) {
-        const text = await res.text().catch(() => "")
-        let msg = text || "Login fehlgeschlagen"
-        try {
-          const json = JSON.parse(text || "{}")
-          msg = json?.detail || json?.error || msg
-        } catch {
-          // ignore
-        }
-
-        // Friendly message for Render cold starts / proxy timeouts
-        if (/aborted/i.test(msg) || /Zeitüberschreitung/i.test(msg)) {
-          msg =
-            "Der Server startet gerade. Bitte warte 10–20 Sekunden und versuche es erneut."
-        }
-
-        throw new Error(msg || "Login fehlgeschlagen")
+        const text = await res.text()
+        throw new Error(text || "Login fehlgeschlagen")
       }
       try {
         if (loginRemember) {

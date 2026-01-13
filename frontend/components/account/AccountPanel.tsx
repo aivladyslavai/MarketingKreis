@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Sun, Moon, MonitorCog, Shield, LogOut } from "lucide-react"
+import { Sun, Moon, MonitorCog, Shield, LogOut, HelpCircle, RotateCcw } from "lucide-react"
+import { restartOnboarding } from "@/components/onboarding/onboarding-tour"
 
 type Mode = "auto" | "light" | "dark"
 
@@ -173,6 +174,35 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
             <li>• Optional 2‑Faktor‑Authentifizierung</li>
           </ul>
         </div>
+      </div>
+
+      {/* Help & Onboarding */}
+      <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-sky-500/20 to-cyan-500/20 flex items-center justify-center flex-shrink-0">
+            <HelpCircle className="h-5 w-5 text-sky-400" />
+          </div>
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-slate-50">Hilfe & Einführung</div>
+            <div className="text-xs text-slate-400 mt-1">
+              Starte den Rundgang erneut, um die wichtigsten Funktionen der Plattform kennenzulernen.
+            </div>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          className="w-full h-10 text-sm border-sky-400/40 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 hover:text-sky-200 transition-colors"
+          onClick={() => {
+            onClose()
+            // Kleine Verzögerung, damit Drawer schließen kann
+            setTimeout(() => {
+              restartOnboarding()
+            }, 350)
+          }}
+        >
+          <RotateCcw className="h-4 w-4 mr-2" />
+          Rundgang neu starten
+        </Button>
       </div>
     </div>
   )
