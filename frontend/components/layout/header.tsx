@@ -113,7 +113,6 @@ export function Header({ onMenuClick }: HeaderProps) {
             size="icon"
             onClick={() => setAccountDrawerOpen(true)}
             className="h-9 w-9 rounded-full bg-gradient-to-br from-kaboom-red to-red-600 flex items-center justify-center text-white text-sm font-semibold shadow-lg hover:shadow-xl transition-shadow"
-            data-tour="user-menu"
           >
             A
           </Button>

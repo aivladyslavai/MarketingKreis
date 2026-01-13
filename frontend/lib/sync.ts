@@ -13,7 +13,6 @@ export type SyncEvent =
   | 'crm:deals:changed'
   | 'content:changed'
   | 'performance:changed'
-  | 'onboarding:restart'
 
 type Handler = (payload?: any) => void
 
