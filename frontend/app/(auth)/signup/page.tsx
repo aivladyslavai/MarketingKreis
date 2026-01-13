@@ -113,18 +113,69 @@ function SignupInner() {
     setLoginError(null)
     setLoginLoading(true)
     try {
-      // Use Next.js API proxy to avoid any direct browser CORS issues
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
-        credentials: "include",
-        cache: "no-store",
-        mode: "cors",
-      })
+      // Use Next.js API proxy to avoid any direct browser CORS issues.
+      // Also handle transient 502/503/504 (cold starts) gracefully.
+      const payload = JSON.stringify({ email: loginEmail, password: loginPassword })
+
+      const doLogin = () =>
+        fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+          credentials: "include",
+          cache: "no-store",
+        })
+
+      const readError = async (res: Response) => {
+        const status = res.status
+        const text = await res.text().catch(() => "")
+        const trimmed = text.trim()
+
+        // Try JSON even if content-type is text/plain (our proxy forwards raw text).
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+          try {
+            const j = JSON.parse(trimmed)
+            return (
+              j?.detail ||
+              j?.error ||
+              j?.message ||
+              `Login fehlgeschlagen (Status ${status})`
+            )
+          } catch {
+            // ignore parse errors
+          }
+        }
+
+        if (status === 401) return "E‑Mail oder Passwort ist falsch."
+
+        if (
+          status === 502 ||
+          status === 503 ||
+          status === 504 ||
+          /bad gateway|service unavailable|gateway timeout/i.test(trimmed) ||
+          trimmed.includes("<title>502</title>")
+        ) {
+          return `Der Server ist gerade nicht erreichbar (Status ${status}). Bitte in 30 Sekunden erneut versuchen.`
+        }
+
+        // If backend returned HTML, avoid dumping it into UI
+        if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
+          return `Login fehlgeschlagen (Status ${status}). Bitte später erneut versuchen.`
+        }
+
+        return trimmed ? `Login fehlgeschlagen (Status ${status}): ${trimmed}` : `Login fehlgeschlagen (Status ${status}).`
+      }
+
+      let res = await doLogin()
+
+      // One retry for transient gateway errors (Render cold start, etc.)
+      if (!res.ok && [502, 503, 504].includes(res.status)) {
+        await new Promise((r) => setTimeout(r, 1200))
+        res = await doLogin()
+      }
+
       if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || "Login fehlgeschlagen")
+        throw new Error(await readError(res))
       }
       try {
         if (loginRemember) {
