@@ -35,6 +35,13 @@ def get_db_session():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        # Ensure failed requests don't leave transactions open
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         db.close()
 

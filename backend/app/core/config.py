@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     # Feature flags
     skip_email_verify: bool = Field(default=False, env="SKIP_EMAIL_VERIFY")
 
+    # Upload storage (free-tier friendly):
+    # Store file bytes in Postgres so uploads survive deploys/restarts.
+    upload_store_in_db: bool = Field(default=True, env="UPLOAD_STORE_IN_DB")
+    upload_max_bytes: int = Field(default=10 * 1024 * 1024, env="UPLOAD_MAX_BYTES")  # 10MB
+
     @validator("jwt_secret_key")
     def validate_jwt_secret(cls, v: str, values: dict) -> str:
         """Ensure JWT secret is strong in production"""

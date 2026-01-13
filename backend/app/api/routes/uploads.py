@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 import csv
 import io
+import hashlib
 
 from app.db.session import get_db_session
 from app.models.upload import Upload
@@ -11,6 +12,7 @@ from app.models.job import Job
 from app.models.activity import Activity, ActivityType
 from app.models.user import User
 from app.api.deps import get_current_user
+from app.core.config import get_settings
 
 router = APIRouter(prefix="/uploads", tags=["uploads"]) 
 
@@ -51,6 +53,8 @@ def list_uploads(
                 "original_name": u.original_name,
                 "file_type": u.file_type,
                 "file_size": int(u.file_size or 0),
+                "stored_in_db": bool(getattr(u, "stored_in_db", False)),
+                "sha256": getattr(u, "sha256", None),
                 "created_at": u.created_at,
             }
             for u in items
@@ -71,7 +75,9 @@ def upload_file(
     title, category|type, status, weight, budget|budgetCHF, notes,
     start|start_date, end|end_date
     """
-    # Save upload metadata
+    settings = get_settings()
+
+    # Save upload metadata (and optionally bytes in DB)
     upload = Upload(
         original_name=file.filename or "file",
         file_type=file.content_type or "",
@@ -82,8 +88,21 @@ def upload_file(
     db.refresh(upload)
 
     # Read all content
-    content = file.file.read()
+    content = file.file.read() or b""
+    if len(content) > settings.upload_max_bytes:
+        # Avoid silently truncating / losing data.
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large for current plan (max {settings.upload_max_bytes} bytes).",
+        )
     upload.file_size = len(content or b"")
+    upload.sha256 = hashlib.sha256(content).hexdigest()
+    upload.stored_in_db = bool(settings.upload_store_in_db)
+    if settings.upload_store_in_db:
+        upload.content = content
+    db.add(upload)
+    db.commit()
+    db.refresh(upload)
 
     created_count = 0
     skipped_count = 0

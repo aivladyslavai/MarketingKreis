@@ -3,6 +3,7 @@ import json
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from app.db.session import get_db_session
 from app.core.config import get_settings
 from datetime import timedelta, datetime, timezone
@@ -164,6 +165,9 @@ def _decode_special(token: str) -> dict:
 @router.post("/register")
 def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db_session)):
     settings = get_settings()
+    # Normalize email to guarantee case-insensitive uniqueness
+    body.email = (body.email or "").strip().lower()
+
     # Mode enforcement / invited role
     invited_role = settings.default_role
     if settings.signup_mode == "invite_only":
@@ -182,7 +186,8 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid or expired invite token")
 
-    existing = db.query(User).filter(User.email == body.email).first()
+    # Case-insensitive check (Postgres UNIQUE is case-sensitive by default)
+    existing = db.query(User).filter(func.lower(User.email) == body.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
 
@@ -203,8 +208,13 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
             role = UserRole.user
     user = User(email=body.email, hashed_password=_hash_password(body.password), role=role)
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    try:
+        db.commit()
+        db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        # Protect against race conditions and case variants
+        raise HTTPException(status_code=400, detail="User already exists")
 
     # Optional: skip email verification completely (for demos)
     try:
