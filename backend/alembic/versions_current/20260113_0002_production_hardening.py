@@ -35,12 +35,8 @@ def upgrade() -> None:
     # Ensure all existing emails are lowercased before adding index.
     bind.execute(sa.text("update users set email = lower(email) where email is not null;"))
     if not _has_index(bind, "public.ux_users_email_lower"):
-        op.create_index(
-            "ux_users_email_lower",
-            "users",
-            [sa.text("lower(email)")],
-            unique=True,
-        )
+        # Use raw SQL for functional index to avoid cross-version Alembic API quirks.
+        op.execute(sa.text("create unique index ux_users_email_lower on users (lower(email));"))
 
     # 2) Upload content persistence in DB
     if not _has_column(bind, "uploads", "content"):
