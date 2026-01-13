@@ -2,7 +2,7 @@
 
 import React from "react"
 import { usePathname } from "next/navigation"
-import Joyride, { CallBackProps, EVENTS, STATUS, Step, TooltipRenderProps } from "react-joyride"
+import Joyride, { ACTIONS, CallBackProps, EVENTS, STATUS, Step, TooltipRenderProps } from "react-joyride"
 import { sync } from "@/lib/sync"
 import {
   Sparkles,
@@ -666,18 +666,20 @@ export default function OnboardingTour() {
   }, [currentKey, startTour])
 
   const handleJoyrideCallback = React.useCallback((data: CallBackProps) => {
-    const { status, type, index } = data
+    const { status, type, index, action } = data
     const finished = status === STATUS.FINISHED || status === STATUS.SKIPPED
-    if (type === EVENTS.TARGET_NOT_FOUND) {
-      const next = (index ?? stepIndex) + 1
-      setStepIndex(next)
-      return
-    }
     if (finished) {
       try {
         localStorage.setItem(seenKey(activeKey), "1")
       } catch {}
       setRun(false)
+      return
+    }
+    // Controlled mode: we must advance ourselves.
+    if (type === EVENTS.STEP_AFTER || type === EVENTS.TARGET_NOT_FOUND) {
+      const i = typeof index === "number" ? index : stepIndex
+      const delta = action === ACTIONS.PREV ? -1 : 1
+      setStepIndex(i + delta)
     }
   }, [activeKey, stepIndex])
 
@@ -690,10 +692,7 @@ export default function OnboardingTour() {
         steps={steps}
         run={run}
         stepIndex={stepIndex}
-        callback={(data) => {
-          if (typeof data.index === "number") setStepIndex(data.index)
-          handleJoyrideCallback(data)
-        }}
+        callback={handleJoyrideCallback}
         continuous
         showSkipButton
         showProgress={false}
