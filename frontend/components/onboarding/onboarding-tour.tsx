@@ -334,7 +334,7 @@ function OnboardingTourInner() {
       continuous
       showSkipButton
       showProgress
-      disableScrolling={true}
+      disableScrolling={false}
       scrollToFirstStep
       scrollOffset={100}
       spotlightClicks={false}
@@ -350,7 +350,7 @@ function OnboardingTourInner() {
         overlay: {
           mixBlendMode: undefined, // Fix for Safari
           zIndex: 10000,
-          pointerEvents: "none",
+          pointerEvents: "auto",
         },
         tooltip: {
           zIndex: 10002,
