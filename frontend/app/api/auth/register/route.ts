@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+export const maxDuration = 30
 
 function getBackendUrl() {
   const fromEnv = process.env.BACKEND_URL
@@ -10,21 +11,33 @@ function getBackendUrl() {
   throw new Error("BACKEND_URL is not configured")
 }
 
+const BACKEND_TIMEOUT_MS = 25_000
+
+function isAbortError(err: any) {
+  return err?.name === "AbortError" || /aborted/i.test(String(err?.message || ""))
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const apiUrl = getBackendUrl()
-    // Use explicit AbortController to avoid platform 10s timeouts (set to 9s)
-    const controller = new AbortController()
-    const t = setTimeout(() => controller.abort(), 9000)
-    const r = await fetch(`${apiUrl}/auth/register`, {
+    const body = await req.text()
+    const r = await fetchWithTimeout(`${apiUrl}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: await req.text(),
+      body,
       credentials: 'include',
       cache: 'no-store',
-      signal: controller.signal,
-    })
-    clearTimeout(t)
+    }, BACKEND_TIMEOUT_MS)
     const setCookie = r.headers.get('set-cookie') || undefined
     const text = await r.text()
 
@@ -59,6 +72,15 @@ export async function POST(req: NextRequest) {
     if (setCookie) resp.headers.set('set-cookie', setCookie)
     return resp
   } catch (e: any) {
+    if (isAbortError(e)) {
+      return NextResponse.json(
+        {
+          error:
+            "Zeitüberschreitung: Der Server startet möglicherweise gerade (Render Free Tier). Bitte warte 10–20 Sekunden und versuche es erneut.",
+        },
+        { status: 504 },
+      )
+    }
     return NextResponse.json({ error: e?.message || "Unexpected error" }, { status: 500 })
   }
 }
