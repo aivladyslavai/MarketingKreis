@@ -53,22 +53,25 @@ def run_migrations_on_startup() -> None:
     - ALEMBIC_UPGRADE_ON_STARTUP=true: run upgrade head (applies migrations)
     """
     settings = get_settings()
-    if settings.environment != "production":
-        return
-
     stamp = os.getenv("ALEMBIC_STAMP_IF_MISSING", "").lower() in {"1", "true", "yes", "on"}
     upgrade = os.getenv("ALEMBIC_UPGRADE_ON_STARTUP", "").lower() in {"1", "true", "yes", "on"}
 
     if not stamp and not upgrade:
         return
 
+    # Run migrations when explicitly requested via env flags, regardless of ENVIRONMENT.
+    # This avoids getting stuck if ENVIRONMENT is not set correctly on the platform.
+    print(f"[mk.migrations] startup: ENVIRONMENT={settings.environment} stamp={stamp} upgrade={upgrade}")
+
     try:
         if stamp:
             did = stamp_head_if_missing()
             if did:
                 logger.warning("Database stamped to Alembic head successfully.")
+                print("[mk.migrations] stamped database to Alembic head")
         if upgrade:
             upgrade_head()
+            print("[mk.migrations] upgraded database to Alembic head")
     except Exception:
         logger.exception("Migration startup step failed.")
         raise
