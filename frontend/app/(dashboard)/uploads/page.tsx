@@ -10,10 +10,21 @@ import {
   CheckCircle2,
   AlertTriangle,
   Briefcase,
+  Search,
+  Eye,
+  Download,
+  Share2,
+  Trash2,
+  Image as ImageIcon,
+  Video,
+  File as FileIcon,
+  Plus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { useModal } from "@/components/ui/modal/ModalProvider"
 import { useJobsApi, useUploadsApi } from "@/hooks/use-uploads-api"
 
 function formatBytes(bytes: number) {
@@ -33,7 +44,47 @@ function isTabularFile(name: string) {
   return n.endsWith(".csv") || n.endsWith(".xlsx") || n.endsWith(".xls")
 }
 
+function extOf(name: string) {
+  const n = (name || "").toLowerCase()
+  const idx = n.lastIndexOf(".")
+  return idx >= 0 ? n.slice(idx + 1) : ""
+}
+
+function kindOf(name: string, fileType?: string) {
+  const ext = extOf(name)
+  const ft = (fileType || "").toLowerCase()
+  if (ft.includes("pdf") || ext === "pdf") return "pdf"
+  if (ft.startsWith("image/") || ["png", "jpg", "jpeg", "webp", "gif"].includes(ext)) return "image"
+  if (ft.startsWith("video/") || ["mp4", "mov", "webm"].includes(ext)) return "video"
+  if (["csv", "xlsx", "xls"].includes(ext)) return "table"
+  return "file"
+}
+
+function iconFor(kind: string) {
+  switch (kind) {
+    case "pdf":
+      return FileText
+    case "image":
+      return ImageIcon
+    case "video":
+      return Video
+    case "table":
+      return FileText
+    default:
+      return FileIcon
+  }
+}
+
+function labelFor(kind: string, name: string) {
+  if (kind === "table") return extOf(name).toUpperCase() || "TABLE"
+  if (kind === "image") return "Image"
+  if (kind === "video") return "Video"
+  if (kind === "pdf") return "PDF"
+  return extOf(name).toUpperCase() || "File"
+}
+
 export default function UploadsPage() {
+  const { openModal } = useModal()
   const fileRef = React.useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -55,6 +106,7 @@ export default function UploadsPage() {
     weight: null,
   })
   const [dragOver, setDragOver] = React.useState(false)
+  const [query, setQuery] = React.useState("")
 
   const { uploads, isLoading, refresh, uploadFile, previewFile } = useUploadsApi()
   const { jobs, isLoading: jobsLoading, refresh: refreshJobs } = useJobsApi()
@@ -135,6 +187,36 @@ export default function UploadsPage() {
     [uploads],
   )
 
+  const uploadedToday = React.useMemo(() => {
+    const today = new Date()
+    const y = today.getFullYear()
+    const m = today.getMonth()
+    const d = today.getDate()
+    return uploads.filter((u: any) => {
+      if (!u?.created_at) return false
+      const t = new Date(u.created_at)
+      return t.getFullYear() === y && t.getMonth() === m && t.getDate() === d
+    }).length
+  }, [uploads])
+
+  const filteredUploads = React.useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return uploads
+    return uploads.filter((u: any) => {
+      const name = String(u?.original_name || "").toLowerCase()
+      const ft = String(u?.file_type || "").toLowerCase()
+      return name.includes(q) || ft.includes(q) || String(u?.id || "").includes(q)
+    })
+  }, [uploads, query])
+
+  const notAvailable = (title: string) =>
+    openModal({
+      type: "info",
+      title,
+      description: "Diese Funktion ist in der aktuellen Version noch nicht verfügbar.",
+      icon: "info",
+    })
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -182,7 +264,7 @@ export default function UploadsPage() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <Card className="glass-card">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
@@ -202,6 +284,17 @@ export default function UploadsPage() {
             </div>
             <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
               <HardDrive className="h-5 w-5 text-slate-400" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="glass-card">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs text-slate-600 dark:text-slate-400">Heute hochgeladen</div>
+              <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">{uploadedToday}</div>
+            </div>
+            <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <Plus className="h-5 w-5 text-slate-400" />
             </div>
           </CardContent>
         </Card>
@@ -353,26 +446,42 @@ export default function UploadsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Upload list */}
         <Card className="glass-card">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 space-y-3">
             <CardTitle className="text-base">Letzte Uploads</CardTitle>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Suche nach Dateinamen, Typ oder ID…"
+                className="pl-9 bg-white/60 dark:bg-slate-900/60"
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {isLoading ? (
               <div className="text-sm text-slate-500 dark:text-slate-400">Lade Uploads…</div>
-            ) : uploads.length === 0 ? (
+            ) : filteredUploads.length === 0 ? (
               <div className="text-sm text-slate-500 dark:text-slate-400">Noch keine Uploads.</div>
             ) : (
               <div className="divide-y divide-slate-200/60 dark:divide-slate-800">
-                {uploads.slice(0, 12).map((u: any) => (
-                  <div key={u.id} className="py-3 flex items-start justify-between gap-3">
+                {filteredUploads.slice(0, 12).map((u: any) => {
+                  const name = String(u.original_name || "")
+                  const kind = kindOf(name, String(u.file_type || ""))
+                  const Icon = iconFor(kind)
+                  return (
+                    <div key={u.id} className="py-3 flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 min-w-0">
-                        <FileText className="h-4 w-4 text-slate-500 flex-shrink-0" />
+                        <Icon className="h-4 w-4 text-slate-500 flex-shrink-0" />
                         <div className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
-                          {u.original_name}
+                          {name}
                         </div>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
+                        <Badge variant="outline" className="text-[10px]">
+                          {labelFor(kind, name)}
+                        </Badge>
                         <span className="inline-flex items-center gap-1">
                           <HardDrive className="h-3.5 w-3.5" />
                           {formatBytes(Number(u.file_size || 0))}
@@ -387,9 +496,42 @@ export default function UploadsPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">#{u.id}</div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="glass-card"
+                        onClick={() =>
+                          openModal({
+                            type: "info",
+                            title: "Datei",
+                            description: `${name}\n\nTyp: ${u.file_type || "-"}\nGröße: ${formatBytes(
+                              Number(u.file_size || 0),
+                            )}\nID: ${u.id}`,
+                            icon: "info",
+                          })
+                        }
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="outline" className="glass-card" onClick={() => notAvailable("Download")}>
+                        <Download className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="outline" className="glass-card" onClick={() => notAvailable("Teilen")}>
+                        <Share2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+                        onClick={() => notAvailable("Löschen")}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>
