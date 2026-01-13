@@ -43,7 +43,10 @@ backend/*.sqlite3
 # Misc caches/uploads
 #
 .cache/
-uploads/
+/uploads/
+
+# Old mock pages (not deployed)
+frontend/app/(dashboard)/uploads/page-old-mock.tsx
 
 # Local env files
 .env*
