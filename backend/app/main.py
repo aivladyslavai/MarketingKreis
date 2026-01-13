@@ -20,6 +20,7 @@ from app.api.routes import user_categories as user_categories_routes
 from app.api.routes import content_tasks as content_tasks_routes
 from app.db.base import Base
 from app.db.session import engine
+from app.db.migrations import run_migrations_on_startup
 from app.core.security import CSRFMiddleware
 import os
 
@@ -27,6 +28,11 @@ import os
 def create_app() -> FastAPI:
     app = FastAPI(title="MarketingKreis API")
     settings = get_settings()
+
+    @app.on_event("startup")
+    def _startup_migrations() -> None:
+        # In production we optionally stamp/upgrade via env flags.
+        run_migrations_on_startup()
 
     # Observability: configure logging + optional error tracing
     init_tracing(app)
