@@ -70,11 +70,17 @@ export function useUnifiedCrm(): UnifiedCrmData {
     year: new Date().getFullYear()
   })
 
-  // const { toast } = useToast() // Временно отключено
-  const toast = (message: any) => console.log('Toast:', message) // Fallback
+  // NOTE:
+  // `useToast` is currently disabled; keep a stable fallback to avoid infinite
+  // render loops (a new function each render would break useCallback deps).
+  const toast = useCallback((message: any) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Toast:', message)
+    }
+  }, [])
 
   // Refresh Marketing Data with retry mechanism
-  const refreshMarketingData = useCallback(async (retryCount = 0) => {
+  const refreshMarketingData = useCallback(async () => {
     setMarketingLoading(true)
     setError(null)
     
@@ -83,23 +89,12 @@ export function useUnifiedCrm(): UnifiedCrmData {
         marketingDataApi.getAll(filters),
         marketingDataApi.getStats(filters.year)
       ])
-      
-      console.log('🔍 Raw API responses:', { dataResponse, statsResponse })
-      
+
       // Extract data from the correct API response structure
       const marketingDataArray = dataResponse?.data || []
-      console.log('📊 Setting marketing data:', marketingDataArray, 'Length:', marketingDataArray.length)
       
       setMarketingData(marketingDataArray)
       setMarketingStats(statsResponse)
-      
-      // Clear any previous errors on successful connection
-      if (error) {
-        toast({
-          title: "Verbindung wiederhergestellt",
-          description: "Backend API ist wieder verfügbar",
-        })
-      }
     } catch (error) {
       console.error('Failed to fetch marketing data:', error)
       setError('Backend API nicht verfügbar - verwende lokale Daten')
@@ -179,7 +174,7 @@ export function useUnifiedCrm(): UnifiedCrmData {
       toast({ title: 'Fehler', description: 'Backend nicht verfügbar', variant: 'destructive' })
       return null
     }
-  }, [refreshMarketingData, toast, marketingData])
+  }, [refreshMarketingData, toast])
 
   // Delete Marketing Data
   const deleteMarketingData = useCallback(async (id: string): Promise<boolean> => {
@@ -198,13 +193,13 @@ export function useUnifiedCrm(): UnifiedCrmData {
       toast({ title: 'Fehler', description: 'Backend nicht verfügbar', variant: 'destructive' })
       return false
     }
-  }, [refreshMarketingData, toast, marketingData])
+  }, [refreshMarketingData, toast])
 
   // Import from localStorage
   const importFromLocalStorage = useCallback(async (): Promise<boolean> => {
     toast({ title: 'Nicht unterstützt', description: 'Lokaler Import wurde deaktiviert' })
     return false
-  }, [])
+  }, [toast])
 
   // Load data on mount and when filters change
   useEffect(() => {
