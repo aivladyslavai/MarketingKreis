@@ -6,7 +6,7 @@ from typing import Callable, Optional
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from app.core.config import get_settings
 from app.db.session import engine
@@ -76,6 +76,54 @@ def _start_background(job_name: str, fn: Callable[[], None]) -> None:
     _migration_thread = t
     t.start()
 
+def bootstrap_production_schema() -> None:
+    """
+    Emergency / free-tier friendly schema bootstrap.
+
+    Alembic can be slow/unreliable on some platforms during deploy startup.
+    This function applies the minimal DDL needed for production safety in an
+    idempotent way, and ensures alembic_version is set to our current head.
+    """
+    target_revision = "20260113_0002_production_hardening"
+
+    # Use a single transaction; Postgres supports transactional DDL.
+    with engine.begin() as conn:
+        # Ensure version table exists (create if missing)
+        conn.execute(
+            text(
+                "create table if not exists alembic_version ("
+                "version_num varchar(32) not null"
+                ")"
+            )
+        )
+
+        # Emails: normalize + case-insensitive uniqueness
+        conn.execute(text("update users set email = lower(email) where email is not null;"))
+        conn.execute(
+            text(
+                "do $$\n"
+                "begin\n"
+                "  if not exists (\n"
+                "    select 1 from pg_indexes where schemaname='public' and indexname='ux_users_email_lower'\n"
+                "  ) then\n"
+                "    create unique index ux_users_email_lower on users (lower(email));\n"
+                "  end if;\n"
+                "end $$;"
+            )
+        )
+
+        # Uploads: store bytes + checksum
+        conn.execute(text("alter table uploads add column if not exists content bytea;"))
+        conn.execute(text("alter table uploads add column if not exists sha256 varchar(64);"))
+        conn.execute(text("alter table uploads add column if not exists stored_in_db boolean not null default true;"))
+        conn.execute(text("create index if not exists ix_uploads_sha256 on uploads (sha256);"))
+
+        # Ensure version table has exactly one row with target head.
+        conn.execute(text("delete from alembic_version;"))
+        conn.execute(text("insert into alembic_version (version_num) values (:v);"), {"v": target_revision})
+
+    logger.warning("Bootstrap schema applied; alembic_version set to %s.", target_revision)
+
 
 def run_migrations_on_startup() -> None:
     """
@@ -90,11 +138,17 @@ def run_migrations_on_startup() -> None:
     stamp = _bool_env("ALEMBIC_STAMP_IF_MISSING", default=False)
     upgrade = _bool_env("ALEMBIC_UPGRADE_ON_STARTUP", default=False)
     async_mode = _bool_env("ALEMBIC_ASYNC_ON_STARTUP", default=True)
+    bootstrap = _bool_env("DB_BOOTSTRAP_ON_STARTUP", default=False)
 
-    if not stamp and not upgrade:
+    if not stamp and not upgrade and not bootstrap:
         return
 
     try:
+        if bootstrap:
+            logger.warning("Starting DB bootstrap schema in background thread.")
+            _start_background("db-bootstrap", bootstrap_production_schema)
+            return
+
         # IMPORTANT:
         # - If upgrade is requested, do NOT stamp first. `alembic upgrade head` will create
         #   the version table (if missing) and apply migrations. Stamping first would mark
