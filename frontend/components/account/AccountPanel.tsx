@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { HelpCircle, RotateCcw, Sun, Moon, MonitorCog, Shield, LogOut } from "lucide-react"
-import { sync } from "@/lib/sync"
+import { HelpCircle, RotateCcw, Sun, Moon, MonitorCog, Shield, LogOut, Sparkles, BookOpen, Keyboard } from "lucide-react"
+import { restartOnboarding } from "@/components/onboarding/onboarding-tour"
 
 type Mode = "auto" | "light" | "dark"
 
@@ -164,34 +164,53 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
         <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 space-y-4">
           <div>
             <div className="text-sm font-semibold text-slate-50 flex items-center gap-2">
-              <HelpCircle className="h-4 w-4 text-slate-300" />
+              <Sparkles className="h-4 w-4 text-amber-400" />
               Hilfe & Einführung
             </div>
             <div className="text-xs text-slate-400 mt-1">
-              Starte den Rundgang jederzeit neu – sicher und ohne die App zu stören.
+              Interaktive Rundgänge für jede Seite – starte sie jederzeit neu.
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex flex-col gap-2">
             <Button
               variant="outline"
-              className="glass-card h-9 text-xs sm:text-sm border-white/30 bg-white/10 text-white hover:bg-white/20"
+              className="glass-card h-10 text-xs sm:text-sm border-rose-500/30 bg-rose-500/10 text-white hover:bg-rose-500/20 hover:border-rose-500/50 justify-start"
               onClick={() => {
-                // close drawer first for smoothness
                 onClose()
-                setTimeout(() => {
-                  try {
-                    sync.emit("onboarding:restart", { key: "welcome" })
-                  } catch {}
-                }, 250)
+                setTimeout(() => restartOnboarding("welcome"), 300)
               }}
             >
-              <RotateCcw className="h-4 w-4 mr-2" /> Rundgang neu starten
+              <RotateCcw className="h-4 w-4 mr-2 text-rose-400" />
+              <span className="flex-1 text-left">Welcome Tour</span>
+              <span className="text-[10px] text-slate-400">~2 min</span>
+            </Button>
+            <Button
+              variant="outline"
+              className="glass-card h-10 text-xs sm:text-sm border-white/20 bg-white/5 text-white hover:bg-white/10 justify-start"
+              onClick={() => {
+                onClose()
+                setTimeout(() => restartOnboarding(), 300)
+              }}
+            >
+              <BookOpen className="h-4 w-4 mr-2 text-blue-400" />
+              <span className="flex-1 text-left">Seiten-Tour (aktuelle Seite)</span>
+              <span className="text-[10px] text-slate-400">~1 min</span>
             </Button>
           </div>
 
+          {/* Keyboard shortcuts hint */}
+          <div className="rounded-xl bg-white/5 border border-white/10 p-3">
+            <div className="flex items-center gap-2 text-xs text-slate-300">
+              <Keyboard className="h-3.5 w-3.5 text-slate-400" />
+              <span>Tastenkürzel:</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-200 font-mono text-[10px]">ESC</kbd>
+              <span className="text-slate-400">schließt Rundgang</span>
+            </div>
+          </div>
+
           <div className="text-[11px] text-slate-500">
-            Tipp: Jede Seite hat ihren eigenen Mini‑Rundgang, der nur beim ersten Besuch startet.
+            💡 Jede Seite hat einen eigenen Mini‑Rundgang. Beim ersten Besuch startet er automatisch.
           </div>
         </div>
       </div>
