@@ -111,6 +111,7 @@ const FancyTooltip: React.FC<TooltipRenderProps> = ({
   index,
   size,
   step,
+  tooltipProps,
   backProps,
   closeProps,
   primaryProps,
@@ -120,7 +121,16 @@ const FancyTooltip: React.FC<TooltipRenderProps> = ({
   const current = (index ?? 0) + 1
 
   return (
-    <div className="relative max-w-md overflow-hidden rounded-2xl border border-slate-700/50 bg-slate-900/95 text-slate-50 shadow-2xl shadow-rose-500/20 backdrop-blur-xl">
+    <div
+      {...tooltipProps}
+      // Ensure tooltip is always clickable even if overlay layers misbehave
+      style={{
+        ...(tooltipProps as any)?.style,
+        pointerEvents: "auto",
+        zIndex: 10002,
+      }}
+      className="relative max-w-md overflow-hidden rounded-2xl border border-slate-700/50 bg-slate-900/95 text-slate-50 shadow-2xl shadow-rose-500/20 backdrop-blur-xl"
+    >
       {/* Decorative blurs */}
       <div className="pointer-events-none absolute -top-24 -right-24 h-40 w-40 rounded-full bg-rose-500/30 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-24 -left-24 h-44 w-44 rounded-full bg-sky-500/25 blur-3xl" />
@@ -339,6 +349,12 @@ function OnboardingTourInner() {
         },
         overlay: {
           mixBlendMode: undefined, // Fix for Safari
+          zIndex: 10000,
+          pointerEvents: "none",
+        },
+        tooltip: {
+          zIndex: 10002,
+          pointerEvents: "auto",
         },
         spotlight: {
           borderRadius: 16,
