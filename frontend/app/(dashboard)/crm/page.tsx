@@ -658,7 +658,10 @@ export default function CRMPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
           {/* Tabs Navigation - scrollable on mobile */}
           <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-            <TabsList className="glass-card border rounded-xl p-1 inline-flex gap-1 sm:gap-2 min-w-max">
+            <TabsList
+              className="glass-card border rounded-xl p-1 inline-flex gap-1 sm:gap-2 min-w-max"
+              data-tour="crm-tabs"
+            >
               <TabsTrigger 
                 value="companies" 
                 className="data-[state=active]:bg-white/80 dark:data-[state=active]:bg-slate-800/80 data-[state=active]:shadow-sm rounded-lg px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm"
@@ -801,7 +804,7 @@ export default function CRMPage() {
 
             {/* Search & Filter Bar */}
             <div className="flex flex-col gap-3">
-              <div className="relative">
+              <div className="relative" data-tour="crm-search">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input 
                   placeholder="🔍 Suchen…" 
@@ -882,7 +885,7 @@ export default function CRMPage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 gap-4" data-tour="crm-table">
                 {filteredCompanies.map((company: any) => (
                   <Card key={company.id} className="glass-card hover:border-blue-500/30 transition-all group">
                     <CardContent className="p-6">

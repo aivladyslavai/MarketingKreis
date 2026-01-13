@@ -233,7 +233,7 @@ export default function ActivitiesPage() {
             </div>
             
             {/* Action buttons */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2" data-tour="activities-actions">
               <button
                 onClick={() => setCompact(c => !c)}
                 className={`h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg border border-white/20 text-xs sm:text-sm ${compact ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
@@ -351,7 +351,7 @@ export default function ActivitiesPage() {
         {/* Right side: Sidebar with activities and chart */}
         <div className="lg:col-span-1 space-y-6">
           {/* Current Activities */}
-          <Card className="glass-card">
+          <Card className="glass-card" data-tour="activities-list">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-white">Aktuelle Aktivitäten</CardTitle>

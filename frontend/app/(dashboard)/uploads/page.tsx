@@ -312,7 +312,10 @@ export default function UploadsPage() {
       </div>
 
       {/* Dropzone + Preview */}
-      <Card className={`glass-card border-2 ${dragOver ? "border-kaboom-red/60" : "border-white/10"} border-dashed`}>
+      <Card
+        className={`glass-card border-2 ${dragOver ? "border-kaboom-red/60" : "border-white/10"} border-dashed`}
+        data-tour="uploads-dropzone"
+      >
         <CardContent
           className="p-5"
           onDragEnter={(e) => {
@@ -378,7 +381,7 @@ export default function UploadsPage() {
 
           {preview && (
             <div className="mt-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2" data-tour="uploads-mapping">
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Mapping</div>
                 <div className="text-xs text-slate-600 dark:text-slate-400">
                   Pflicht: <span className="font-semibold">title</span>
@@ -445,7 +448,7 @@ export default function UploadsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Upload list */}
-        <Card className="glass-card">
+        <Card className="glass-card" data-tour="uploads-list">
           <CardHeader className="pb-3 space-y-3">
             <CardTitle className="text-base">Letzte Uploads</CardTitle>
             <div className="relative">
@@ -538,7 +541,7 @@ export default function UploadsPage() {
         </Card>
 
         {/* Jobs list */}
-        <Card className="glass-card">
+        <Card className="glass-card" data-tour="jobs-list">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Import Jobs</CardTitle>
           </CardHeader>

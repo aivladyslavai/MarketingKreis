@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Sun, Moon, MonitorCog, Shield, LogOut } from "lucide-react"
+import { HelpCircle, RotateCcw, Sun, Moon, MonitorCog, Shield, LogOut } from "lucide-react"
+import { sync } from "@/lib/sync"
 
 type Mode = "auto" | "light" | "dark"
 
@@ -159,19 +160,39 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
           </div>
         </div>
 
-        {/* Security / upcoming features */}
-        <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 space-y-3">
+        {/* Help / onboarding */}
+        <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 space-y-4">
           <div>
-            <div className="text-sm font-semibold text-slate-50">Sicherheit</div>
+            <div className="text-sm font-semibold text-slate-50 flex items-center gap-2">
+              <HelpCircle className="h-4 w-4 text-slate-300" />
+              Hilfe & Einführung
+            </div>
             <div className="text-xs text-slate-400 mt-1">
-              Passwort & Sitzungen – bald vollständig konfigurierbar.
+              Starte den Rundgang jederzeit neu – sicher und ohne die App zu stören.
             </div>
           </div>
-          <ul className="space-y-1.5 text-xs text-slate-400">
-            <li>• Passwort‑Änderung direkt aus dem Account (coming soon)</li>
-            <li>• Übersicht der letzten Logins & aktiven Sitzungen</li>
-            <li>• Optional 2‑Faktor‑Authentifizierung</li>
-          </ul>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              className="glass-card h-9 text-xs sm:text-sm border-white/30 bg-white/10 text-white hover:bg-white/20"
+              onClick={() => {
+                // close drawer first for smoothness
+                onClose()
+                setTimeout(() => {
+                  try {
+                    sync.emit("onboarding:restart", { key: "welcome" })
+                  } catch {}
+                }, 250)
+              }}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" /> Rundgang neu starten
+            </Button>
+          </div>
+
+          <div className="text-[11px] text-slate-500">
+            Tipp: Jede Seite hat ihren eigenen Mini‑Rundgang, der nur beim ersten Besuch startet.
+          </div>
         </div>
       </div>
     </div>

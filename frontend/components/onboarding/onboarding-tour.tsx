@@ -1,53 +1,195 @@
 "use client"
 
 import React from "react"
-import Joyride, { CallBackProps, STATUS, Step, TooltipRenderProps } from "react-joyride"
+import { usePathname } from "next/navigation"
+import Joyride, { CallBackProps, EVENTS, STATUS, Step, TooltipRenderProps } from "react-joyride"
+import { sync } from "@/lib/sync"
 
-function getSteps(): Step[] {
-  return [
+const ONBOARDING_VERSION = "3"
+
+type TourKey =
+  | "welcome"
+  | "dashboard"
+  | "crm"
+  | "calendar"
+  | "activities"
+  | "performance"
+  | "budget"
+  | "content"
+  | "reports"
+  | "uploads"
+
+function normalizeTourKey(pathname: string | null): TourKey {
+  const p = pathname || "/"
+  if (p.startsWith("/crm")) return "crm"
+  if (p.startsWith("/calendar")) return "calendar"
+  if (p.startsWith("/activities")) return "activities"
+  if (p.startsWith("/performance")) return "performance"
+  if (p.startsWith("/budget")) return "budget"
+  if (p.startsWith("/content")) return "content"
+  if (p.startsWith("/reports")) return "reports"
+  if (p.startsWith("/uploads")) return "uploads"
+  if (p.startsWith("/dashboard")) return "dashboard"
+  return "dashboard"
+}
+
+function seenKey(key: TourKey) {
+  return `mkOnboardingSeen:${ONBOARDING_VERSION}:${key}`
+}
+
+function safeSteps(steps: Step[]) {
+  // Keep "body" steps always; for others ensure selector exists to avoid “stuck” experiences.
+  return steps.filter((s) => {
+    const t = String((s as any).target || "")
+    if (!t || t === "body") return true
+    try {
+      return !!document.querySelector(t)
+    } catch {
+      return true
+    }
+  })
+}
+
+function buildTours(): Record<TourKey, Step[]> {
+  const commonNav: Step[] = [
     {
-      target: "body",
-      placement: "center",
-      title: "Willkommen!",
-      content:
-        "Das ist ein kurzer Rundgang durch die Plattform. In 5 Schritten zeigen wir dir die wichtigsten Bereiche. Du kannst den Rundgang jederzeit überspringen.",
+      target: '[data-tour="sidebar"]',
+      title: "Navigation",
+      content: "Über die Seitenleiste wechselst du zwischen den Modulen. Auf dem Handy öffnest du sie über das Menü.",
+      placement: "right",
       disableBeacon: true,
     },
     {
       target: '[data-tour="menu-button"]',
-      title: "Hauptmenü",
-      content: "Hier öffnest du das Seitenmenü auf dem Smartphone. Am Desktop ist es permanent links sichtbar.",
+      title: "Mobiles Menü",
+      content: "Auf kleinen Bildschirmen öffnest du hier die Navigation.",
       placement: "bottom",
     },
     {
-      target: '[data-tour="sidebar"]',
-      title: "Module & Navigation",
-      content:
-        "Über die Seitenleiste wechselst du schnell zwischen Dashboard, CRM, Aktivitäten, Kalender und weiteren Modulen.",
-      placement: "right",
-    },
-    {
-      target: "#tour-kpis",
-      title: "Wichtige KPIs",
-      content:
-        "Hier siehst du die wichtigsten Kennzahlen – z. B. Unternehmen, Kontakte, Deals, Aktivitäten und Events.",
-      placement: "top",
-    },
-    {
-      target: "#tour-modules",
-      title: "Schneller Einstieg",
-      content:
-        "Die Karten führen dich direkt in die wichtigsten Bereiche: CRM, Aktivitäten, Kalender und mehr.",
-      placement: "top",
-    },
-    {
       target: '[data-tour="theme-toggle"]',
-      title: "Theme & Mood",
-      content:
-        "Wechsle zwischen Auto, Light und Dark. Im Auto‑Modus folgt das Theme automatisch deinen System‑Einstellungen.",
+      title: "Theme",
+      content: "Wechsle zwischen Auto, Hell und Dunkel. Auto folgt deinem System.",
       placement: "left",
     },
+    {
+      target: '[data-tour="notifications"]',
+      title: "Benachrichtigungen",
+      content: "Hier findest du Hinweise & Updates. (In dieser Version noch minimal.)",
+      placement: "bottom",
+    },
+    {
+      target: '[data-tour="user-menu"]',
+      title: "Account",
+      content: "Profil, Einstellungen und Hilfe. Hier kannst du den Rundgang jederzeit neu starten.",
+      placement: "bottom",
+    },
   ]
+
+  return {
+    welcome: [
+      {
+        target: "body",
+        placement: "center",
+        title: "Willkommen bei MarketingKreis",
+        content:
+          "Wir zeigen dir jetzt die wichtigsten Bereiche. Tipp: Du kannst den Rundgang jederzeit neu starten – ohne dass irgendetwas kaputt geht.",
+        disableBeacon: true,
+      },
+      ...commonNav,
+    ],
+    dashboard: [
+      {
+        target: "body",
+        placement: "center",
+        title: "Dashboard",
+        content:
+          "Das Dashboard gibt dir einen schnellen Überblick. Wir markieren dir gleich die wichtigsten Stellen.",
+        disableBeacon: true,
+      },
+      {
+        target: "#tour-kpis",
+        title: "KPIs auf einen Blick",
+        content: "Hier siehst du die wichtigsten Kennzahlen, damit du sofort den Status erkennst.",
+        placement: "top",
+      },
+      {
+        target: "#tour-modules",
+        title: "Schneller Einstieg",
+        content: "Die Karten bringen dich direkt zu CRM, Aktivitäten, Kalender, Uploads und Reports.",
+        placement: "top",
+      },
+      ...commonNav,
+    ],
+    crm: [
+      {
+        target: "body",
+        placement: "center",
+        title: "CRM",
+        content: "Unternehmen, Kontakte und Deals – alles an einem Ort. Wir zeigen dir die wichtigsten Bereiche.",
+        disableBeacon: true,
+      },
+      { target: '[data-tour="crm-tabs"]', title: "Tabs", content: "Wechsle zwischen Companies, Contacts und Deals.", placement: "bottom" },
+      { target: '[data-tour="crm-search"]', title: "Suche", content: "Suche schnell nach Namen, E‑Mails oder IDs.", placement: "bottom" },
+      { target: '[data-tour="crm-table"]', title: "Listen", content: "Hier verwaltest du Datensätze. Klicke Zeilen für Details.", placement: "top" },
+      ...commonNav,
+    ],
+    calendar: [
+      {
+        target: "body",
+        placement: "center",
+        title: "Kalender",
+        content: "Plane Kampagnen und Aktivitäten. Hier bekommst du Überblick und kannst Einträge bearbeiten.",
+        disableBeacon: true,
+      },
+      { target: '[data-tour="calendar-toolbar"]', title: "Steuerung", content: "Wechsle Ansicht/Zeitraum und aktualisiere Daten.", placement: "bottom" },
+      { target: '[data-tour="calendar-grid"]', title: "Kalenderansicht", content: "Klicke auf einen Tag oder Eintrag für Details.", placement: "top" },
+      ...commonNav,
+    ],
+    activities: [
+      {
+        target: "body",
+        placement: "center",
+        title: "Aktivitäten",
+        content: "Erstelle und verfolge Aktivitäten. Import aus Uploads landet ebenfalls hier.",
+        disableBeacon: true,
+      },
+      { target: '[data-tour="activities-actions"]', title: "Aktionen", content: "Neue Aktivität anlegen, filtern und aktualisieren.", placement: "bottom" },
+      { target: '[data-tour="activities-list"]', title: "Liste", content: "Hier siehst du alle Aktivitäten – mit Status und Terminen.", placement: "top" },
+      ...commonNav,
+    ],
+    performance: [
+      { target: "body", placement: "center", title: "Performance", content: "Analysen und Trends. Ideal für wöchentliche Reviews.", disableBeacon: true },
+      { target: '[data-tour="performance-filters"]', title: "Zeitraum", content: "Passe Zeitraum/Filter an für bessere Vergleiche.", placement: "bottom" },
+      { target: '[data-tour="performance-charts"]', title: "Charts", content: "Hier siehst du die wichtigsten Entwicklungen.", placement: "top" },
+      ...commonNav,
+    ],
+    budget: [
+      { target: "body", placement: "center", title: "Budget & KPIs", content: "Budget planen, Szenarien vergleichen, KPIs beobachten.", disableBeacon: true },
+      { target: '[data-tour="budget-scenarios"]', title: "Szenarien", content: "Erstelle Szenarien und vergleiche Budgets.", placement: "top" },
+      { target: '[data-tour="budget-kpis"]', title: "KPIs", content: "KPIs pro Zeitraum/Channel – übersichtlich zusammengefasst.", placement: "top" },
+      ...commonNav,
+    ],
+    content: [
+      { target: "body", placement: "center", title: "Content Hub", content: "Plane Content, verwalte Aufgaben und behalte Deadlines im Blick.", disableBeacon: true },
+      { target: '[data-tour="content-board"]', title: "Board", content: "Ziehe Karten per Drag & Drop zwischen Spalten.", placement: "top" },
+      { target: '[data-tour="content-calendar"]', title: "Kalender", content: "Content‑Termine in einer Kalenderansicht.", placement: "top" },
+      ...commonNav,
+    ],
+    reports: [
+      { target: "body", placement: "center", title: "Reports", content: "Erstelle Berichte und exportiere Ergebnisse.", disableBeacon: true },
+      { target: '[data-tour="reports-actions"]', title: "Report erstellen", content: "Wähle Report‑Typ und generiere/exportiere.", placement: "bottom" },
+      { target: '[data-tour="reports-list"]', title: "Historie", content: "Hier findest du zuletzt generierte Reports.", placement: "top" },
+      ...commonNav,
+    ],
+    uploads: [
+      { target: "body", placement: "center", title: "Uploads", content: "Hier lädst du Dateien hoch und startest Imports (CSV/XLSX).", disableBeacon: true },
+      { target: '[data-tour="uploads-dropzone"]', title: "Dropzone", content: "Ziehe Dateien hierher oder wähle sie aus.", placement: "top" },
+      { target: '[data-tour="uploads-mapping"]', title: "Mapping", content: "Ordne Spalten den Feldern zu (title ist Pflicht).", placement: "top" },
+      { target: '[data-tour="uploads-list"]', title: "Dateiliste", content: "Suche Dateien und öffne Details.", placement: "top" },
+      { target: '[data-tour="jobs-list"]', title: "Import Jobs", content: "Hier siehst du Status und Ergebnisse der Verarbeitung.", placement: "top" },
+      ...commonNav,
+    ],
+  }
 }
 
 const FancyTooltip: React.FC<TooltipRenderProps> = ({
@@ -115,30 +257,80 @@ const FancyTooltip: React.FC<TooltipRenderProps> = ({
 }
 
 export default function OnboardingTour() {
+  const pathname = usePathname()
   const [run, setRun] = React.useState(false)
   const [steps, setSteps] = React.useState<Step[]>([])
+  const [stepIndex, setStepIndex] = React.useState(0)
+  const [activeKey, setActiveKey] = React.useState<TourKey>("dashboard")
+  const tours = React.useMemo(() => buildTours(), [])
+  const currentKey = React.useMemo(() => normalizeTourKey(pathname), [pathname])
+
+  const startTour = React.useCallback(
+    (key: TourKey) => {
+      try {
+        const raw = tours[key] || []
+        const s = safeSteps(raw)
+        if (s.length === 0) return
+        setActiveKey(key)
+        setSteps(s)
+        setStepIndex(0)
+        setRun(true)
+      } catch {}
+    },
+    [tours],
+  )
 
   React.useEffect(() => {
-    // Tour nur anzeigen, wenn der Nutzer ihn noch nicht gesehen hat
+    // 1) Global welcome once
     try {
-      const done = localStorage.getItem('mkOnboardingDone') === '1'
-      const shouldStart = !done
-      if (shouldStart) {
-        setSteps(getSteps())
-        // небольшая задержка, чтобы DOM успел смонтироваться
-        setTimeout(() => setRun(true), 400)
+      const welcomeDone = localStorage.getItem(seenKey("welcome")) === "1"
+      if (!welcomeDone && (currentKey === "dashboard" || pathname === "/dashboard")) {
+        setTimeout(() => startTour("welcome"), 450)
+        return
       }
     } catch {}
-  }, [])
+
+    // 2) Per-page tour once
+    try {
+      const done = localStorage.getItem(seenKey(currentKey)) === "1"
+      if (!done) {
+        setTimeout(() => startTour(currentKey), 450)
+      }
+    } catch {}
+  }, [currentKey, pathname, startTour])
+
+  React.useEffect(() => {
+    // Allow manual restart (from anywhere)
+    const unsub = sync.on("onboarding:restart", (payload) => {
+      const key = (payload?.key as TourKey | undefined) || currentKey
+      try {
+        localStorage.removeItem(seenKey(key))
+      } catch {}
+      startTour(key)
+    })
+    return () => {
+      try {
+        unsub?.()
+      } catch {}
+    }
+  }, [currentKey, startTour])
 
   const handleJoyrideCallback = React.useCallback((data: CallBackProps) => {
-    const { status } = data
+    const { status, type, index } = data
     const finished = status === STATUS.FINISHED || status === STATUS.SKIPPED
+    if (type === EVENTS.TARGET_NOT_FOUND) {
+      // Skip missing targets safely (prevents “stuck”).
+      const next = (index ?? stepIndex) + 1
+      setStepIndex(next)
+      return
+    }
     if (finished) {
-      try { localStorage.setItem('mkOnboardingDone', '1') } catch {}
+      try {
+        localStorage.setItem(seenKey(activeKey), "1")
+      } catch {}
       setRun(false)
     }
-  }, [])
+  }, [activeKey, stepIndex])
 
   if (!run) return null
 
@@ -146,11 +338,17 @@ export default function OnboardingTour() {
     <Joyride
       steps={steps}
       run={run}
+      stepIndex={stepIndex}
+      callback={(data) => {
+        // Keep internal index in sync
+        if (typeof data.index === "number") setStepIndex(data.index)
+        handleJoyrideCallback(data)
+      }}
       continuous
       showSkipButton
       showProgress
-      disableScrolling
-      scrollToFirstStep
+      disableScrolling={false}
+      scrollToFirstStep={true}
       spotlightClicks={false}
       styles={{
         options: {
@@ -174,7 +372,6 @@ export default function OnboardingTour() {
         skip: "Überspringen",
       }}
       tooltipComponent={FancyTooltip}
-      callback={handleJoyrideCallback}
     />
   )
 }

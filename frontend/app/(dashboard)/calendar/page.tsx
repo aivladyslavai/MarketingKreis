@@ -164,7 +164,7 @@ export default function CalendarPage() {
             <h1 className="text-2xl sm:text-3xl font-semibold text-white">Kalender</h1>
             <p className="text-slate-300 text-sm">Marketing Termine, Events und Aufgaben</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2" data-tour="calendar-toolbar">
             <Button size="sm" variant="outline" className="glass-card" onClick={() => openModal({
               type: "custom",
               title: "Vorlagen",
@@ -195,8 +195,8 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <div>
-          <SimpleCalendar
+      <div data-tour="calendar-grid">
+        <SimpleCalendar
             activities={activities}
             onCreateActivity={(date: Date) => {
               openModal({

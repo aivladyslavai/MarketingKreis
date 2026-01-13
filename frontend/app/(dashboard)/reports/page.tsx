@@ -249,7 +249,7 @@ export default function ReportsPage() {
             </div>
           </div>
           {/* Action buttons */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2" data-tour="reports-actions">
           <Button disabled={genLoading} size="sm" className="bg-blue-600 hover:bg-blue-500 h-8 sm:h-9 text-xs sm:text-sm" onClick={async()=>{
             try {
               setGenLoading(true)
@@ -502,7 +502,7 @@ export default function ReportsPage() {
 
       {/* Report Preview */}
       {reportHtml && (
-        <Card className="bg-white/5 border-white/10 backdrop-blur-xl">
+        <Card className="bg-white/5 border-white/10 backdrop-blur-xl" data-tour="reports-list">
           <CardHeader>
             <CardTitle className="text-white">Report Preview</CardTitle>
           </CardHeader>
