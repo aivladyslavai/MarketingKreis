@@ -1,7 +1,7 @@
 "use client"
 
 import React, { Component, ErrorInfo, ReactNode } from "react"
-import Joyride, { CallBackProps, STATUS, Step, TooltipRenderProps, ACTIONS, EVENTS } from "react-joyride"
+import Joyride, { CallBackProps, STATUS, Step, TooltipRenderProps } from "react-joyride"
 
 // ============================================================================
 // CONSTANTS
@@ -212,11 +212,11 @@ class OnboardingErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundar
     this.state = { hasError: false }
   }
 
-  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(): ErrorBoundaryState {
     return { hasError: true }
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, _errorInfo: ErrorInfo) {
     // Log but don't crash the app
     console.warn("[OnboardingTour] Error caught:", error.message)
   }
@@ -237,8 +237,8 @@ class OnboardingErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundar
 function OnboardingTourInner() {
   const [run, setRun] = React.useState(false)
   const [steps, setSteps] = React.useState<Step[]>([])
-  const [stepIndex, setStepIndex] = React.useState(0)
   const [mounted, setMounted] = React.useState(false)
+  const [tourKey, setTourKey] = React.useState(0)
 
   // Check if tour should run on mount
   React.useEffect(() => {
@@ -256,7 +256,10 @@ function OnboardingTourInner() {
           if (availableSteps.length > 0) {
             setSteps(availableSteps)
             // Delay start to ensure DOM is ready
-            setTimeout(() => setRun(true), 600)
+            setTimeout(() => {
+              setTourKey((k) => k + 1) // force Joyride remount
+              setRun(true)
+            }, 600)
           }
         }
       } catch {
@@ -275,10 +278,13 @@ function OnboardingTourInner() {
       try {
         localStorage.removeItem(STORAGE_KEY)
       } catch {}
-      setStepIndex(0)
+      setRun(false)
       const availableSteps = filterAvailableSteps(getWelcomeTourSteps())
       setSteps(availableSteps)
-      setTimeout(() => setRun(true), 300)
+      setTimeout(() => {
+        setTourKey((k) => k + 1) // force Joyride remount
+        setRun(true)
+      }, 300)
     }
 
     window.addEventListener("mk:restart-tour", handleRestart)
@@ -286,23 +292,21 @@ function OnboardingTourInner() {
   }, [])
 
   const handleJoyrideCallback = React.useCallback((data: CallBackProps) => {
-    const { status, action, type, index } = data
-
-    // Handle step changes
-    if (type === EVENTS.STEP_AFTER || type === EVENTS.TARGET_NOT_FOUND) {
-      const nextIndex = index + (action === ACTIONS.PREV ? -1 : 1)
-      setStepIndex(nextIndex)
-    }
-
-    // Handle tour completion
-    const finished = status === STATUS.FINISHED || status === STATUS.SKIPPED
-
-    if (finished) {
+    try {
+      const { status } = data
+      const finished = status === STATUS.FINISHED || status === STATUS.SKIPPED
+      if (finished) {
+        try {
+          localStorage.setItem(STORAGE_KEY, TOUR_VERSION)
+        } catch {}
+        setRun(false)
+      }
+    } catch (e) {
+      // Never block the app because of onboarding
+      console.warn("[OnboardingTour] callback error:", e)
       try {
-        localStorage.setItem(STORAGE_KEY, TOUR_VERSION)
+        setRun(false)
       } catch {}
-      setRun(false)
-      setStepIndex(0)
     }
   }, [])
 
@@ -314,13 +318,13 @@ function OnboardingTourInner() {
 
   return (
     <Joyride
+      key={tourKey}
       steps={steps}
-      stepIndex={stepIndex}
       run={run}
       continuous
       showSkipButton
       showProgress
-      disableScrolling={false}
+      disableScrolling={true}
       scrollToFirstStep
       scrollOffset={100}
       spotlightClicks={false}
@@ -354,7 +358,6 @@ function OnboardingTourInner() {
       tooltipComponent={FancyTooltip}
       callback={handleJoyrideCallback}
       floaterProps={{
-        disableAnimation: true,
         styles: {
           floater: {
             filter: "drop-shadow(0 25px 25px rgb(0 0 0 / 0.15))",
