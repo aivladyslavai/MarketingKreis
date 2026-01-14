@@ -52,7 +52,20 @@ export function useUploadsApi() {
       fd.append('file', file)
       if (mapping) fd.append('mapping', JSON.stringify(mapping))
       // Note: avoid authFetch to let browser set multipart headers
-      await fetch(`${apiBase}/uploads`, { method: 'POST', body: fd, credentials: 'include' })
+      const res = await fetch(`${apiBase}/uploads`, { method: 'POST', body: fd, credentials: 'include' })
+      if (!res.ok) {
+        const text = await res.text().catch(() => "")
+        let msg = res.statusText
+        if (text) {
+          try {
+            const j = JSON.parse(text)
+            msg = (j as any)?.detail || (j as any)?.error || msg
+          } catch {
+            msg = text || msg
+          }
+        }
+        throw new Error(msg)
+      }
       await mutate()
       sync.emit('uploads:changed')
     },

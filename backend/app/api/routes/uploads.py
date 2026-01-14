@@ -70,7 +70,11 @@ def upload_file(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Accept CSV/Excel file and import rows as Activities.
+    Accept a file upload.
+
+    - CSV/XLSX: import rows as Activities (with optional mapping)
+    - Other file types: store file in DB (no import)
+
     Columns supported (case-insensitive):
     title, category|type, status, weight, budget|budgetCHF, notes,
     start|start_date, end|end_date
@@ -129,7 +133,18 @@ def upload_file(
                 row = {headers[i].strip(): (r[i] if i is not None and i < len(r) else None) for i in range(len(headers))}
                 rows.append(row)
         else:
-            raise HTTPException(status_code=415, detail="Unsupported file type. Upload CSV or XLSX")
+            # Non-tabular file: keep as stored upload only (no import)
+            return {
+                "ok": True,
+                "item": {
+                    "id": str(upload.id),
+                    "original_name": upload.original_name,
+                    "file_type": upload.file_type,
+                    "file_size": int(upload.file_size or 0),
+                    "created_at": upload.created_at,
+                },
+                "import": {"created": 0, "skipped": 0, "mode": "stored"},
+            }
 
         # Normalize header names
         def g(row: Dict[str, Any], *keys: str):

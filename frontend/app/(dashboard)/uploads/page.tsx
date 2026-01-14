@@ -19,11 +19,17 @@ import {
   Video,
   File as FileIcon,
   Plus,
+  Sparkles,
+  BarChart3,
+  Info,
+  ArrowUpRight,
 } from "lucide-react"
+import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { useJobsApi, useUploadsApi } from "@/hooks/use-uploads-api"
 
@@ -37,6 +43,20 @@ function formatBytes(bytes: number) {
     i++
   }
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+function formatRelativeTime(dateLike: string | Date | null | undefined) {
+  if (!dateLike) return "—"
+  const d = typeof dateLike === "string" ? new Date(dateLike) : dateLike
+  const diff = Date.now() - d.getTime()
+  const sec = Math.round(diff / 1000)
+  const min = Math.round(sec / 60)
+  const hr = Math.round(min / 60)
+  const day = Math.round(hr / 24)
+  if (Math.abs(sec) < 60) return "gerade eben"
+  if (Math.abs(min) < 60) return `vor ${min} Min.`
+  if (Math.abs(hr) < 24) return `vor ${hr} Std.`
+  return `vor ${day} Tagen`
 }
 
 function isTabularFile(name: string) {
@@ -111,6 +131,15 @@ export default function UploadsPage() {
   const { uploads, isLoading, refresh, uploadFile, previewFile } = useUploadsApi()
   const { jobs, isLoading: jobsLoading, refresh: refreshJobs } = useJobsApi()
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.12 } },
+  }
+  const itemVariants = {
+    hidden: { opacity: 0, y: 14 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.35 } },
+  }
+
   const onPick = () => fileRef.current?.click()
 
   const loadPreview = React.useCallback(
@@ -150,17 +179,22 @@ export default function UploadsPage() {
     await selectFile(file)
   }
 
-  const canImport = Boolean(selectedFile && isTabularFile(selectedFile.name) && mapping.title)
+  const selectedIsTabular = Boolean(selectedFile && isTabularFile(selectedFile.name))
+  const canProceed = Boolean(selectedFile) && (selectedIsTabular ? Boolean(mapping.title) : true)
 
   const doImport = async () => {
     if (!selectedFile) return
+    const isTab = selectedIsTabular
     setError(null)
     setUploading(true)
     try {
-      const mappingClean: Record<string, string | null> = {}
-      Object.entries(mapping).forEach(([k, v]) => {
-        mappingClean[k] = v ? String(v) : null
-      })
+      let mappingClean: Record<string, string | null> | undefined = undefined
+      if (isTab) {
+        mappingClean = {}
+        Object.entries(mapping).forEach(([k, v]) => {
+          ;(mappingClean as any)[k] = v ? String(v) : null
+        })
+      }
       await uploadFile(selectedFile, undefined, mappingClean)
       setSelectedFile(null)
       setPreview(null)
@@ -174,9 +208,10 @@ export default function UploadsPage() {
         end: null,
         weight: null,
       })
-      await Promise.all([refresh(), refreshJobs()])
+      if (isTab) await Promise.all([refresh(), refreshJobs()])
+      else await refresh()
     } catch (e: any) {
-      setError(e?.message || "Import fehlgeschlagen")
+      setError(e?.message || (isTab ? "Import fehlgeschlagen" : "Upload fehlgeschlagen"))
     } finally {
       setUploading(false)
     }
@@ -186,6 +221,54 @@ export default function UploadsPage() {
     () => uploads.reduce((s, u: any) => s + (Number(u?.file_size) || 0), 0),
     [uploads],
   )
+
+  const lastUploadAt = React.useMemo(() => {
+    const u0 = uploads?.[0] as any
+    return u0?.created_at || null
+  }, [uploads])
+
+  const kinds = React.useMemo(() => {
+    const acc = { table: 0, pdf: 0, image: 0, video: 0, file: 0, other: 0 }
+    for (const u of uploads as any[]) {
+      const name = String(u?.original_name || "")
+      const kind = kindOf(name, String(u?.file_type || ""))
+      if ((acc as any)[kind] != null) (acc as any)[kind] += 1
+      else acc.other += 1
+    }
+    return acc
+  }, [uploads])
+
+  const jobsByStatus = React.useMemo(() => {
+    const acc: Record<string, number> = { queued: 0, processing: 0, completed: 0, failed: 0, other: 0 }
+    for (const j of jobs as any[]) {
+      const s = String(j?.status || "").toLowerCase()
+      if (s in acc) acc[s] += 1
+      else acc.other += 1
+    }
+    return acc
+  }, [jobs])
+
+  const last7Days = React.useMemo(() => {
+    const now = new Date()
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now)
+      d.setHours(0, 0, 0, 0)
+      d.setDate(d.getDate() - (6 - i))
+      return d
+    })
+    const counts = days.map((day) => {
+      const y = day.getFullYear()
+      const m = day.getMonth()
+      const dd = day.getDate()
+      return uploads.filter((u: any) => {
+        if (!u?.created_at) return false
+        const t = new Date(u.created_at)
+        return t.getFullYear() === y && t.getMonth() === m && t.getDate() === dd
+      }).length
+    })
+    const max = Math.max(1, ...counts)
+    return { days, counts, max }
+  }, [uploads])
 
   const uploadedToday = React.useMemo(() => {
     const today = new Date()
@@ -218,53 +301,99 @@ export default function UploadsPage() {
     })
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-slate-100">Uploads</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Dateien hochladen und importieren (CSV, XLSX, PDF …)
-          </p>
+    <motion.div
+      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5 sm:space-y-6 pb-24 md:pb-6"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      <motion.div variants={itemVariants} className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/70 via-slate-950/50 to-slate-950/70 p-4 sm:p-6">
+        <div className="pointer-events-none absolute -top-24 -right-24 h-44 w-44 rounded-full bg-gradient-to-tr from-rose-500/25 to-orange-500/15 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 -left-24 h-44 w-44 rounded-full bg-gradient-to-tr from-blue-500/20 to-cyan-500/10 blur-3xl" />
+
+        <div className="relative flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3 sm:gap-5">
+            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-rose-500/20 to-orange-500/10 border border-white/10 flex items-center justify-center backdrop-blur-sm">
+              <UploadCloud className="h-6 w-6 sm:h-7 sm:w-7 text-rose-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl sm:text-3xl font-light tracking-tight text-slate-100">Uploads</h1>
+                <Badge className="glass-card text-[10px] sm:text-xs px-2 py-1">Import Center</Badge>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                CSV/XLSX importieren, Dateien verwalten und den Status im Blick behalten.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
+              onChange={onFileChange}
+              accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp"
+            />
+            <Button
+              variant="outline"
+              className="glass-card"
+              onClick={async () => {
+                setError(null)
+                try {
+                  await Promise.all([refresh(), refreshJobs()])
+                } catch (e: any) {
+                  setError(e?.message || "Aktualisieren fehlgeschlagen")
+                }
+              }}
+              disabled={uploading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${uploading ? "animate-spin" : ""}`} />
+              Aktualisieren
+            </Button>
+            <Button onClick={onPick} disabled={uploading} className="bg-kaboom-red hover:bg-red-600">
+              <UploadCloud className="h-4 w-4 mr-2" />
+              Datei hochladen
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            className="hidden"
-            onChange={onFileChange}
-            accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp"
-          />
-          <Button
-            variant="outline"
-            className="glass-card"
-            onClick={async () => {
-              setError(null)
-              try {
-                await Promise.all([refresh(), refreshJobs()])
-              } catch (e: any) {
-                setError(e?.message || "Aktualisieren fehlgeschlagen")
-              }
-            }}
-            disabled={uploading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${uploading ? "animate-spin" : ""}`} />
-            Aktualisieren
-          </Button>
-          <Button onClick={onPick} disabled={uploading} className="bg-kaboom-red hover:bg-red-600">
-            <UploadCloud className="h-4 w-4 mr-2" />
-            Datei hochladen
-          </Button>
+
+        <div className="relative mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 flex items-center justify-between">
+            <div className="text-xs text-slate-300">
+              Letzter Upload: <span className="font-semibold text-slate-100">{formatRelativeTime(lastUploadAt)}</span>
+            </div>
+            <ArrowUpRight className="h-4 w-4 text-slate-400" />
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 flex items-center justify-between">
+            <div className="text-xs text-slate-300">
+              Speicher genutzt: <span className="font-semibold text-slate-100">{formatBytes(totalSize)}</span>
+            </div>
+            <HardDrive className="h-4 w-4 text-slate-400" />
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 flex items-center justify-between">
+            <div className="text-xs text-slate-300">
+              Import Jobs:{" "}
+              <span className="font-semibold text-slate-100">
+                {jobsByStatus.completed} ok · {jobsByStatus.failed} failed
+              </span>
+            </div>
+            <Briefcase className="h-4 w-4 text-slate-400" />
+          </div>
         </div>
-      </div>
+      </motion.div>
 
       {error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">
+        <motion.div
+          variants={itemVariants}
+          className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200"
+        >
           {error}
-        </div>
+        </motion.div>
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <Card className="glass-card">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
@@ -309,7 +438,127 @@ export default function UploadsPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
+
+      {/* Insights */}
+      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="glass-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-slate-300" />
+              Upload Verlauf (7 Tage)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end justify-between gap-2 h-24">
+              {last7Days.counts.map((c, i) => {
+                const h = Math.round((c / last7Days.max) * 64) + 6
+                const d = last7Days.days[i]
+                const label = d.toLocaleDateString("de-DE", { weekday: "short" })
+                return (
+                  <div key={i} className="flex flex-col items-center gap-2 flex-1">
+                    <div className="w-full rounded-lg bg-white/5 border border-white/10 overflow-hidden">
+                      <div
+                        className="w-full bg-gradient-to-t from-rose-500/70 to-orange-400/60"
+                        style={{ height: `${h}px` }}
+                        title={`${c} Uploads`}
+                      />
+                    </div>
+                    <div className="text-[10px] text-slate-500">{label}</div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="mt-3 text-xs text-slate-400 flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+              Tipp: Nutze CSV/XLSX Templates für saubere Imports.
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="glass-card"
+                onClick={() => window.open("/api/uploads/template/csv", "_blank")}
+              >
+                Template CSV
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="glass-card"
+                onClick={() => window.open("/api/uploads/template/xlsx", "_blank")}
+              >
+                Template XLSX
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileText className="h-4 w-4 text-slate-300" />
+              Dateitypen
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                <div className="text-slate-400">CSV/XLSX</div>
+                <div className="text-slate-100 font-semibold">{kinds.table}</div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                <div className="text-slate-400">Bilder</div>
+                <div className="text-slate-100 font-semibold">{kinds.image}</div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                <div className="text-slate-400">PDF</div>
+                <div className="text-slate-100 font-semibold">{kinds.pdf}</div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                <div className="text-slate-400">Andere</div>
+                <div className="text-slate-100 font-semibold">{kinds.file + kinds.video + kinds.other}</div>
+              </div>
+            </div>
+            <div className="text-xs text-slate-400 flex items-start gap-2">
+              <Info className="h-4 w-4 text-slate-400 mt-0.5" />
+              <div>
+                <div className="text-slate-200 font-medium">Import Hinweis</div>
+                CSV/XLSX wird importiert. Andere Dateitypen werden gespeichert (ohne Import).
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Briefcase className="h-4 w-4 text-slate-300" />
+              Import Health
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge className="bg-emerald-500/15 text-emerald-200 border border-emerald-500/30">
+                completed: {jobsByStatus.completed}
+              </Badge>
+              <Badge className="bg-amber-500/15 text-amber-200 border border-amber-500/30">
+                processing: {jobsByStatus.processing}
+              </Badge>
+              <Badge className="bg-slate-500/15 text-slate-200 border border-slate-500/30">
+                queued: {jobsByStatus.queued}
+              </Badge>
+              <Badge className="bg-red-500/15 text-red-200 border border-red-500/30">failed: {jobsByStatus.failed}</Badge>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-slate-300">
+              <div className="font-semibold text-slate-100">Production Ready</div>
+              <div className="mt-1 text-slate-400">
+                Uploads werden in der Datenbank gespeichert (free‑tier freundlich). So gehen Dateien bei Deploys nicht verloren.
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Dropzone + Preview */}
       <Card
@@ -349,7 +598,7 @@ export default function UploadsPage() {
               <div>
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Datei auswählen</div>
                 <div className="text-xs text-slate-600 dark:text-slate-400">
-                  Ziehe eine CSV/XLSX hierher oder wähle eine Datei aus. CSV/XLSX wird als Aktivitäten importiert.
+                  CSV/XLSX wird als Aktivitäten importiert. PDF/Bilder werden gespeichert (ohne Import).
                 </div>
                 {selectedFile && (
                   <div className="mt-2 text-xs text-slate-700 dark:text-slate-300">
@@ -366,11 +615,17 @@ export default function UploadsPage() {
               <Button
                 className="bg-kaboom-red hover:bg-red-600"
                 onClick={doImport}
-                disabled={uploading || previewLoading || !canImport}
-                title={!canImport ? "Für CSV/XLSX ist mindestens das Feld 'title' erforderlich" : undefined}
+                disabled={uploading || previewLoading || !canProceed}
+                title={
+                  !canProceed
+                    ? selectedIsTabular
+                      ? "Für CSV/XLSX ist mindestens das Feld 'title' erforderlich"
+                      : "Bitte zuerst eine Datei auswählen"
+                    : undefined
+                }
               >
-                {canImport ? <CheckCircle2 className="h-4 w-4 mr-2" /> : <AlertTriangle className="h-4 w-4 mr-2" />}
-                Import starten
+                {canProceed ? <CheckCircle2 className="h-4 w-4 mr-2" /> : <AlertTriangle className="h-4 w-4 mr-2" />}
+                {selectedIsTabular ? "Import starten" : "Upload speichern"}
               </Button>
             </div>
           </div>
@@ -463,9 +718,42 @@ export default function UploadsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {isLoading ? (
-              <div className="text-sm text-slate-500 dark:text-slate-400">Lade Uploads…</div>
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-12 rounded-xl bg-white/5" />
+                ))}
+              </div>
             ) : filteredUploads.length === 0 ? (
-              <div className="text-sm text-slate-500 dark:text-slate-400">Noch keine Uploads.</div>
+              <div className="rounded-xl border border-dashed border-white/15 bg-white/5 p-5 text-center">
+                <div className="mx-auto h-12 w-12 rounded-2xl bg-gradient-to-br from-rose-500/20 to-orange-500/10 border border-white/10 flex items-center justify-center">
+                  <UploadCloud className="h-6 w-6 text-rose-400" />
+                </div>
+                <div className="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Noch keine Uploads</div>
+                <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                  Lade eine Datei hoch oder starte direkt mit einem Template.
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                  <Button size="sm" className="bg-kaboom-red hover:bg-red-600" onClick={onPick}>
+                    Datei auswählen
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="glass-card"
+                    onClick={() => window.open("/api/uploads/template/csv", "_blank")}
+                  >
+                    Template CSV
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="glass-card"
+                    onClick={() => window.open("/api/uploads/template/xlsx", "_blank")}
+                  >
+                    Template XLSX
+                  </Button>
+                </div>
+              </div>
             ) : (
               <div className="divide-y divide-slate-200/60 dark:divide-slate-800">
                 {filteredUploads.slice(0, 12).map((u: any) => {
@@ -485,6 +773,11 @@ export default function UploadsPage() {
                         <Badge variant="outline" className="text-[10px]">
                           {labelFor(kind, name)}
                         </Badge>
+                        {u?.stored_in_db && (
+                          <Badge className="text-[10px] bg-emerald-500/15 text-emerald-200 border border-emerald-500/30">
+                            DB
+                          </Badge>
+                        )}
                         <span className="inline-flex items-center gap-1">
                           <HardDrive className="h-3.5 w-3.5" />
                           {formatBytes(Number(u.file_size || 0))}
@@ -510,7 +803,9 @@ export default function UploadsPage() {
                             title: "Datei",
                             description: `${name}\n\nTyp: ${u.file_type || "-"}\nGröße: ${formatBytes(
                               Number(u.file_size || 0),
-                            )}\nID: ${u.id}`,
+                            )}\nIn DB gespeichert: ${u?.stored_in_db ? "Ja" : "Nein"}\nSHA256: ${
+                              u?.sha256 ? String(u.sha256).slice(0, 16) + "…" : "—"
+                            }\nID: ${u.id}`,
                             icon: "info",
                           })
                         }
@@ -542,22 +837,68 @@ export default function UploadsPage() {
 
         {/* Jobs list */}
         <Card className="glass-card" data-tour="jobs-list">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Import Jobs</CardTitle>
+          <CardHeader className="pb-3 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base">Import Jobs</CardTitle>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Badge className="bg-emerald-500/15 text-emerald-200 border border-emerald-500/30 text-[10px]">
+                  completed {jobsByStatus.completed}
+                </Badge>
+                <Badge className="bg-amber-500/15 text-amber-200 border border-amber-500/30 text-[10px]">
+                  processing {jobsByStatus.processing}
+                </Badge>
+                <Badge className="bg-red-500/15 text-red-200 border border-red-500/30 text-[10px]">
+                  failed {jobsByStatus.failed}
+                </Badge>
+              </div>
+            </div>
+            <div className="text-xs text-slate-600 dark:text-slate-400">
+              Imports laufen im Hintergrund. Hier siehst du den Status der letzten Jobs.
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {jobsLoading ? (
-              <div className="text-sm text-slate-500 dark:text-slate-400">Lade Jobs…</div>
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-12 rounded-xl bg-white/5" />
+                ))}
+              </div>
             ) : jobs.length === 0 ? (
-              <div className="text-sm text-slate-500 dark:text-slate-400">Noch keine Jobs.</div>
+              <div className="rounded-xl border border-dashed border-white/15 bg-white/5 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="h-10 w-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+                    <Briefcase className="h-5 w-5 text-slate-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Noch keine Jobs</div>
+                    <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                      Starte einen CSV/XLSX Import – danach erscheinen hier die Job-Details.
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="divide-y divide-slate-200/60 dark:divide-slate-800">
-                {jobs.slice(0, 12).map((j: any) => (
+                {jobs.slice(0, 12).map((j: any) => {
+                  const status = String(j.status || "")
+                  const s = status.toLowerCase()
+                  const dot =
+                    s === "completed"
+                      ? "bg-emerald-400"
+                      : s === "failed"
+                        ? "bg-red-400"
+                        : s === "processing"
+                          ? "bg-amber-400"
+                          : "bg-slate-400"
+                  return (
                   <div key={j.id} className="py-3 flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <Badge className="text-[10px]">{j.type || "job"}</Badge>
-                        <span className="text-xs text-slate-600 dark:text-slate-400">{j.status}</span>
+                        <span className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                          <span className={`h-2 w-2 rounded-full ${dot}`} />
+                          {status}
+                        </span>
                       </div>
                       <div className="mt-1 text-xs text-slate-700 dark:text-slate-300">
                         {j.created_at ? new Date(j.created_at).toLocaleString("de-DE") : "—"}
@@ -565,13 +906,14 @@ export default function UploadsPage() {
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">#{j.id}</div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
