@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260113_0002_production_hardening"
+    target_revision = "20260113_0002"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:

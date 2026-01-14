@@ -1,6 +1,6 @@
 """baseline_existing_schema
 
-Revision ID: 20260113_0001_baseline_existing_schema
+Revision ID: 20260113_0001
 Revises: 
 Create Date: 2026-01-13
 
@@ -12,7 +12,8 @@ without running historical migrations that may not match the current schema.
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "20260113_0001_baseline_existing_schema"
+# Alembic's default version table uses VARCHAR(32), so keep revision <= 32 chars.
+revision = "20260113_0001"
 down_revision = None
 branch_labels = None
 depends_on = None

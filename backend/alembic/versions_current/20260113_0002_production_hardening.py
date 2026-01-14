@@ -1,7 +1,7 @@
 """production_hardening
 
-Revision ID: 20260113_0002_production_hardening
-Revises: 20260113_0001_baseline_existing_schema
+Revision ID: 20260113_0002
+Revises: 20260113_0001
 Create Date: 2026-01-13
 
 - Enforce case-insensitive uniqueness for users.email (Postgres functional unique index)
@@ -11,8 +11,9 @@ Create Date: 2026-01-13
 from alembic import op
 import sqlalchemy as sa
 
-revision = "20260113_0002_production_hardening"
-down_revision = "20260113_0001_baseline_existing_schema"
+# Alembic's default version table uses VARCHAR(32), so keep revision <= 32 chars.
+revision = "20260113_0002"
+down_revision = "20260113_0001"
 branch_labels = None
 depends_on = None
 
