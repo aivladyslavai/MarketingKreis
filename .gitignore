@@ -22,6 +22,10 @@ frontend/.env.local
 frontend/.next/
 frontend/out/
 frontend/.vercel/
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e-auth.json
+frontend/e2e-run.json
 
 #
 # Local runtime logs and PIDs

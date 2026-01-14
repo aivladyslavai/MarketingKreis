@@ -14,6 +14,7 @@ from app.api.routes import export as export_routes
 from app.api.routes import crm as crm_routes
 from app.api.routes import admin as admin_routes
 from app.api.routes import health as health_routes
+from app.api.routes import metrics as metrics_routes
 from app.api.routes import imports as imports_routes
 from app.api.routes import jobs as jobs_routes
 from app.api.routes import user_categories as user_categories_routes
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
 
     # Routers
     app.include_router(health_routes.router)
+    app.include_router(metrics_routes.router)
     app.include_router(auth_routes.router)
     app.include_router(activities_routes.router)
     app.include_router(calendar_routes.router)

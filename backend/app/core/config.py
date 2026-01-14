@@ -46,7 +46,11 @@ class Settings(BaseSettings):
 
     # Sentry
     sentry_dsn: Union[str, None] = Field(default=None, env="SENTRY_DSN")
-    sentry_env: str = Field(default="development", env="SENTRY_ENV")
+    # If unset, we fall back to ENVIRONMENT (so prod doesn't accidentally report as "development")
+    sentry_env: Optional[str] = Field(default=None, env="SENTRY_ENV")
+
+    # Metrics (Prometheus)
+    metrics_token: Optional[str] = Field(default=None, env="METRICS_TOKEN")
 
     # CSRF Protection
     csrf_secret_key: str = Field(
