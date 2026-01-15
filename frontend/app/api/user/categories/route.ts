@@ -2,19 +2,17 @@ import { NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-function getApiBase() {
-  return (
-    process.env.NEXT_PUBLIC_API_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "http://127.0.0.1:3001"
-  ).replace(/\/$/, "")
+export const runtime = "nodejs"
+
+function getBackendUrl() {
+  return (process.env.BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "")
 }
 
 export async function GET(req: NextRequest) {
-  const apiBase = getApiBase()
+  const backendUrl = getBackendUrl()
   const cookie = req.headers.get("cookie") || ""
   try {
-    const res = await fetch(`${apiBase}/user/categories`, {
+    const res = await fetch(`${backendUrl}/user/categories`, {
       method: "GET",
       headers: cookie ? { cookie } : {},
       credentials: "include",
@@ -39,11 +37,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const apiBase = getApiBase()
+  const backendUrl = getBackendUrl()
   const cookie = req.headers.get("cookie") || ""
   try {
     const body = await req.text()
-    const res = await fetch(`${apiBase}/user/categories`, {
+    const res = await fetch(`${backendUrl}/user/categories`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",

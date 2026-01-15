@@ -7,18 +7,44 @@ import { userCategoriesAPI, type UserCategory as APIUserCategory } from "@/lib/a
 export type UserCategory = APIUserCategory
 
 const STORAGE_KEY = "userCategories"
+const HYDRATE_KEY = "userCategories:hydratedToBackend"
 
 const fetcher = async () => {
-  try {
-    const cats = await userCategoriesAPI.get()
-    return cats
-  } catch {
+  const readLocal = (): UserCategory[] => {
     try {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null
+      const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null
       return raw ? (JSON.parse(raw) as UserCategory[]) : []
     } catch {
       return []
     }
+  }
+
+  try {
+    const cats = await userCategoriesAPI.get()
+    if (Array.isArray(cats) && cats.length > 0) {
+      try {
+        if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, JSON.stringify(cats))
+      } catch {}
+      return cats
+    }
+
+    // If backend returns empty but we have local categories (older behavior / offline),
+    // keep UI consistent and best-effort sync them to backend once.
+    const localCats = readLocal()
+    if (localCats.length > 0) {
+      try {
+        const ss = typeof window !== "undefined" ? window.sessionStorage : null
+        const already = ss?.getItem(HYDRATE_KEY)
+        if (!already) {
+          ss?.setItem(HYDRATE_KEY, "1")
+          await userCategoriesAPI.put(localCats)
+        }
+      } catch {}
+      return localCats
+    }
+    return cats
+  } catch {
+    return readLocal()
   }
 }
 
