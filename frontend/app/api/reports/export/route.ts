@@ -1,5 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
+function getBackendUrl() {
+  const fromEnv = process.env.BACKEND_URL
+  if (fromEnv) return fromEnv.replace(/\/$/, "")
+  // Local/dev convenience
+  if (process.env.NODE_ENV !== "production") return "http://127.0.0.1:8000"
+  throw new Error("BACKEND_URL is not configured")
+}
+
 function toCsvValue(v: any) {
   if (v === undefined || v === null) return ""
   const s = String(v)
@@ -22,11 +33,12 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const format = (searchParams.get('format') || 'csv').toLowerCase()
     const cookie = req.headers.get('cookie') || ''
+    const backendUrl = getBackendUrl()
 
     const api = async (path: string) => {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api${path}`, {
-        headers: { 'Content-Type': 'application/json', cookie },
-        cache: 'no-store',
+      const res = await fetch(`${backendUrl}${path}`, {
+        headers: cookie ? { cookie } : {},
+        cache: "no-store",
       })
       if (!res.ok) return null
       try { return await res.json() } catch { return null }

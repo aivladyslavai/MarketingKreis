@@ -11,45 +11,56 @@ function getBackendUrl() {
 }
 
 async function forward(req: NextRequest, pathSegments: string[]) {
-  const backendUrl = getBackendUrl()
-  const path = pathSegments.map((s) => encodeURIComponent(s)).join("/")
-  const url = `${backendUrl}/${path}${req.nextUrl.search}`
+  try {
+    const backendUrl = getBackendUrl()
+    const path = pathSegments.map((s) => encodeURIComponent(s)).join("/")
+    const url = `${backendUrl}/${path}${req.nextUrl.search}`
 
-  const method = req.method.toUpperCase()
-  const cookie = req.headers.get("cookie") || ""
-  const contentType = req.headers.get("content-type") || ""
+    const method = req.method.toUpperCase()
+    const cookie = req.headers.get("cookie") || ""
+    const contentType = req.headers.get("content-type") || ""
 
-  const headers: Record<string, string> = {}
-  if (cookie) headers.cookie = cookie
-  if (contentType) headers["Content-Type"] = contentType
+    const headers: Record<string, string> = {}
+    if (cookie) headers.cookie = cookie
+    if (contentType) headers["Content-Type"] = contentType
 
-  const body = ["GET", "HEAD"].includes(method) ? undefined : await req.arrayBuffer()
+    const body = ["GET", "HEAD"].includes(method) ? undefined : await req.arrayBuffer()
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body,
-    cache: "no-store",
-  })
+    const controller = new AbortController()
+    const timeoutMs = ["GET", "HEAD"].includes(method) ? 12_000 : 20_000
+    const t = setTimeout(() => controller.abort(), timeoutMs)
+    const res = await fetch(url, {
+      method,
+      headers,
+      body,
+      cache: "no-store",
+      signal: controller.signal,
+    })
+    clearTimeout(t)
 
-  const data = await res.arrayBuffer()
-  const next = new NextResponse(data, { status: res.status })
+    const data = await res.arrayBuffer()
+    const next = new NextResponse(data, { status: res.status })
 
-  const passthrough = ["content-type", "content-disposition", "cache-control", "location"]
-  for (const key of passthrough) {
-    const v = res.headers.get(key)
-    if (v) next.headers.set(key, v)
+    const passthrough = ["content-type", "content-disposition", "cache-control", "location"]
+    for (const key of passthrough) {
+      const v = res.headers.get(key)
+      if (v) next.headers.set(key, v)
+    }
+
+    const setCookie = res.headers.get("set-cookie")
+    if (setCookie) next.headers.set("set-cookie", setCookie)
+
+    // Ensure JSON defaults if backend didn't send content-type
+    if (!next.headers.get("content-type")) {
+      next.headers.set("content-type", "application/json")
+    }
+
+    return next
+  } catch (e: any) {
+    const msg = e?.name === "AbortError" ? "Backend request timed out" : e?.message || "Proxy error"
+    const status = e?.name === "AbortError" ? 504 : 500
+    return NextResponse.json({ detail: msg }, { status })
   }
-
-  const setCookie = res.headers.get("set-cookie")
-  if (setCookie) next.headers.set("set-cookie", setCookie)
-
-  // Ensure JSON defaults if backend didn't send content-type
-  if (!next.headers.get("content-type")) {
-    next.headers.set("content-type", "application/json")
-  }
-
-  return next
 }
 
 type Ctx = { params: { path: string[] } }

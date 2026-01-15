@@ -1,42 +1,45 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 
-function getApiBase() {
-  return (
-    process.env.NEXT_PUBLIC_API_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "http://127.0.0.1:3001"
-  ).replace(/\/$/, "")
+function getBackendUrl() {
+  const fromEnv = process.env.BACKEND_URL
+  if (fromEnv) return fromEnv.replace(/\/$/, "")
+  if (process.env.NODE_ENV !== "production") return "http://127.0.0.1:8000"
+  throw new Error("BACKEND_URL is not configured")
 }
 
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   ctx: { params: { id: string } },
 ) {
-  const apiBase = getApiBase()
+  const backendUrl = getBackendUrl()
   const cookie = req.headers.get("cookie") || ""
   const body = await req.text()
-  const target = `${apiBase}/admin/users/${encodeURIComponent(ctx.params.id)}`
+  const target = `${backendUrl}/admin/users/${encodeURIComponent(ctx.params.id)}`
 
   try {
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), 9000)
     const res = await fetch(target, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        cookie,
+        ...(cookie ? { cookie } : {}),
       },
       body,
       credentials: "include",
       cache: "no-store",
+      signal: controller.signal,
     })
+    clearTimeout(t)
     const text = await res.text()
-    try {
-      const json = JSON.parse(text)
-      return NextResponse.json(json, { status: res.status })
-    } catch {
-      return new NextResponse(text, { status: res.status })
-    }
+    const next = new NextResponse(text, { status: res.status })
+    const setCookie = res.headers.get("set-cookie")
+    if (setCookie) next.headers.set("set-cookie", setCookie)
+    next.headers.set("Content-Type", res.headers.get("content-type") || "application/json")
+    return next
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "Failed to update admin user" },
@@ -46,29 +49,30 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  req: Request,
+  req: NextRequest,
   ctx: { params: { id: string } },
 ) {
-  const apiBase = getApiBase()
+  const backendUrl = getBackendUrl()
   const cookie = req.headers.get("cookie") || ""
-  const target = `${apiBase}/admin/users/${encodeURIComponent(ctx.params.id)}`
+  const target = `${backendUrl}/admin/users/${encodeURIComponent(ctx.params.id)}`
 
   try {
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), 9000)
     const res = await fetch(target, {
       method: "DELETE",
-      headers: {
-        cookie,
-      },
+      headers: cookie ? { cookie } : {},
       credentials: "include",
       cache: "no-store",
+      signal: controller.signal,
     })
+    clearTimeout(t)
     const text = await res.text()
-    try {
-      const json = JSON.parse(text)
-      return NextResponse.json(json, { status: res.status })
-    } catch {
-      return new NextResponse(text, { status: res.status })
-    }
+    const next = new NextResponse(text, { status: res.status })
+    const setCookie = res.headers.get("set-cookie")
+    if (setCookie) next.headers.set("set-cookie", setCookie)
+    next.headers.set("Content-Type", res.headers.get("content-type") || "application/json")
+    return next
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "Failed to delete admin user" },

@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
     const apiUrl = getBackendUrl()
     const cookie = req.headers.get("cookie") || ""
 
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), 9000)
     const res = await fetch(`${apiUrl}/auth/profile`, {
       method: "GET",
       headers: {
@@ -23,7 +25,9 @@ export async function GET(req: NextRequest) {
       },
       credentials: "include",
       cache: "no-store",
+      signal: controller.signal,
     })
+    clearTimeout(t)
 
     const text = await res.text()
     try {
