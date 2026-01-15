@@ -2,14 +2,14 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Building2, CalendarDays, ActivitySquare, FileBarChart } from "lucide-react"
+import { LayoutDashboard, Building2, CalendarDays, ActivitySquare, Menu } from "lucide-react"
 
 const items = [
   { href: "/dashboard", label: "Home", Icon: LayoutDashboard },
   { href: "/crm", label: "CRM", Icon: Building2 },
   { href: "/calendar", label: "Kalender", Icon: CalendarDays },
   { href: "/activities", label: "Aktivität", Icon: ActivitySquare },
-  { href: "/reports", label: "Reports", Icon: FileBarChart },
+  { href: "#menu", label: "Menu", Icon: Menu },
 ]
 
 export default function MobileNav() {
@@ -26,34 +26,56 @@ export default function MobileNav() {
         paddingBottom: "max(env(safe-area-inset-bottom), 8px)",
       }}
     >
-      <ul className="mx-auto max-w-[480px] grid grid-cols-5 gap-0.5 px-2 py-1.5">
+      <ul className="mx-auto max-w-[520px] grid grid-cols-5 gap-0.5 px-2 py-2">
         {items.map(({ href, label, Icon }) => {
-          const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href))
+          const isMenu = href === "#menu"
+          const active = !isMenu && (pathname === href || (href !== "/dashboard" && pathname.startsWith(href)))
           return (
             <li key={href} className="flex justify-center">
-              <Link
-                href={href}
-                className={`
-                  relative inline-flex flex-col items-center justify-center rounded-xl w-full py-1.5 transition-all duration-200
-                  ${active
-                    ? "text-kaboom-red"
-                    : "text-slate-500 dark:text-slate-400 active:scale-95"}
-                `}
-                aria-current={active ? "page" : undefined}
-              >
-                <div className={`
-                  relative p-1.5 rounded-xl transition-all duration-200
-                  ${active ? "bg-kaboom-red/10 dark:bg-kaboom-red/20" : ""}
-                `}>
-                  <Icon className={`h-5 w-5 ${active ? "text-kaboom-red" : ""}`} />
-                  {active && (
-                    <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-kaboom-red animate-pulse" />
-                  )}
-                </div>
-                <span className={`text-[10px] mt-0.5 font-medium truncate max-w-full px-0.5 ${active ? "text-kaboom-red" : ""}`}>
-                  {label}
-                </span>
-              </Link>
+              {isMenu ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    try { window.dispatchEvent(new CustomEvent("mk:open-mobile-menu")) } catch {}
+                  }}
+                  className={`
+                    relative inline-flex flex-col items-center justify-center rounded-xl w-full py-2 transition-all duration-200
+                    text-slate-500 dark:text-slate-400 active:scale-95
+                  `}
+                  aria-label="Open menu"
+                >
+                  <div className="relative p-2 rounded-xl transition-all duration-200">
+                    <Icon className="h-[22px] w-[22px]" />
+                  </div>
+                  <span className="text-[11px] mt-0.5 font-medium truncate max-w-full px-0.5">
+                    {label}
+                  </span>
+                </button>
+              ) : (
+                <Link
+                  href={href}
+                  className={`
+                    relative inline-flex flex-col items-center justify-center rounded-xl w-full py-2 transition-all duration-200
+                    ${active
+                      ? "text-kaboom-red"
+                      : "text-slate-500 dark:text-slate-400 active:scale-95"}
+                  `}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <div className={`
+                    relative p-2 rounded-xl transition-all duration-200
+                    ${active ? "bg-kaboom-red/10 dark:bg-kaboom-red/20" : ""}
+                  `}>
+                    <Icon className={`h-[22px] w-[22px] ${active ? "text-kaboom-red" : ""}`} />
+                    {active && (
+                      <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-kaboom-red animate-pulse" />
+                    )}
+                  </div>
+                  <span className={`text-[11px] mt-0.5 font-medium truncate max-w-full px-0.5 ${active ? "text-kaboom-red" : ""}`}>
+                    {label}
+                  </span>
+                </Link>
+              )}
             </li>
           )
         })}

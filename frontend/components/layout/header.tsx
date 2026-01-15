@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { useEffect, useState } from "react"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { AccountDrawer } from "@/components/account/AccountDrawer"
+import { usePathname } from "next/navigation"
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -16,6 +17,24 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [mounted, setMounted] = useState(false)
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false)
   const { openModal } = useModal()
+  const pathname = usePathname() || "/"
+
+  const mobileTitle = (() => {
+    const map: Array<{ href: string; label: string }> = [
+      { href: "/dashboard", label: "Dashboard" },
+      { href: "/crm", label: "CRM" },
+      { href: "/calendar", label: "Kalender" },
+      { href: "/activities", label: "Aktivitäten" },
+      { href: "/uploads", label: "Uploads" },
+      { href: "/reports", label: "Reports" },
+      { href: "/performance", label: "Performance" },
+      { href: "/budget", label: "Budget" },
+      { href: "/content", label: "Content" },
+      { href: "/admin", label: "Admin" },
+    ]
+    const hit = map.find((x) => pathname === x.href || (x.href !== "/dashboard" && pathname.startsWith(x.href)))
+    return hit?.label || "MarketingKreis"
+  })()
 
   useEffect(() => {
     setMounted(true)
@@ -58,7 +77,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             variant="ghost"
             size="icon"
             onClick={onMenuClick}
-            className="sm:hidden h-9 w-9 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="sm:hidden h-11 w-11 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             aria-label="Open menu"
             data-tour="menu-button"
           >
@@ -67,6 +86,9 @@ export function Header({ onMenuClick }: HeaderProps) {
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white hidden sm:block">
             KABOOM Marketing Platform
           </h2>
+          <div className="sm:hidden text-sm font-semibold text-slate-900 dark:text-white truncate max-w-[55vw]">
+            {mobileTitle}
+          </div>
         </div>
 
         {/* Right side - Actions */}
@@ -83,7 +105,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 icon: "info"
               })
             }}
-            className="relative h-9 w-9 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="relative h-11 w-11 sm:h-9 sm:w-9 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             data-tour="notifications"
           >
             <Bell className="h-5 w-5 text-slate-600 dark:text-slate-400" />
@@ -96,7 +118,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               variant="ghost"
               size="icon"
               onClick={toggleMode}
-              className="h-9 w-9 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="h-11 w-11 sm:h-9 sm:w-9 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               title={mode === 'auto' ? 'Theme: Auto' : mode === 'light' ? 'Theme: Light' : 'Theme: Dark'}
               data-tour="theme-toggle"
             >
@@ -112,7 +134,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             variant="ghost"
             size="icon"
             onClick={() => setAccountDrawerOpen(true)}
-            className="h-9 w-9 rounded-full bg-gradient-to-br from-kaboom-red to-red-600 flex items-center justify-center text-white text-sm font-semibold shadow-lg hover:shadow-xl transition-shadow"
+            className="h-11 w-11 sm:h-9 sm:w-9 rounded-full bg-gradient-to-br from-kaboom-red to-red-600 flex items-center justify-center text-white text-sm font-semibold shadow-lg hover:shadow-xl transition-shadow"
             data-tour="user-menu"
           >
             A

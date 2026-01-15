@@ -12,11 +12,16 @@ export function Dialog({ open = false, onOpenChange, children }: DialogProps) {
   if (!open) return null
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center"
+      // Mobile UX: bottom-sheet style on small screens, centered on >=sm.
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-6"
       onClick={() => onOpenChange?.(false)}
     >
       <div className="absolute inset-0 bg-black/50" />
-      <div className="relative z-10 max-h-[90vh] overflow-auto" onClick={(e)=> e.stopPropagation()}>
+      <div
+        className="relative z-10 w-full sm:w-auto max-h-[85vh] overflow-auto"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
+        onClick={(e)=> e.stopPropagation()}
+      >
         {children}
       </div>
     </div>
@@ -25,7 +30,7 @@ export function Dialog({ open = false, onOpenChange, children }: DialogProps) {
 
 export function DialogContent({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <div className={"rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xl p-4 "+(className||"")}>{children}</div>
+    <div className={"rounded-2xl sm:rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xl p-4 "+(className||"")}>{children}</div>
   )
 }
 
@@ -42,7 +47,12 @@ export function DialogDescription({ children }: { children?: React.ReactNode }) 
 }
 
 export function DialogFooter({ children }: { children?: React.ReactNode }) {
-  return <div className="mt-4 flex items-center justify-end gap-2">{children}</div>
+  // Mobile UX: stack actions and make them full-width.
+  return (
+    <div className="mt-4 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 [&>*]:w-full sm:[&>*]:w-auto">
+      {children}
+    </div>
+  )
 }
 
 

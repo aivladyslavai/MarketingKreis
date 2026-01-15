@@ -16,7 +16,10 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-10 w-full items-center justify-between rounded-md border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-50 shadow-sm",
+      // Mobile UX:
+      // - h-11 on mobile (comfortable)
+      // - text-base on mobile to prevent iOS Safari auto-zoom
+      "flex h-11 sm:h-10 w-full items-center justify-between rounded-md border border-slate-700 bg-slate-900/60 px-3 py-2 text-base sm:text-sm text-slate-50 shadow-sm",
       "placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-950",
       "disabled:cursor-not-allowed disabled:opacity-50",
       className
@@ -84,7 +87,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm px-8 py-1.5 text-sm outline-none",
+      "relative flex w-full cursor-default select-none items-center rounded-sm px-8 py-2 text-base sm:text-sm outline-none",
       "text-slate-50 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       "data-[highlighted]:bg-slate-800 data-[highlighted]:text-slate-50",
       className

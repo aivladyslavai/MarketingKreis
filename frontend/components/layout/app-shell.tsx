@@ -85,6 +85,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Allow MobileNav "Menu" button to open the drawer.
+  useEffect(() => {
+    const onOpen = () => setMobileMenuOpen(true)
+    try {
+      window.addEventListener("mk:open-mobile-menu", onOpen as any)
+      return () => window.removeEventListener("mk:open-mobile-menu", onOpen as any)
+    } catch {
+      return
+    }
+  }, [])
+
   // Auto refresh (global)
   useEffect(() => {
     let id: any
