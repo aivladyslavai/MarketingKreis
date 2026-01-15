@@ -40,7 +40,14 @@ export function useUploadsApi() {
     uploads: (data?.items as UploadItem[]) || [],
     isLoading,
     error,
-    previewFile: async (file: File): Promise<{ headers: string[]; samples: any[]; suggested_mapping: Record<string, string | null> }> => {
+    previewFile: async (
+      file: File,
+    ): Promise<{
+      headers: string[]
+      samples: any[]
+      suggested_mapping: Record<string, string | null>
+      category_values?: string[]
+    }> => {
       const fd = new FormData()
       fd.append('file', file)
       const res = await fetch(`${apiBase}/uploads/preview`, { method: 'POST', body: fd, credentials: 'include' })

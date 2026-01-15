@@ -31,7 +31,9 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useModal } from "@/components/ui/modal/ModalProvider"
+import RadialCircle from "@/components/circle/radial-circle"
 import { useJobsApi, useUploadsApi } from "@/hooks/use-uploads-api"
+import { useUserCategories } from "@/hooks/use-user-categories"
 
 function formatBytes(bytes: number) {
   if (!bytes || bytes < 0) return "0 B"
@@ -103,6 +105,46 @@ function labelFor(kind: string, name: string) {
   return extOf(name).toUpperCase() || "File"
 }
 
+function normalizeCategoryKey(value: any): string {
+  return String(value ?? "").trim().toUpperCase()
+}
+
+function normalizeCategoryLoose(value: any): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+}
+
+function parseDateLike(value: any): Date | undefined {
+  if (value == null || value === "") return undefined
+  if (value instanceof Date) return value
+  const s = String(value).trim()
+  if (!s) return undefined
+
+  // YYYY-MM-DD
+  const iso = new Date(s)
+  if (!Number.isNaN(iso.getTime())) return iso
+
+  // DD.MM.YYYY
+  const m1 = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
+  if (m1) {
+    const dd = Number(m1[1])
+    const mm = Number(m1[2])
+    const yy = Number(m1[3])
+    const d = new Date(yy, mm - 1, dd)
+    if (!Number.isNaN(d.getTime())) return d
+  }
+
+  // ISO-like with time without timezone
+  try {
+    const d = new Date(s.replace("Z", "+00:00"))
+    if (!Number.isNaN(d.getTime())) return d
+  } catch {}
+
+  return undefined
+}
+
 export default function UploadsPage() {
   const { openModal } = useModal()
   const fileRef = React.useRef<HTMLInputElement | null>(null)
@@ -114,6 +156,7 @@ export default function UploadsPage() {
     headers: string[]
     samples: any[]
     suggested_mapping: Record<string, string | null>
+    category_values?: string[]
   } | null>(null)
   const [mapping, setMapping] = React.useState<Record<string, string | null>>({
     title: null,
@@ -127,9 +170,12 @@ export default function UploadsPage() {
   })
   const [dragOver, setDragOver] = React.useState(false)
   const [query, setQuery] = React.useState("")
+  const [categoryValueMap, setCategoryValueMap] = React.useState<Record<string, string>>({})
+  const [bulkCategoryTarget, setBulkCategoryTarget] = React.useState<string>("")
 
   const { uploads, isLoading, refresh, uploadFile, previewFile } = useUploadsApi()
   const { jobs, isLoading: jobsLoading, refresh: refreshJobs } = useJobsApi()
+  const { categories: userCategories } = useUserCategories()
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -145,6 +191,8 @@ export default function UploadsPage() {
   const loadPreview = React.useCallback(
     async (file: File) => {
       setPreview(null)
+      setCategoryValueMap({})
+      setBulkCategoryTarget("")
       setError(null)
       setPreviewLoading(true)
       try {
@@ -180,7 +228,167 @@ export default function UploadsPage() {
   }
 
   const selectedIsTabular = Boolean(selectedFile && isTabularFile(selectedFile.name))
-  const canProceed = Boolean(selectedFile) && (selectedIsTabular ? Boolean(mapping.title) : true)
+
+  const platformCategoryOptions = React.useMemo(() => {
+    return (userCategories || [])
+      .map((c: any) => ({
+        name: String(c?.name || "").trim(),
+        color: String(c?.color || "").trim(),
+      }))
+      .filter((c) => Boolean(c.name))
+  }, [userCategories])
+
+  const platformCatsByKey = React.useMemo(() => {
+    const m = new Map<string, { name: string; color: string }>()
+    for (const c of platformCategoryOptions) {
+      const key = normalizeCategoryKey(c.name)
+      if (!m.has(key)) m.set(key, c)
+    }
+    return m
+  }, [platformCategoryOptions])
+
+  const platformCatsByLoose = React.useMemo(() => {
+    const m = new Map<string, string>()
+    for (const c of platformCategoryOptions) {
+      const key = normalizeCategoryLoose(c.name)
+      if (key && !m.has(key)) m.set(key, c.name)
+    }
+    return m
+  }, [platformCategoryOptions])
+
+  const previewCategoryValues = React.useMemo(() => {
+    if (!preview || !selectedIsTabular) return [] as Array<{ key: string; raw: string }>
+    const header = mapping.category
+    if (!header) return [] as Array<{ key: string; raw: string }>
+    const seen = new Map<string, string>()
+
+    // If backend provided category values for the *suggested* category column,
+    // prefer them (covers all rows, not only the sample preview).
+    const suggestedHeader = (preview as any)?.suggested_mapping?.category
+    const canUseBackendList =
+      Boolean(suggestedHeader) &&
+      header === suggestedHeader &&
+      Array.isArray((preview as any)?.category_values) &&
+      ((preview as any)?.category_values as any[]).length > 0
+
+    if (canUseBackendList) {
+      for (const raw of ((preview as any).category_values as any[]) || []) {
+        const s = String(raw ?? "").trim()
+        if (!s) continue
+        const key = normalizeCategoryKey(s)
+        if (!seen.has(key)) seen.set(key, s)
+      }
+    } else {
+      for (const row of preview.samples || []) {
+        const raw = row?.[header]
+        const s = String(raw ?? "").trim()
+        if (!s) continue
+        const key = normalizeCategoryKey(s)
+        if (!seen.has(key)) seen.set(key, s)
+      }
+    }
+    return Array.from(seen.entries()).map(([key, raw]) => ({ key, raw }))
+  }, [preview, selectedIsTabular, mapping.category])
+
+  // Best-effort auto-match for common cases like "DIGITAL_MARKETING" vs "Digital Marketing"
+  React.useEffect(() => {
+    if (!selectedIsTabular || !preview || !mapping.category) return
+    if (platformCategoryOptions.length === 0) return
+    if (previewCategoryValues.length === 0) return
+
+    setCategoryValueMap((prev) => {
+      const next = { ...prev }
+      for (const { key, raw } of previewCategoryValues) {
+        if (platformCatsByKey.has(key)) continue
+        if (next[key]) continue
+        const sugg = platformCatsByLoose.get(normalizeCategoryLoose(raw))
+        if (sugg) next[key] = sugg
+      }
+      return next
+    })
+  }, [
+    mapping.category,
+    platformCategoryOptions.length,
+    platformCatsByKey,
+    platformCatsByLoose,
+    preview,
+    previewCategoryValues,
+    selectedIsTabular,
+    setCategoryValueMap,
+  ])
+
+  const categoryMappingRequired =
+    selectedIsTabular && Boolean(mapping.category) && platformCategoryOptions.length > 0 && previewCategoryValues.length > 0
+
+  const unresolvedCategoryKeys = React.useMemo(() => {
+    if (!categoryMappingRequired) return [] as string[]
+    return previewCategoryValues
+      .filter(({ key }) => !platformCatsByKey.has(key) && !categoryValueMap[key])
+      .map(({ key }) => key)
+  }, [categoryMappingRequired, previewCategoryValues, platformCatsByKey, categoryValueMap])
+
+  const categoryMappingOk = unresolvedCategoryKeys.length === 0
+
+  const canProceed =
+    Boolean(selectedFile) &&
+    (selectedIsTabular ? Boolean(mapping.title) && (!categoryMappingRequired || categoryMappingOk) : true)
+
+  const categoryMappingRows = React.useMemo(() => {
+    if (!categoryMappingRequired) return [] as Array<{ key: string; raw: string; state: "matched" | "mapped" | "unmapped"; effective: string }>
+    return previewCategoryValues.map(({ key, raw }) => {
+      const direct = platformCatsByKey.get(key)
+      const mapped = categoryValueMap[key]
+      const state: "matched" | "mapped" | "unmapped" = mapped ? "mapped" : direct ? "matched" : "unmapped"
+      const effective = mapped || direct?.name || raw
+      return { key, raw, state, effective }
+    })
+  }, [categoryMappingRequired, previewCategoryValues, platformCatsByKey, categoryValueMap])
+
+  const circlePreview = React.useMemo(() => {
+    if (!preview || !selectedIsTabular) {
+      return { year: new Date().getFullYear(), activities: [] as any[] }
+    }
+
+    const getCell = (row: any, field: keyof typeof mapping): any => {
+      const header = mapping[field]
+      if (header) return row?.[header]
+      // Fallback: try common variants when mapping isn't set
+      const f = String(field)
+      return row?.[f] ?? row?.[f.toLowerCase()] ?? row?.[f.toUpperCase()]
+    }
+
+    const allowed = new Set(["PLANNED", "ACTIVE", "PAUSED", "DONE", "CANCELLED"])
+
+    const acts = (preview.samples || []).map((row: any, idx: number) => {
+      const title = String(getCell(row, "title") ?? "").trim() || `Row ${idx + 1}`
+
+      const catRaw = String(getCell(row, "category") ?? "").trim() || "VERKAUFSFOERDERUNG"
+      const catKey = normalizeCategoryKey(catRaw)
+      const category = categoryValueMap[catKey] || platformCatsByKey.get(catKey)?.name || catRaw
+
+      const statusRaw = String(getCell(row, "status") ?? "ACTIVE").trim().toUpperCase()
+      const statusNorm = statusRaw === "COMPLETED" ? "DONE" : statusRaw
+      const status = (allowed.has(statusNorm) ? statusNorm : "ACTIVE") as any
+
+      const budgetRaw = getCell(row, "budget")
+      const budgetNum = Number(budgetRaw)
+      const budgetCHF = Number.isFinite(budgetNum) ? budgetNum : 0
+
+      const weightRaw = getCell(row, "weight")
+      const weightNum = Number(weightRaw)
+      const weight = Number.isFinite(weightNum) ? weightNum : 1
+
+      const start = parseDateLike(getCell(row, "start"))
+      const end = parseDateLike(getCell(row, "end"))
+
+      const notes = String(getCell(row, "notes") ?? "").trim() || undefined
+
+      return { id: `preview-${idx}`, title, category, status, weight, budgetCHF, start, end, notes }
+    })
+
+    const year = (acts.find((a: any) => a?.start instanceof Date)?.start as Date | undefined)?.getFullYear() || new Date().getFullYear()
+    return { year, activities: acts }
+  }, [preview, selectedIsTabular, mapping, platformCatsByKey, categoryValueMap])
 
   const doImport = async () => {
     if (!selectedFile) return
@@ -194,6 +402,10 @@ export default function UploadsPage() {
         Object.entries(mapping).forEach(([k, v]) => {
           ;(mappingClean as any)[k] = v ? String(v) : null
         })
+        // Optional: category value remap (file category -> existing platform category)
+        if (Object.keys(categoryValueMap || {}).length > 0) {
+          ;(mappingClean as any).category_value_map = categoryValueMap
+        }
       }
       await uploadFile(selectedFile, undefined, mappingClean)
       setSelectedFile(null)
@@ -208,6 +420,8 @@ export default function UploadsPage() {
         end: null,
         weight: null,
       })
+      setCategoryValueMap({})
+      setBulkCategoryTarget("")
       if (isTab) await Promise.all([refresh(), refreshJobs()])
       else await refresh()
     } catch (e: any) {
@@ -695,6 +909,170 @@ export default function UploadsPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Circle preview */}
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Kreis Vorschau</div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">
+                      basiert auf {preview.samples.length} Zeilen
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    {circlePreview.activities.length > 0 ? (
+                      <RadialCircle
+                        activities={circlePreview.activities as any}
+                        categories={platformCategoryOptions}
+                        size={520}
+                        year={circlePreview.year}
+                      />
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-5 text-center text-xs text-slate-600 dark:text-slate-400">
+                        Keine Aktivitäten für die Vorschau gefunden (prüfe bitte das Mapping für <b>title</b> / <b>start</b> / <b>end</b>).
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Category reconciliation */}
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Kategorie-Abgleich</div>
+                    {categoryMappingRequired && (
+                      <Badge
+                        variant="outline"
+                        className={
+                          unresolvedCategoryKeys.length > 0
+                            ? "border-rose-500/30 text-rose-300 bg-rose-500/10"
+                            : "border-emerald-500/30 text-emerald-300 bg-emerald-500/10"
+                        }
+                      >
+                        {unresolvedCategoryKeys.length > 0
+                          ? `${unresolvedCategoryKeys.length} offen`
+                          : "alles zugeordnet"}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {!mapping.category ? (
+                    <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+                      Wähle zuerst im Mapping die Spalte für <b>category</b>. Danach kannst du nicht passende Kategorien
+                      auf deine bestehenden Kategorien am Kreis mappen.
+                    </div>
+                  ) : platformCategoryOptions.length === 0 ? (
+                    <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+                      Keine bestehenden Kategorien gefunden. Lege zuerst Kategorien an (z.B. unter <b>Performance</b>),
+                      dann kannst du hier sauber mappen.
+                    </div>
+                  ) : previewCategoryValues.length === 0 ? (
+                    <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+                      In der Vorschau wurden keine Kategorien gefunden (prüfe bitte die ausgewählte Kategorie-Spalte).
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+                        Wenn Kategorien aus der Datei nicht zu deinen Kategorien am Kreis passen, kannst du sie hier
+                        ersetzen. Beim Import wird die ersetzte Kategorie in der DB gespeichert.
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <select
+                          value={bulkCategoryTarget}
+                          onChange={(e) => setBulkCategoryTarget(e.target.value)}
+                          className="min-w-[220px] rounded-lg border border-slate-200/60 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+                        >
+                          <option value="">— alle offenen zuordnen —</option>
+                          {platformCategoryOptions.map((opt) => (
+                            <option key={opt.name} value={opt.name}>
+                              {opt.name}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="glass-card"
+                          disabled={!bulkCategoryTarget || unresolvedCategoryKeys.length === 0}
+                          onClick={() => {
+                            if (!bulkCategoryTarget) return
+                            setCategoryValueMap((prev) => {
+                              const next = { ...prev }
+                              for (const k of unresolvedCategoryKeys) next[k] = bulkCategoryTarget
+                              return next
+                            })
+                          }}
+                        >
+                          Für alle offenen übernehmen
+                        </Button>
+                        {Object.keys(categoryValueMap).length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-slate-600 dark:text-slate-300"
+                            onClick={() => {
+                              setCategoryValueMap({})
+                              setBulkCategoryTarget("")
+                            }}
+                          >
+                            Reset
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="mt-4 space-y-3 max-h-[360px] overflow-auto pr-1">
+                        {categoryMappingRows.map((c) => {
+                          const selected =
+                            categoryValueMap[c.key] || platformCatsByKey.get(c.key)?.name || ""
+                          const isMissing = c.state === "unmapped"
+                          return (
+                            <div
+                              key={c.key}
+                              className={
+                                "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 " +
+                                (isMissing
+                                  ? "border-rose-500/25 bg-rose-500/5"
+                                  : "border-white/10 bg-white/5")
+                              }
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs text-slate-500 dark:text-slate-400">aus Datei</div>
+                                <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                  {c.raw}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <div className="text-xs text-slate-500 dark:text-slate-400">→</div>
+                                <select
+                                  value={selected}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setCategoryValueMap((prev) => {
+                                      const next = { ...prev }
+                                      if (!v) delete next[c.key]
+                                      else next[c.key] = v
+                                      return next
+                                    })
+                                  }}
+                                  className="min-w-[180px] rounded-lg border border-slate-200/60 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+                                >
+                                  <option value="">— auswählen —</option>
+                                  {platformCategoryOptions.map((opt) => (
+                                    <option key={opt.name} value={opt.name}>
+                                      {opt.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           )}

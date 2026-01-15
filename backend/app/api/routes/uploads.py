@@ -180,6 +180,33 @@ def upload_file(
             except Exception:
                 mapping_dict = {}
 
+        # Optional: category value remap { "DIGITAL_MARKETING": "VERKAUFSFOERDERUNG", ... }
+        raw_category_value_map: Dict[str, Any] = {}
+        try:
+            cvm = (
+                mapping_dict.get("category_value_map")
+                or mapping_dict.get("__category_value_map")
+                or mapping_dict.get("categoryValueMap")
+            )
+            if isinstance(cvm, dict):
+                raw_category_value_map = cvm
+        except Exception:
+            raw_category_value_map = {}
+
+        def remap_category_value(v: Any) -> str:
+            s = str(v or "").strip()
+            if not s:
+                return s
+            key = s.upper()
+            # Compare case-insensitively; frontend sends normalized keys by default
+            for k, target in raw_category_value_map.items():
+                try:
+                    if str(k).strip().upper() == key:
+                        return str(target)
+                except Exception:
+                    continue
+            return s
+
         def gm(row: Dict[str, Any], field: str, *fallbacks: str):
             header = (mapping_dict.get(field) or '').strip()
             if header:
@@ -192,6 +219,7 @@ def upload_file(
             try:
                 title = gm(row, "title", "title", "name") or "Untitled"
                 category = gm(row, "category", "category", "type") or "VERKAUFSFOERDERUNG"
+                category = remap_category_value(category) or "VERKAUFSFOERDERUNG"
                 status = (gm(row, "status", "status") or "ACTIVE")
                 budget = gm(row, "budget", "budget", "budgetCHF")
                 weight = gm(row, "weight", "weight")
@@ -256,13 +284,49 @@ def preview_upload(
 
     rows: List[Dict[str, Any]] = []
     headers: List[str] = []
+    suggested: Dict[str, Optional[str]] = {}
+    category_values: set[str] = set()
+    max_sample_rows = 5
+    max_scan_rows = 5000
+    max_unique_categories = 200
+
+    def suggest_mapping(headers_in: List[str]) -> Dict[str, Optional[str]]:
+        headers_l = [h.lower().replace(" ", "_") for h in headers_in]
+
+        def suggest(*names: str) -> Optional[str]:
+            for n in names:
+                if n in headers_l:
+                    idx = headers_l.index(n)
+                    return headers_in[idx]
+            return None
+
+        return {
+            "title": suggest("title", "name"),
+            "category": suggest("category", "type"),
+            "status": suggest("status"),
+            "budget": suggest("budget", "budgetchf"),
+            "notes": suggest("notes", "expected_output"),
+            "start": suggest("start", "start_date"),
+            "end": suggest("end", "end_date"),
+            "weight": suggest("weight"),
+        }
+
     if ctype in {"text/csv", "application/csv", "text/plain"} or name_lower.endswith(".csv"):
         text = content.decode("utf-8", errors="ignore")
         reader = csv.DictReader(io.StringIO(text))
         headers = reader.fieldnames or []
+        suggested = suggest_mapping(headers)
+        cat_header = suggested.get("category")
         for i, row in enumerate(reader):
-            rows.append(row)
-            if i >= 4:
+            if i < max_sample_rows:
+                rows.append(row)
+            if cat_header:
+                v = row.get(cat_header)
+                if v not in (None, ""):
+                    s = str(v).strip()
+                    if s:
+                        category_values.add(s)
+            if i >= max_scan_rows or len(category_values) >= max_unique_categories:
                 break
     elif name_lower.endswith(".xlsx") or ctype in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
         try:
@@ -273,35 +337,36 @@ def preview_upload(
         ws = wb.active
         first = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
         headers = [str(v or "").strip() for v in first]
+        suggested = suggest_mapping(headers)
+        cat_header = suggested.get("category")
+        cat_idx: Optional[int] = None
+        if cat_header and cat_header in headers:
+            try:
+                cat_idx = headers.index(cat_header)
+            except Exception:
+                cat_idx = None
+
         for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True)):
-            row = {headers[i2].strip(): (r[i2] if i2 is not None and i2 < len(r) else None) for i2 in range(len(headers))}
-            rows.append(row)
-            if i >= 4:
+            if i < max_sample_rows:
+                row = {headers[i2].strip(): (r[i2] if i2 is not None and i2 < len(r) else None) for i2 in range(len(headers))}
+                rows.append(row)
+            if cat_idx is not None and cat_idx < len(r):
+                v = r[cat_idx]
+                if v not in (None, ""):
+                    s = str(v).strip()
+                    if s:
+                        category_values.add(s)
+            if i >= max_scan_rows or len(category_values) >= max_unique_categories:
                 break
     else:
         raise HTTPException(status_code=415, detail="Unsupported file type. Upload CSV or XLSX")
 
-    # suggested mapping
-    headers_l = [h.lower().replace(" ", "_") for h in headers]
-    def suggest(*names: str) -> Optional[str]:
-        for n in names:
-            if n in headers_l:
-                idx = headers_l.index(n)
-                return headers[idx]
-        return None
-
-    suggested = {
-        "title": suggest("title", "name"),
-        "category": suggest("category", "type"),
-        "status": suggest("status"),
-        "budget": suggest("budget", "budgetchf"),
-        "notes": suggest("notes", "expected_output"),
-        "start": suggest("start", "start_date"),
-        "end": suggest("end", "end_date"),
-        "weight": suggest("weight"),
+    return {
+        "headers": headers,
+        "samples": rows,
+        "suggested_mapping": suggested,
+        "category_values": sorted(list(category_values)),
     }
-
-    return {"headers": headers, "samples": rows, "suggested_mapping": suggested}
 
 
 @router.get("/template.csv")
