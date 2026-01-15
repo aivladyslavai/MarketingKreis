@@ -11,7 +11,7 @@ from app.schemas.company import CompanyCreate, CompanyUpdate, CompanyOut
 from app.schemas.contact import ContactCreate, ContactUpdate, ContactOut
 from app.schemas.deal import DealCreate, DealUpdate, DealOut
 from app.schemas.user import UserOut
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user
 
 
 router = APIRouter(prefix="/crm", tags=["crm"])
@@ -144,7 +144,7 @@ def list_projects(
 def create_company(
     company: CompanyCreate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.editor, UserRole.admin)),
+    current_user: User = Depends(get_current_user),
 ):
     db_company = Company(**company.dict())
     db.add(db_company)
@@ -158,7 +158,7 @@ def update_company(
     company_id: int,
     payload: CompanyUpdate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.editor, UserRole.admin)),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Частичное обновление компании.
@@ -184,7 +184,7 @@ def update_company(
 def create_contact(
     contact: ContactCreate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.editor, UserRole.admin)),
+    current_user: User = Depends(get_current_user),
 ):
     # Convert first_name + last_name to single name field
     contact_data = contact.dict()
@@ -209,7 +209,7 @@ def update_contact(
     contact_id: int,
     payload: ContactUpdate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.editor, UserRole.admin)),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Частичное обновление контакта.
@@ -246,7 +246,7 @@ def update_contact(
 def create_deal(
     deal: DealCreate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.editor, UserRole.admin)),
+    current_user: User = Depends(get_current_user),
 ):
     db_deal = Deal(**deal.dict())
     db.add(db_deal)

@@ -534,8 +534,6 @@ export default function CRMPage() {
     setDeals(Array.isArray(d) ? d : [])
   }
 
-  const canWriteCrm = ["admin", "editor"].includes(String((user as any)?.role || "").toLowerCase())
-
   const deleteCompany = async (id: string) => {
     try {
       if (typeof window !== 'undefined' && !confirm('Unternehmen löschen?')) return
@@ -553,19 +551,10 @@ export default function CRMPage() {
     position?: string
     company_id?: number
   }) => {
-    try {
-      await contactsAPI.create(payload)
-      await refreshAll()
-      sync.emit("crm:contacts:changed")
-      toast({ title: "✅ Kontakt erstellt" })
-    } catch (err) {
-      console.error("createContact error", err)
-      toast({
-        title: "Fehler",
-        description: (err as any)?.message || "Kontakt konnte nicht gespeichert werden.",
-        variant: "destructive",
-      })
-    }
+    await contactsAPI.create(payload)
+    await refreshAll()
+    sync.emit("crm:contacts:changed")
+    toast({ title: "✅ Kontakt erstellt" })
   }
 
   const updateContact = async (original: any, updates: any) => {
@@ -609,19 +598,10 @@ export default function CRMPage() {
     contact_id?: number
     notes?: string
   }) => {
-    try {
-      await dealsAPI.create(payload)
-      await refreshAll()
-      sync.emit("crm:deals:changed")
-      toast({ title: "✅ Deal erstellt" })
-    } catch (err) {
-      console.error("createDeal error", err)
-      toast({
-        title: "Fehler",
-        description: (err as any)?.message || "Deal konnte nicht gespeichert werden.",
-        variant: "destructive",
-      })
-    }
+    await dealsAPI.create(payload)
+    await refreshAll()
+    sync.emit("crm:deals:changed")
+    toast({ title: "✅ Deal erstellt" })
   }
 
   const removeFilter = (filter: string) => {
@@ -913,7 +893,6 @@ export default function CRMPage() {
                 <div className="flex items-center gap-2">
                   <Button
                     onClick={() => setEditingCompany({} as any)}
-                    disabled={!canWriteCrm}
                     className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20"
                   >
                     <Plus className="h-4 w-4 mr-2" />
@@ -998,7 +977,6 @@ export default function CRMPage() {
                   </p>
                   <Button 
                     onClick={() => setEditingCompany({} as any)}
-                    disabled={!canWriteCrm}
                     className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                   >
                     <Plus className="h-4 w-4 mr-2" />
@@ -1167,7 +1145,7 @@ export default function CRMPage() {
                 {/* Footer actions */}
                 <div className="mt-5 flex items-center justify-end gap-2">
                   <Button variant="outline" onClick={()=> setViewingCompany(null)}>Schließen</Button>
-                  <Button onClick={() => { setEditingCompany(viewingCompany); setViewingCompany(null) }} disabled={!canWriteCrm}>
+                  <Button onClick={() => { setEditingCompany(viewingCompany); setViewingCompany(null) }}>
                     Bearbeiten
                   </Button>
                 </div>
@@ -1236,7 +1214,6 @@ export default function CRMPage() {
                 <div className="flex items-center gap-2">
                   <Button
                     onClick={() => setCreateContactOpen(true)}
-                    disabled={!canWriteCrm}
                     className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20"
                   >
                     <Plus className="h-4 w-4 mr-2" />
@@ -1319,7 +1296,6 @@ export default function CRMPage() {
                 <div className="flex items-center gap-2">
                   <Button
                     onClick={() => setCreateDealOpen(true)}
-                    disabled={!canWriteCrm}
                     className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20"
                   >
                     <Plus className="h-4 w-4 mr-2" />
