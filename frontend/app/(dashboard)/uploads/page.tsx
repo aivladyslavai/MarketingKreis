@@ -302,17 +302,17 @@ export default function UploadsPage() {
 
   return (
     <motion.div
-      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5 sm:space-y-6 pb-24 md:pb-6"
+      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-7 sm:space-y-9 pb-28 md:pb-10"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
-      <motion.div variants={itemVariants} className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/70 via-slate-950/50 to-slate-950/70 p-4 sm:p-6">
+      <motion.div variants={itemVariants} className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/70 via-slate-950/50 to-slate-950/70 p-6 sm:p-8">
         <div className="pointer-events-none absolute -top-24 -right-24 h-44 w-44 rounded-full bg-gradient-to-tr from-rose-500/25 to-orange-500/15 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-28 -left-24 h-44 w-44 rounded-full bg-gradient-to-tr from-blue-500/20 to-cyan-500/10 blur-3xl" />
 
-        <div className="relative flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3 sm:gap-5">
+        <div className="relative flex flex-col gap-4 sm:gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4 sm:gap-6">
             <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-rose-500/20 to-orange-500/10 border border-white/10 flex items-center justify-center backdrop-blur-sm">
               <UploadCloud className="h-6 w-6 sm:h-7 sm:w-7 text-rose-400" />
             </div>
@@ -321,13 +321,13 @@ export default function UploadsPage() {
                 <h1 className="text-xl sm:text-3xl font-light tracking-tight text-slate-100">Uploads</h1>
                 <Badge className="glass-card text-[10px] sm:text-xs px-2 py-1">Import Center</Badge>
               </div>
-              <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              <p className="text-xs sm:text-sm text-slate-400 mt-2 leading-relaxed">
                 CSV/XLSX importieren, Dateien verwalten und den Status im Blick behalten.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <input
               ref={fileRef}
               type="file"
@@ -358,21 +358,21 @@ export default function UploadsPage() {
           </div>
         </div>
 
-        <div className="relative mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 flex items-center justify-between">
-            <div className="text-xs text-slate-300">
+        <div className="relative mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between">
+            <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
               Letzter Upload: <span className="font-semibold text-slate-100">{formatRelativeTime(lastUploadAt)}</span>
             </div>
             <ArrowUpRight className="h-4 w-4 text-slate-400" />
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 flex items-center justify-between">
-            <div className="text-xs text-slate-300">
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between">
+            <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
               Speicher genutzt: <span className="font-semibold text-slate-100">{formatBytes(totalSize)}</span>
             </div>
             <HardDrive className="h-4 w-4 text-slate-400" />
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 flex items-center justify-between">
-            <div className="text-xs text-slate-300">
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between">
+            <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
               Import Jobs:{" "}
               <span className="font-semibold text-slate-100">
                 {jobsByStatus.completed} ok · {jobsByStatus.failed} failed
@@ -386,71 +386,71 @@ export default function UploadsPage() {
       {error && (
         <motion.div
           variants={itemVariants}
-          className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200"
+          className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200"
         >
           {error}
         </motion.div>
       )}
 
       {/* KPIs */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         <Card className="glass-card">
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="p-5 sm:p-6 flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-600 dark:text-slate-400">Dateien</div>
               <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">{uploads.length}</div>
             </div>
-            <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-              <FileText className="h-5 w-5 text-slate-400" />
+            <div className="h-12 w-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <FileText className="h-6 w-6 text-slate-400" />
             </div>
           </CardContent>
         </Card>
         <Card className="glass-card">
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="p-5 sm:p-6 flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-600 dark:text-slate-400">Speicher</div>
               <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">{formatBytes(totalSize)}</div>
             </div>
-            <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-              <HardDrive className="h-5 w-5 text-slate-400" />
+            <div className="h-12 w-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <HardDrive className="h-6 w-6 text-slate-400" />
             </div>
           </CardContent>
         </Card>
         <Card className="glass-card">
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="p-5 sm:p-6 flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-600 dark:text-slate-400">Heute hochgeladen</div>
               <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">{uploadedToday}</div>
             </div>
-            <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-              <Plus className="h-5 w-5 text-slate-400" />
+            <div className="h-12 w-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <Plus className="h-6 w-6 text-slate-400" />
             </div>
           </CardContent>
         </Card>
         <Card className="glass-card">
-          <CardContent className="p-4 flex items-center justify-between">
+          <CardContent className="p-5 sm:p-6 flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-600 dark:text-slate-400">Import Jobs</div>
               <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">{jobs.length}</div>
             </div>
-            <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-              <Briefcase className="h-5 w-5 text-slate-400" />
+            <div className="h-12 w-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+              <Briefcase className="h-6 w-6 text-slate-400" />
             </div>
           </CardContent>
         </Card>
       </motion.div>
 
       {/* Insights */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="glass-card">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-4">
             <CardTitle className="text-base flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-slate-300" />
               Upload Verlauf (7 Tage)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-end justify-between gap-2 h-24">
+            <div className="flex items-end justify-between gap-3 h-28">
               {last7Days.counts.map((c, i) => {
                 const h = Math.round((c / last7Days.max) * 64) + 6
                 const d = last7Days.days[i]
@@ -495,27 +495,27 @@ export default function UploadsPage() {
         </Card>
 
         <Card className="glass-card">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-4">
             <CardTitle className="text-base flex items-center gap-2">
               <FileText className="h-4 w-4 text-slate-300" />
               Dateitypen
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="text-slate-400">CSV/XLSX</div>
                 <div className="text-slate-100 font-semibold">{kinds.table}</div>
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="text-slate-400">Bilder</div>
                 <div className="text-slate-100 font-semibold">{kinds.image}</div>
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="text-slate-400">PDF</div>
                 <div className="text-slate-100 font-semibold">{kinds.pdf}</div>
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="text-slate-400">Andere</div>
                 <div className="text-slate-100 font-semibold">{kinds.file + kinds.video + kinds.other}</div>
               </div>
@@ -531,13 +531,13 @@ export default function UploadsPage() {
         </Card>
 
         <Card className="glass-card">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-4">
             <CardTitle className="text-base flex items-center gap-2">
               <Briefcase className="h-4 w-4 text-slate-300" />
               Import Health
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
               <Badge className="bg-emerald-500/15 text-emerald-200 border border-emerald-500/30">
                 completed: {jobsByStatus.completed}
@@ -566,7 +566,7 @@ export default function UploadsPage() {
         data-tour="uploads-dropzone"
       >
         <CardContent
-          className="p-5"
+          className="p-6 sm:p-8"
           onDragEnter={(e) => {
             e.preventDefault()
             e.stopPropagation()
@@ -590,14 +590,14 @@ export default function UploadsPage() {
             if (file) await selectFile(file)
           }}
         >
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="flex items-start gap-3">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 sm:gap-6">
+            <div className="flex items-start gap-4">
               <div className="h-11 w-11 rounded-2xl bg-kaboom-red/15 flex items-center justify-center">
                 <UploadCloud className="h-6 w-6 text-kaboom-red" />
               </div>
               <div>
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Datei auswählen</div>
-                <div className="text-xs text-slate-600 dark:text-slate-400">
+                <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   CSV/XLSX wird als Aktivitäten importiert. PDF/Bilder werden gespeichert (ohne Import).
                 </div>
                 {selectedFile && (
@@ -635,7 +635,7 @@ export default function UploadsPage() {
           )}
 
           {preview && (
-            <div className="mt-4 space-y-3">
+            <div className="mt-6 space-y-4">
               <div className="flex items-center justify-between gap-2" data-tour="uploads-mapping">
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Mapping</div>
                 <div className="text-xs text-slate-600 dark:text-slate-400">
@@ -643,7 +643,7 @@ export default function UploadsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {Object.keys(mapping).map((k) => (
                   <label key={k} className="text-xs text-slate-700 dark:text-slate-300 space-y-1">
                     <div className="flex items-center gap-2">
@@ -651,7 +651,7 @@ export default function UploadsPage() {
                       {k === "title" && <Badge className="text-[10px]">required</Badge>}
                     </div>
                     <select
-                      className="w-full rounded-md border border-slate-300/40 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 px-2 py-2 text-xs"
+                      className="w-full rounded-lg border border-slate-300/40 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 px-3 py-2.5 text-xs"
                       value={mapping[k] || ""}
                       onChange={(e) =>
                         setMapping((prev) => ({
@@ -677,7 +677,7 @@ export default function UploadsPage() {
                   <thead className="bg-slate-50/70 dark:bg-slate-900/60">
                     <tr>
                       {preview.headers.slice(0, 8).map((h) => (
-                        <th key={h} className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-200">
+                        <th key={h} className="px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-200">
                           {h}
                         </th>
                       ))}
@@ -687,7 +687,7 @@ export default function UploadsPage() {
                     {preview.samples.map((row, idx) => (
                       <tr key={idx}>
                         {preview.headers.slice(0, 8).map((h) => (
-                          <td key={h} className="px-3 py-2 text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                          <td key={h} className="px-4 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">
                             {row?.[h] != null ? String(row[h]).slice(0, 120) : ""}
                           </td>
                         ))}
@@ -701,7 +701,7 @@ export default function UploadsPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Upload list */}
         <Card className="glass-card" data-tour="uploads-list">
           <CardHeader className="pb-3 space-y-3">
@@ -716,7 +716,7 @@ export default function UploadsPage() {
               />
             </div>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             {isLoading ? (
               <div className="space-y-2">
                 {[...Array(5)].map((_, i) => (
@@ -724,7 +724,7 @@ export default function UploadsPage() {
                 ))}
               </div>
             ) : filteredUploads.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/15 bg-white/5 p-5 text-center">
+              <div className="rounded-xl border border-dashed border-white/15 bg-white/5 p-7 text-center">
                 <div className="mx-auto h-12 w-12 rounded-2xl bg-gradient-to-br from-rose-500/20 to-orange-500/10 border border-white/10 flex items-center justify-center">
                   <UploadCloud className="h-6 w-6 text-rose-400" />
                 </div>
@@ -761,7 +761,7 @@ export default function UploadsPage() {
                   const kind = kindOf(name, String(u.file_type || ""))
                   const Icon = iconFor(kind)
                   return (
-                    <div key={u.id} className="py-3 flex items-start justify-between gap-3">
+                    <div key={u.id} className="py-4 flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 min-w-0">
                         <Icon className="h-4 w-4 text-slate-500 flex-shrink-0" />
@@ -856,7 +856,7 @@ export default function UploadsPage() {
               Imports laufen im Hintergrund. Hier siehst du den Status der letzten Jobs.
             </div>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             {jobsLoading ? (
               <div className="space-y-2">
                 {[...Array(5)].map((_, i) => (
@@ -864,7 +864,7 @@ export default function UploadsPage() {
                 ))}
               </div>
             ) : jobs.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/15 bg-white/5 p-5">
+              <div className="rounded-xl border border-dashed border-white/15 bg-white/5 p-7">
                 <div className="flex items-start gap-3">
                   <div className="h-10 w-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
                     <Briefcase className="h-5 w-5 text-slate-300" />
@@ -891,7 +891,7 @@ export default function UploadsPage() {
                           ? "bg-amber-400"
                           : "bg-slate-400"
                   return (
-                  <div key={j.id} className="py-3 flex items-start justify-between gap-3">
+                  <div key={j.id} className="py-4 flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <Badge className="text-[10px]">{j.type || "job"}</Badge>
