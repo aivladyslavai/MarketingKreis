@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -18,7 +18,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   Users, 
   Plus, 
@@ -31,18 +34,12 @@ import {
   Target, 
   MoreHorizontal, 
   Eye, 
-  TrendingUp, 
-  Calendar, 
-  MapPin,
-  CheckCircle,
-  AlertCircle,
   X,
-  Globe,
   Briefcase,
   UserCheck,
   Percent
 } from "lucide-react"
-import { companiesAPI, contactsAPI, dealsAPI, authFetch } from "@/lib/api"
+import { companiesAPI, contactsAPI, dealsAPI } from "@/lib/api"
 import { sync } from "@/lib/sync"
 import { CompanyDialog } from "@/components/crm/company-dialog"
 import { useToast } from "@/components/ui/use-toast"
@@ -59,27 +56,31 @@ function ContactDetailForm({
   onClose: () => void
   onSave: (updates: any) => Promise<void>
 }) {
-  const [name, setName] = useState(String(contact.name || ""))
+  const fullName = String(contact.name || "").trim()
+  const parts = fullName.split(/\s+/).filter(Boolean)
+  const initialFirst = parts[0] || ""
+  const initialLast = parts.slice(1).join(" ") || parts[0] || ""
+
+  const [firstName, setFirstName] = useState(initialFirst)
+  const [lastName, setLastName] = useState(initialLast)
   const [email, setEmail] = useState(String(contact.email || ""))
   const [phone, setPhone] = useState(String(contact.phone || ""))
-  const [company, setCompany] = useState(String(contact.company || ""))
-  const [title, setTitle] = useState(String(contact.title || ""))
-  const [saving, setSaving] = useState(false)
-
-  const companyOptions = useMemo(
-    () => companies.map((c: any) => String(c.name || "")).filter(Boolean),
-    [companies],
+  const [position, setPosition] = useState(String(contact.position || ""))
+  const [companyId, setCompanyId] = useState<string>(
+    contact.company_id != null ? String(contact.company_id) : "none",
   )
+  const [saving, setSaving] = useState(false)
 
   const handleSubmit = async () => {
     setSaving(true)
     try {
       await onSave({
-        name,
-        email,
-        phone,
-        company,
-        title,
+        first_name: firstName.trim(),
+        last_name: lastName.trim() || firstName.trim(),
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        position: position.trim() || undefined,
+        company_id: companyId !== "none" ? Number(companyId) : undefined,
       })
     } finally {
       setSaving(false)
@@ -87,7 +88,7 @@ function ContactDetailForm({
   }
 
   const initials =
-    name
+    `${firstName} ${lastName}`
       .split(" ")
       .filter(Boolean)
       .slice(0, 2)
@@ -102,7 +103,7 @@ function ContactDetailForm({
         </div>
         <div>
           <DialogTitle>
-            <span className="text-base sm:text-lg">{name || "Kontakt"}</span>
+            <span className="text-base sm:text-lg">{(`${firstName} ${lastName}`.trim() || "Kontakt")}</span>
           </DialogTitle>
           <DialogDescription>
             <span className="text-xs sm:text-sm">Kontaktdetails bearbeiten</span>
@@ -110,52 +111,42 @@ function ContactDetailForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 text-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
         <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Name</label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700"
-          />
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Vorname</label>
+          <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Nachname</label>
+          <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-slate-500 dark:text-slate-300">E-Mail</label>
-          <Input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700"
-          />
+          <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Telefon</label>
-          <Input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700"
-          />
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma</label>
-          <Input
-            list="contact-company-options"
-            value={company}
-            onChange={(e) => setCompany(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700"
-          />
-          <datalist id="contact-company-options">
-            {companyOptions.map((name: string) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
+          <Select value={companyId} onValueChange={(v) => setCompanyId(v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Firma wählen" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Keine —</SelectItem>
+              {companies.map((c: any) => (
+                <SelectItem key={String(c.id)} value={String(c.id)}>
+                  {String(c.name || "")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Titel / Position</label>
-          <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700"
-          />
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Position</label>
+          <Input value={position} onChange={(e) => setPosition(e.target.value)} />
         </div>
       </div>
 
@@ -168,6 +159,327 @@ function ContactDetailForm({
         </Button>
       </div>
     </div>
+  )
+}
+
+function ContactCreateDialog({
+  open,
+  onOpenChange,
+  companies,
+  onCreate,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  companies: any[]
+  onCreate: (payload: {
+    first_name: string
+    last_name: string
+    email?: string
+    phone?: string
+    position?: string
+    company_id?: number
+  }) => Promise<void>
+}) {
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
+  const [email, setEmail] = useState("")
+  const [phone, setPhone] = useState("")
+  const [position, setPosition] = useState("")
+  const [companyId, setCompanyId] = useState<string>("none")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setFirstName("")
+    setLastName("")
+    setEmail("")
+    setPhone("")
+    setPosition("")
+    setCompanyId("none")
+    setSaving(false)
+    setError(null)
+  }, [open])
+
+  const submit = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      await onCreate({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        position: position.trim() || undefined,
+        company_id: companyId !== "none" ? Number(companyId) : undefined,
+      })
+      onOpenChange(false)
+    } catch (e: any) {
+      setError(e?.message || "Speichern fehlgeschlagen")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const canSubmit = firstName.trim().length > 0 && lastName.trim().length > 0 && !saving
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl w-[min(92vw,640px)] bg-white dark:bg-slate-900/80 border-slate-200 dark:border-white/10 backdrop-blur-xl p-6">
+        <DialogHeader>
+          <DialogTitle>Neuen Kontakt</DialogTitle>
+          <DialogDescription>Kontaktdaten erfassen und optional einer Firma zuordnen.</DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Vorname *</label>
+            <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Max" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Nachname *</label>
+            <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Mustermann" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">E-Mail</label>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="max@company.com" type="email" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Telefon</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+41 44 123 45 67" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Position</label>
+            <Input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="Marketing Manager" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma</label>
+            <Select value={companyId} onValueChange={(v) => setCompanyId(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Firma wählen" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— Keine —</SelectItem>
+                {companies.map((c: any) => (
+                  <SelectItem key={String(c.id)} value={String(c.id)}>
+                    {String(c.name || "")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            Abbrechen
+          </Button>
+          <Button onClick={submit} disabled={!canSubmit} className="bg-gradient-to-r from-blue-600 to-indigo-600">
+            {saving ? "Speichern…" : "Kontakt erstellen"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function DealCreateDialog({
+  open,
+  onOpenChange,
+  companies,
+  contacts,
+  defaultOwner,
+  onCreate,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  companies: any[]
+  contacts: any[]
+  defaultOwner: string
+  onCreate: (payload: {
+    title: string
+    owner: string
+    stage: string
+    probability?: number
+    value?: number
+    expected_close_date?: string
+    company_id?: number
+    contact_id?: number
+    notes?: string
+  }) => Promise<void>
+}) {
+  const [title, setTitle] = useState("")
+  const [owner, setOwner] = useState(defaultOwner)
+  const [stage, setStage] = useState("lead")
+  const [probability, setProbability] = useState<string>("25")
+  const [value, setValue] = useState<string>("")
+  const [expectedClose, setExpectedClose] = useState<string>("")
+  const [companyId, setCompanyId] = useState<string>("none")
+  const [contactId, setContactId] = useState<string>("none")
+  const [notes, setNotes] = useState<string>("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setTitle("")
+    setOwner(defaultOwner)
+    setStage("lead")
+    setProbability("25")
+    setValue("")
+    setExpectedClose("")
+    setCompanyId("none")
+    setContactId("none")
+    setNotes("")
+    setSaving(false)
+    setError(null)
+  }, [open, defaultOwner])
+
+  const submit = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      await onCreate({
+        title: title.trim(),
+        owner: owner.trim() || defaultOwner,
+        stage,
+        probability: probability.trim() === "" ? undefined : Math.max(0, Math.min(100, Number(probability) || 0)),
+        value: value.trim() === "" ? undefined : Math.max(0, Number(value) || 0),
+        expected_close_date: expectedClose ? new Date(expectedClose).toISOString() : undefined,
+        company_id: companyId !== "none" ? Number(companyId) : undefined,
+        contact_id: contactId !== "none" ? Number(contactId) : undefined,
+        notes: notes.trim() || undefined,
+      })
+      onOpenChange(false)
+    } catch (e: any) {
+      setError(e?.message || "Speichern fehlgeschlagen")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const canSubmit = title.trim().length > 0 && owner.trim().length > 0 && !saving
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl w-[min(92vw,820px)] bg-white dark:bg-slate-900/80 border-slate-200 dark:border-white/10 backdrop-blur-xl p-6">
+        <DialogHeader>
+          <DialogTitle>Neuen Deal</DialogTitle>
+          <DialogDescription>Deal erfassen (Stage, Wert, Wahrscheinlichkeit, Owner).</DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Titel *</label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="z.B. Jahresvertrag Q1" />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma</label>
+            <Select value={companyId} onValueChange={(v) => setCompanyId(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Firma wählen" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— Keine —</SelectItem>
+                {companies.map((c: any) => (
+                  <SelectItem key={String(c.id)} value={String(c.id)}>
+                    {String(c.name || "")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Kontakt</label>
+            <Select value={contactId} onValueChange={(v) => setContactId(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Kontakt wählen" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— Keiner —</SelectItem>
+                {contacts.map((c: any) => (
+                  <SelectItem key={String(c.id)} value={String(c.id)}>
+                    {String(c.name || "")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Stage</label>
+            <Select value={stage} onValueChange={(v) => setStage(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Stage wählen" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="lead">Lead</SelectItem>
+                <SelectItem value="qualified">Qualified</SelectItem>
+                <SelectItem value="proposal">Proposal</SelectItem>
+                <SelectItem value="negotiation">Negotiation</SelectItem>
+                <SelectItem value="won">Won</SelectItem>
+                <SelectItem value="lost">Lost</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Owner *</label>
+            <Input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="owner@email.com" />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Wert (CHF)</label>
+            <Input value={value} onChange={(e) => setValue(e.target.value)} type="number" min="0" placeholder="50000" />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Wahrscheinlichkeit (%)</label>
+            <Input
+              value={probability}
+              onChange={(e) => setProbability(e.target.value)}
+              type="number"
+              min="0"
+              max="100"
+              placeholder="25"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Close Date</label>
+            <Input value={expectedClose} onChange={(e) => setExpectedClose(e.target.value)} type="date" />
+          </div>
+
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Notizen</label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Kontext, nächste Schritte…" rows={3} />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            Abbrechen
+          </Button>
+          <Button onClick={submit} disabled={!canSubmit} className="bg-gradient-to-r from-blue-600 to-indigo-600">
+            {saving ? "Speichern…" : "Deal erstellen"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -186,32 +498,9 @@ export default function CRMPage() {
   const [viewingCompany, setViewingCompany] = useState<Company | null>(null)
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
   const [viewingContact, setViewingContact] = useState<Contact | null>(null)
+  const [createContactOpen, setCreateContactOpen] = useState(false)
+  const [createDealOpen, setCreateDealOpen] = useState(false)
   const { toast } = useToast()
-
-  // Quick-add forms
-  const [newCompany, setNewCompany] = useState<any>({ 
-    name: "", 
-    website: "", 
-    email: "", 
-    phone: "" 
-  })
-  const [newContact, setNewContact] = useState<any>({ 
-    name: "", 
-    email: "", 
-    phone: "", 
-    company: "", 
-    title: "" 
-  })
-  const [newDeal, setNewDeal] = useState<any>({ 
-    title: "", 
-    company: "", 
-    value: "", 
-    probability: 50, 
-    stage: "lead", 
-    expected_close_date: "" 
-  })
-  const [errors, setErrors] = useState<Record<string,string>>({})
-  const [validation, setValidation] = useState<Record<string, boolean>>({})
   const { user } = useAuth()
 
   useEffect(() => {
@@ -245,41 +534,7 @@ export default function CRMPage() {
     setDeals(Array.isArray(d) ? d : [])
   }
 
-  const validateField = (field: string, value: string) => {
-    switch (field) {
-      case 'email':
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-      case 'website':
-        return value === '' || /^https?:\/\/.+/.test(value)
-      case 'phone':
-        return value === '' || /^[\+]?[0-9\s\-\(\)]+$/.test(value)
-      default:
-        return value.trim().length > 0
-    }
-  }
-
-  const handleFieldBlur = (entity: string, field: string, value: string) => {
-    const isValid = validateField(field, value)
-    setValidation(prev => ({ ...prev, [`${entity}_${field}`]: isValid }))
-  }
-
-  const addCompany = async () => {
-    const e: Record<string,string> = {}
-    if (!newCompany.name?.trim()) e.name = 'Company name is required'
-    if (newCompany.email && !validateField('email', newCompany.email)) e.email = 'Invalid email format'
-    if (newCompany.website && !validateField('website', newCompany.website)) e.website = 'Invalid website URL'
-    if (newCompany.phone && !validateField('phone', newCompany.phone)) e.phone = 'Invalid phone format'
-    
-    setErrors(e)
-    if (Object.keys(e).length) return
-    
-    await companiesAPI.create(newCompany).catch(() => {})
-    setNewCompany({ name: "", website: "", email: "", phone: "" })
-    setValidation({})
-    await refreshAll()
-    sync.emit('crm:companies:changed')
-    toast({ title: '✅ Company added successfully' })
-  }
+  const canWriteCrm = ["admin", "editor"].includes(String((user as any)?.role || "").toLowerCase())
 
   const deleteCompany = async (id: string) => {
     try {
@@ -290,65 +545,24 @@ export default function CRMPage() {
     } catch {}
   }
 
-  const addContact = async () => {
-    const e: Record<string,string> = {}
-    if (!newContact.name?.trim()) e.name = 'Contact name is required'
-    if (newContact.email && !validateField('email', newContact.email)) e.email = 'Invalid email format'
-    if (newContact.phone && !validateField('phone', newContact.phone)) e.phone = 'Invalid phone format'
-    
-    setErrors(e)
-    if (Object.keys(e).length) return
-    
+  const createContact = async (payload: {
+    first_name: string
+    last_name: string
+    email?: string
+    phone?: string
+    position?: string
+    company_id?: number
+  }) => {
     try {
-      // Map full name to first/last name for backend schema
-      const trimmed = String(newContact.name || "").trim()
-      const [first, ...rest] = trimmed.split(/\s+/)
-      const last = rest.join(" ") || first
-
-      // Try to resolve company_id by name (best-effort)
-      let companyId: number | undefined = undefined
-      const companyName = String(newContact.company || "").trim().toLowerCase()
-      if (companyName) {
-        const match = companies.find((c: any) =>
-          String(c.name || "").trim().toLowerCase() === companyName
-        )
-        if (match?.id) companyId = Number(match.id)
-      }
-
-      const payload: any = {
-        first_name: first,
-        last_name: last,
-        email: newContact.email || undefined,
-        phone: newContact.phone || undefined,
-        position: newContact.title || undefined,
-        company_id: companyId,
-      }
-
-      const res = await authFetch("/crm/contacts", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "")
-        console.error("Failed to create contact", res.status, detail)
-        toast({
-          title: "Kontakt konnte nicht gespeichert werden",
-          description: `Server: ${res.status}`,
-          variant: "destructive",
-        })
-        return
-      }
-
-      setNewContact({ name: "", email: "", phone: "", company: "", title: "" })
-      setValidation({})
+      await contactsAPI.create(payload)
       await refreshAll()
       sync.emit("crm:contacts:changed")
-      toast({ title: "✅ Kontakt hinzugefügt" })
+      toast({ title: "✅ Kontakt erstellt" })
     } catch (err) {
-      console.error("addContact error", err)
+      console.error("createContact error", err)
       toast({
-        title: "Fehler beim Speichern des Kontakts",
-        description: "Bitte versuchen Sie es später erneut.",
+        title: "Fehler",
+        description: (err as any)?.message || "Kontakt konnte nicht gespeichert werden.",
         variant: "destructive",
       })
     }
@@ -356,45 +570,19 @@ export default function CRMPage() {
 
   const updateContact = async (original: any, updates: any) => {
     try {
-      const merged = { ...original, ...updates }
-      const trimmed = String(merged.name || "").trim()
-      const [first, ...rest] = trimmed.split(/\s+/)
-      const last = rest.join(" ") || first
-
-      // Resolve company_id by name (best-effort)
-      let companyId: number | undefined = undefined
-      const companyName = String(merged.company || "").trim().toLowerCase()
-      if (companyName) {
-        const match = companies.find((c: any) =>
-          String(c.name || "").trim().toLowerCase() === companyName,
-        )
-        if (match?.id) companyId = Number(match.id)
-      }
+      const first = String(updates?.first_name ?? "").trim()
+      const last = String(updates?.last_name ?? "").trim() || first
 
       const payload: any = {
-        first_name: first,
-        last_name: last,
-        email: merged.email || undefined,
-        phone: merged.phone || undefined,
-        position: merged.title || undefined,
-        company_id: companyId,
+        first_name: first || undefined,
+        last_name: last || undefined,
+        email: String(updates?.email ?? "").trim() || undefined,
+        phone: String(updates?.phone ?? "").trim() || undefined,
+        position: String(updates?.position ?? "").trim() || undefined,
+        company_id: updates?.company_id != null ? Number(updates.company_id) : undefined,
       }
 
-      const res = await authFetch(`/crm/contacts/${original.id}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "")
-        console.error("Failed to update contact", res.status, detail)
-        toast({
-          title: "Kontakt konnte nicht aktualisiert werden",
-          description: `Server: ${res.status}`,
-          variant: "destructive",
-        })
-        return false
-      }
-
+      await contactsAPI.update(String(original.id), payload)
       await refreshAll()
       sync.emit("crm:contacts:changed")
       toast({ title: "✅ Kontakt aktualisiert" })
@@ -403,106 +591,37 @@ export default function CRMPage() {
       console.error("updateContact error", err)
       toast({
         title: "Fehler beim Aktualisieren des Kontakts",
-        description: "Bitte versuchen Sie es später erneut.",
+        description: (err as any)?.message || "Bitte versuchen Sie es später erneut.",
         variant: "destructive",
       })
       return false
     }
   }
 
-  const addDeal = async () => {
-    const e: Record<string,string> = {}
-    if (!newDeal.title?.trim()) e.title = 'Deal title is required'
-    
-    setErrors(e)
-    if (Object.keys(e).length) return
-    
+  const createDeal = async (payload: {
+    title: string
+    owner: string
+    stage: string
+    probability?: number
+    value?: number
+    expected_close_date?: string
+    company_id?: number
+    contact_id?: number
+    notes?: string
+  }) => {
     try {
-      // Normalize stage to allowed backend values
-      const allowedStages = ["lead", "qualified", "proposal", "negotiation", "won", "lost"]
-      let stage = String(newDeal.stage || "lead").toLowerCase()
-      if (!allowedStages.includes(stage)) stage = "lead"
-
-      // Resolve company_id by name (best-effort)
-      let companyId: number | undefined = undefined
-      const companyName = String(newDeal.company || "").trim().toLowerCase()
-      if (companyName) {
-        const match = companies.find((c: any) =>
-          String(c.name || "").trim().toLowerCase() === companyName
-        )
-        if (match?.id) companyId = Number(match.id)
-      }
-
-      const ownerName =
-        (user as any)?.email ||
-        (user as any)?.name ||
-        "Unbekannter Besitzer"
-
-      const payload: any = {
-        company_id: companyId,
-        contact_id: undefined,
-        title: newDeal.title.trim(),
-        value: Number(newDeal.value) || 0,
-        stage,
-        probability: Number(newDeal.probability) || 0,
-        expected_close_date: newDeal.expected_close_date
-          ? new Date(newDeal.expected_close_date).toISOString()
-          : undefined,
-        owner: ownerName,
-        notes: undefined,
-      }
-
-      const res = await authFetch("/crm/deals", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "")
-        console.error("Failed to create deal", res.status, detail)
-        toast({
-          title: "Deal konnte nicht gespeichert werden",
-          description: `Server: ${res.status}`,
-          variant: "destructive",
-        })
-        return
-      }
-
-      setNewDeal({
-        title: "",
-        company: "",
-        value: "",
-        probability: 50,
-        stage: "lead",
-        expected_close_date: "",
-      })
-      setValidation({})
+      await dealsAPI.create(payload)
       await refreshAll()
       sync.emit("crm:deals:changed")
-      toast({ title: "✅ Deal hinzugefügt" })
+      toast({ title: "✅ Deal erstellt" })
     } catch (err) {
-      console.error("addDeal error", err)
+      console.error("createDeal error", err)
       toast({
-        title: "Fehler beim Speichern des Deals",
-        description: "Bitte versuchen Sie es später erneut.",
+        title: "Fehler",
+        description: (err as any)?.message || "Deal konnte nicht gespeichert werden.",
         variant: "destructive",
       })
     }
-  }
-
-  const clearForm = (entity: string) => {
-    switch (entity) {
-      case 'company':
-        setNewCompany({ name: "", website: "", email: "", phone: "" })
-        break
-      case 'contact':
-        setNewContact({ name: "", email: "", phone: "", company: "", title: "" })
-        break
-      case 'deal':
-        setNewDeal({ title: "", company: "", value: "", probability: 50, stage: "lead", expected_close_date: "" })
-        break
-    }
-    setValidation({})
-    setErrors({})
   }
 
   const removeFilter = (filter: string) => {
@@ -521,6 +640,62 @@ export default function CRMPage() {
   const wonDeals = deals.filter((deal: any) => deal.stage === 'won').length
   const conversionRate = deals.length > 0 ? Math.round((wonDeals / deals.length) * 100) : 0
 
+  const companyById = useMemo(() => {
+    const m = new Map<number, any>()
+    for (const c of companies) {
+      const id = Number((c as any)?.id)
+      if (!Number.isFinite(id)) continue
+      m.set(id, c)
+    }
+    return m
+  }, [companies])
+
+  const contactById = useMemo(() => {
+    const m = new Map<number, any>()
+    for (const c of contacts) {
+      const id = Number((c as any)?.id)
+      if (!Number.isFinite(id)) continue
+      m.set(id, c)
+    }
+    return m
+  }, [contacts])
+
+  const contactsCountByCompanyId = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const c of contacts) {
+      const cid = Number((c as any)?.company_id)
+      if (!Number.isFinite(cid)) continue
+      m.set(cid, (m.get(cid) || 0) + 1)
+    }
+    return m
+  }, [contacts])
+
+  const dealsAggByCompanyId = useMemo(() => {
+    const m = new Map<number, { count: number; pipeline: number }>()
+    for (const d of deals) {
+      const cid = Number((d as any)?.company_id)
+      if (!Number.isFinite(cid)) continue
+      const prev = m.get(cid) || { count: 0, pipeline: 0 }
+      prev.count += 1
+      prev.pipeline += Number((d as any)?.value) || 0
+      m.set(cid, prev)
+    }
+    return m
+  }, [deals])
+
+  const dealsAggByContactId = useMemo(() => {
+    const m = new Map<number, { count: number; pipeline: number }>()
+    for (const d of deals) {
+      const cid = Number((d as any)?.contact_id)
+      if (!Number.isFinite(cid)) continue
+      const prev = m.get(cid) || { count: 0, pipeline: 0 }
+      prev.count += 1
+      prev.pipeline += Number((d as any)?.value) || 0
+      m.set(cid, prev)
+    }
+    return m
+  }, [deals])
+
   const filteredCompanies = useMemo(() => {
     const q = searchQuery.toLowerCase()
     const hasStatusFilter = filters.includes("Status")
@@ -530,34 +705,55 @@ export default function CRMPage() {
     return companies.filter((company: any) => {
       const name = String(company.name || "").toLowerCase()
       const industry = String(company.industry || "").toLowerCase()
-      const owner = String((company as any).owner || "").toLowerCase()
+      const website = String(company.website || "").toLowerCase()
+      const email = String(company.email || "").toLowerCase()
 
-      const matchesSearch = !q || name.includes(q) || industry.includes(q)
+      const matchesSearch = !q || name.includes(q) || industry.includes(q) || website.includes(q) || email.includes(q)
       if (!matchesSearch) return false
 
       // Simple, easy-to-understand filters:
       if (hasStatusFilter) {
-        // показываем только активные компании
         const status = String(company.status || "active").toLowerCase()
-        if (status !== "active" && status !== "hot" && status !== "warm") return false
+        if (status !== "active") return false
       }
       if (hasIndustryFilter && !industry) return false
-      if (hasOwnerFilter && !owner) return false
+      if (hasOwnerFilter && !email && !website) return false
 
       return true
     })
   }, [companies, searchQuery, filters])
 
-  const filteredContacts = useMemo(() => contacts.filter((contact: any) =>
-    String(contact.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    String(contact.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    String(contact.company || '').toLowerCase().includes(searchQuery.toLowerCase())
-  ), [contacts, searchQuery])
+  const filteredContacts = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return contacts
+    return contacts.filter((contact: any) => {
+      const name = String(contact.name || "").toLowerCase()
+      const email = String(contact.email || "").toLowerCase()
+      const phone = String(contact.phone || "").toLowerCase()
+      const position = String(contact.position || "").toLowerCase()
+      const companyName = String(companyById.get(Number(contact.company_id))?.name || "").toLowerCase()
+      return (
+        name.includes(q) ||
+        email.includes(q) ||
+        phone.includes(q) ||
+        position.includes(q) ||
+        companyName.includes(q)
+      )
+    })
+  }, [contacts, searchQuery, companyById])
 
-  const filteredDeals = useMemo(() => deals.filter((deal: any) =>
-    String(deal.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    String(deal.company || '').toLowerCase().includes(searchQuery.toLowerCase())
-  ), [deals, searchQuery])
+  const filteredDeals = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return deals
+    return deals.filter((deal: any) => {
+      const title = String(deal.title || "").toLowerCase()
+      const stage = String(deal.stage || "").toLowerCase()
+      const owner = String(deal.owner || "").toLowerCase()
+      const companyName = String(companyById.get(Number(deal.company_id))?.name || "").toLowerCase()
+      const contactName = String(contactById.get(Number(deal.contact_id))?.name || "").toLowerCase()
+      return title.includes(q) || stage.includes(q) || owner.includes(q) || companyName.includes(q) || contactName.includes(q)
+    })
+  }, [deals, searchQuery, companyById, contactById])
 
   const getStatusColor = (status: string) => {
     switch (String(status).toLowerCase()) {
@@ -595,7 +791,14 @@ export default function CRMPage() {
               <Users className="h-5 w-5 sm:h-7 sm:w-7 text-blue-600 dark:text-white" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">CRM</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">CRM</h1>
+                {loading && (
+                  <Badge className="bg-slate-200/60 dark:bg-white/10 text-slate-700 dark:text-slate-200 border-slate-300/50 dark:border-white/10">
+                    Lädt…
+                  </Badge>
+                )}
+              </div>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 truncate">Schneller Aufbau Ihrer Datenbasis</p>
             </div>
           </div>
@@ -693,110 +896,28 @@ export default function CRMPage() {
 
           {/* COMPANIES TAB */}
           <TabsContent value="companies" className="space-y-4 sm:space-y-6">
-            {/* Add Company Form */}
+            {/* Create Company (opens dialog) */}
             <Card className="glass-card">
-              <CardHeader className="p-4 sm:p-6">
-                <CardTitle className="text-slate-900 dark:text-white flex items-center gap-2 text-sm sm:text-base">
-                  <Plus className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500" />
-                  + Neues Unternehmen
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Company Name *</label>
-                    <div className="relative">
-                      <Input 
-                        placeholder="Enter company name" 
-                        value={newCompany.name} 
-                        onChange={(e) => setNewCompany({...newCompany, name: e.target.value})}
-                        onBlur={() => handleFieldBlur('company', 'name', newCompany.name)}
-                        className="bg-white/60 dark:bg-slate-900/50 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
-                      />
-                      {validation.company_name !== undefined && (
-                        validation.company_name ? 
-                          <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-green-500" /> :
-                          <AlertCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500" />
-                      )}
-                    </div>
-                    {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
+              <CardContent className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 border border-white/10 flex items-center justify-center shrink-0">
+                    <Building2 className="h-5 w-5 text-blue-400" />
                   </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Website</label>
-                    <div className="relative">
-                      <Globe className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input 
-                        placeholder="https://company.com" 
-                        value={newCompany.website} 
-                        onChange={(e) => setNewCompany({...newCompany, website: e.target.value})}
-                        onBlur={() => handleFieldBlur('company', 'website', newCompany.website)}
-                        className="pl-10 bg-white/60 dark:bg-slate-900/50 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
-                      />
-                      {validation.company_website !== undefined && (
-                        validation.company_website ? 
-                          <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-green-500" /> :
-                          <AlertCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500" />
-                      )}
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">Unternehmen</div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">
+                      Neues Unternehmen mit erweiterten Feldern anlegen (Branche, Status, Adresse, Umsatz, Notizen).
                     </div>
-                    {errors.website && <p className="text-xs text-red-500">{errors.website}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">E-Mail</label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input 
-                        placeholder="contact@company.com" 
-                        value={newCompany.email} 
-                        onChange={(e) => setNewCompany({...newCompany, email: e.target.value})}
-                        onBlur={() => handleFieldBlur('company', 'email', newCompany.email)}
-                        className="pl-10 bg-white/60 dark:bg-slate-900/50 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
-                      />
-                      {validation.company_email !== undefined && (
-                        validation.company_email ? 
-                          <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-green-500" /> :
-                          <AlertCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500" />
-                      )}
-                    </div>
-                    {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Telefon</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input 
-                        placeholder="+41 44 123 45 67" 
-                        value={newCompany.phone} 
-                        onChange={(e) => setNewCompany({...newCompany, phone: e.target.value})}
-                        onBlur={() => handleFieldBlur('company', 'phone', newCompany.phone)}
-                        className="pl-10 bg-white/60 dark:bg-slate-900/50 border-slate-200 dark:border-white/10 text-slate-900 dark:text-white"
-                      />
-                      {validation.company_phone !== undefined && (
-                        validation.company_phone ? 
-                          <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-green-500" /> :
-                          <AlertCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500" />
-                      )}
-                    </div>
-                    {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
                   </div>
                 </div>
-
-                <div className="flex gap-3 mt-6">
-                  <Button 
-                    onClick={addCompany} 
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setEditingCompany({} as any)}
+                    disabled={!canWriteCrm}
                     className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20"
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    Add
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => clearForm('company')}
-                    className="border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                  >
-                    Clear
+                    Neues Unternehmen
                   </Button>
                 </div>
               </CardContent>
@@ -876,7 +997,8 @@ export default function CRMPage() {
                     Beginnen Sie mit dem Hinzufügen Ihres ersten Unternehmens.
                   </p>
                   <Button 
-                    onClick={() => setActiveTab('companies')}
+                    onClick={() => setEditingCompany({} as any)}
+                    disabled={!canWriteCrm}
                     className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                   >
                     <Plus className="h-4 w-4 mr-2" />
@@ -908,16 +1030,23 @@ export default function CRMPage() {
                                 <p className="text-sm text-slate-700 dark:text-slate-200">{company.industry || '—'}</p>
                               </div>
                               <div className="sm:col-span-3">
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">City</p>
-                                <p className="text-sm text-slate-700 dark:text-slate-200">{company.city || '—'}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Address</p>
+                                <p className="text-sm text-slate-700 dark:text-slate-200">{company.address || '—'}</p>
                               </div>
                               <div className="sm:col-span-3">
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Country</p>
-                                <p className="text-sm text-slate-700 dark:text-slate-200">{company.country || '—'}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Contacts</p>
+                                <p className="text-sm text-slate-700 dark:text-slate-200">
+                                  {contactsCountByCompanyId.get(Number(company.id)) || 0}
+                                </p>
                               </div>
                               <div className="sm:col-span-3">
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Pipeline</p>
-                                <p className="text-sm text-slate-700 dark:text-slate-200">CHF {(((company as any).pipelineValue || 0) / 1000).toFixed(0)}K</p>
+                                <p className="text-sm text-slate-700 dark:text-slate-200">
+                                  CHF {(((dealsAggByCompanyId.get(Number(company.id))?.pipeline || 0) as number) / 1000).toFixed(0)}K{" "}
+                                  <span className="text-slate-500 dark:text-slate-400">
+                                    · {(dealsAggByCompanyId.get(Number(company.id))?.count || 0) as number} deals
+                                  </span>
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -997,50 +1126,52 @@ export default function CRMPage() {
                     </div>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
-                    <div className="text-slate-400 mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> City</div>
-                    <div className="font-medium">{viewingCompany.city || '—'}</div>
+                    <div className="text-slate-400 mb-1">E-Mail</div>
+                    <div className="font-medium break-all">{viewingCompany.email || "—"}</div>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
-                    <div className="text-slate-400 mb-1 flex items-center gap-1"><Globe className="h-3 w-3" /> Country</div>
-                    <div className="font-medium">{viewingCompany.country || '—'}</div>
+                    <div className="text-slate-400 mb-1">Telefon</div>
+                    <div className="font-medium">{viewingCompany.phone || "—"}</div>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 col-span-2">
-                    <div className="text-slate-400 mb-1">Owner</div>
-                    <div className="font-medium">{viewingCompany.owner?.name || '—'}</div>
+                    <div className="text-slate-400 mb-1">Address</div>
+                    <div className="font-medium whitespace-pre-wrap">{viewingCompany.address || "—"}</div>
                   </div>
-                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 col-span-2">
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
+                    <div className="text-slate-400 mb-1">Employees</div>
+                    <div className="font-medium">{viewingCompany.employees ?? "—"}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
+                    <div className="text-slate-400 mb-1">Revenue (CHF)</div>
+                    <div className="font-medium">{viewingCompany.revenue ?? "—"}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
+                    <div className="text-slate-400 mb-1">Contacts</div>
+                    <div className="font-medium">{contactsCountByCompanyId.get(Number(viewingCompany.id)) || 0}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
                     <div className="text-slate-400 mb-1">Pipeline</div>
-                    <div className="font-medium">CHF {(((viewingCompany as any).pipelineValue || 0) / 1000).toFixed(0)}K</div>
+                    <div className="font-medium">
+                      CHF {(((dealsAggByCompanyId.get(Number(viewingCompany.id))?.pipeline || 0) as number) / 1000).toFixed(0)}K{" "}
+                      <span className="text-slate-500 dark:text-slate-400">
+                        · {(dealsAggByCompanyId.get(Number(viewingCompany.id))?.count || 0) as number} deals
+                      </span>
+                    </div>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 col-span-2">
-                    <div className="text-slate-400 mb-1">Beschreibung</div>
-                    <div className="font-medium whitespace-pre-wrap text-slate-200">{viewingCompany.description || '—'}</div>
+                    <div className="text-slate-400 mb-1">Notizen</div>
+                    <div className="font-medium whitespace-pre-wrap">{viewingCompany.notes || "—"}</div>
                   </div>
                 </div>
 
                 {/* Footer actions */}
                 <div className="mt-5 flex items-center justify-end gap-2">
                   <Button variant="outline" onClick={()=> setViewingCompany(null)}>Schließen</Button>
-                  <Button disabled>Bearbeiten (bald)</Button>
+                  <Button onClick={() => { setEditingCompany(viewingCompany); setViewingCompany(null) }} disabled={!canWriteCrm}>
+                    Bearbeiten
+                  </Button>
                 </div>
               </>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Contact view & edit dialog */}
-        <Dialog open={!!viewingContact} onOpenChange={(o:boolean)=>{ if (!o) setViewingContact(null) }}>
-          <DialogContent className="max-w-lg w-[min(90vw,560px)] bg-white dark:bg-slate-900/80 border-slate-200 dark:border-white/10 backdrop-blur-xl p-6">
-            {viewingContact && (
-              <ContactDetailForm
-                contact={viewingContact}
-                companies={companies}
-                onClose={()=> setViewingContact(null)}
-                onSave={async (updates)=> {
-                  const ok = await updateContact(viewingContact, updates)
-                  if (ok) setViewingContact(null)
-                }}
-              />
             )}
           </DialogContent>
         </Dialog>
@@ -1070,112 +1201,46 @@ export default function CRMPage() {
           onSuccess={async ()=>{ setEditingCompany(null); await refreshAll(); sync.emit('crm:companies:changed') }}
         />
 
+        <ContactCreateDialog
+          open={createContactOpen}
+          onOpenChange={setCreateContactOpen}
+          companies={companies}
+          onCreate={createContact}
+        />
+
+        <DealCreateDialog
+          open={createDealOpen}
+          onOpenChange={setCreateDealOpen}
+          companies={companies}
+          contacts={contacts}
+          defaultOwner={(user as any)?.email || (user as any)?.name || "Unbekannter Besitzer"}
+          onCreate={createDeal}
+        />
+
           {/* CONTACTS TAB */}
-          <TabsContent value="contacts" className="space-y-6">
-            {/* Add Contact Form */}
-            <Card className="bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-800/80 shadow-lg">
-              <CardHeader>
-                <CardTitle className="text-slate-900 dark:text-white flex items-center gap-2">
-                  <Plus className="h-5 w-5 text-blue-500" />
-                  + Neuen Kontakt hinzufügen
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Full Name *</label>
-                    <div className="relative">
-                      <Input 
-                        placeholder="Enter full name" 
-                        value={newContact.name} 
-                        onChange={(e) => setNewContact({...newContact, name: e.target.value})}
-                        onBlur={() => handleFieldBlur('contact', 'name', newContact.name)}
-                        className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                      />
-                      {validation.contact_name !== undefined && (
-                        validation.contact_name ? 
-                          <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-green-500" /> :
-                          <AlertCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500" />
-                      )}
+          <TabsContent value="contacts" className="space-y-4 sm:space-y-6">
+            {/* Create Contact (opens dialog) */}
+            <Card className="glass-card">
+              <CardContent className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 border border-white/10 flex items-center justify-center shrink-0">
+                    <Users className="h-5 w-5 text-blue-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">Kontakte</div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">
+                      Kontakt per Dialog anlegen (Vorname/Nachname, Position, Firma, E-Mail, Telefon).
                     </div>
-                    {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">E-Mail</label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input 
-                        placeholder="contact@email.com" 
-                        value={newContact.email} 
-                        onChange={(e) => setNewContact({...newContact, email: e.target.value})}
-                        onBlur={() => handleFieldBlur('contact', 'email', newContact.email)}
-                        className="pl-10 bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                      />
-                      {validation.contact_email !== undefined && (
-                        validation.contact_email ? 
-                          <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-green-500" /> :
-                          <AlertCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500" />
-                      )}
-                    </div>
-                    {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Phone</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input 
-                        placeholder="+41 44 123 45 67" 
-                        value={newContact.phone} 
-                        onChange={(e) => setNewContact({...newContact, phone: e.target.value})}
-                        onBlur={() => handleFieldBlur('contact', 'phone', newContact.phone)}
-                        className="pl-10 bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                      />
-                      {validation.contact_phone !== undefined && (
-                        validation.contact_phone ? 
-                          <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-green-500" /> :
-                          <AlertCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500" />
-                      )}
-                    </div>
-                    {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Company</label>
-                    <Input 
-                      placeholder="Company name" 
-                      value={newContact.company} 
-                      onChange={(e) => setNewContact({...newContact, company: e.target.value})}
-                      className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Title</label>
-                    <Input 
-                      placeholder="Job title" 
-                      value={newContact.title} 
-                      onChange={(e) => setNewContact({...newContact, title: e.target.value})}
-                      className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
                   </div>
                 </div>
-
-                <div className="flex gap-3 mt-6">
-                  <Button 
-                    onClick={addContact} 
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setCreateContactOpen(true)}
+                    disabled={!canWriteCrm}
                     className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20"
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    Add
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => clearForm('contact')}
-                    className="border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                  >
-                    Clear
+                    Neuer Kontakt
                   </Button>
                 </div>
               </CardContent>
@@ -1190,13 +1255,12 @@ export default function CRMPage() {
                       <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20">
                         {String(contact.name || '?').split(' ').map((p: string) => p[0]).slice(0, 2).join('')}
                       </div>
-                      <Badge className={getStatusColor((contact as any).status || 'active')}>
-                        {(contact as any).status || 'active'}
-                      </Badge>
                     </div>
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">{contact.name}</h3>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">{contact.title || '—'}</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{contact.company || '—'}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">{contact.position || '—'}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                      {companyById.get(Number(contact.company_id))?.name || '—'}
+                    </p>
                     <div className="space-y-2 mb-4">
                       <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                         <Mail className="h-3 w-3" />
@@ -1210,11 +1274,15 @@ export default function CRMPage() {
                     <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
                       <div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">Pipeline</p>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">CHF {((((contact as any).value) || 0) / 1000).toFixed(0)}K</p>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          CHF {(((dealsAggByContactId.get(Number(contact.id))?.pipeline || 0) as number) / 1000).toFixed(0)}K
+                        </p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">Deals</p>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{(contact as any).deals || 0}</p>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          {(dealsAggByContactId.get(Number(contact.id))?.count || 0) as number}
+                        </p>
                       </div>
                       <Button
                         variant="ghost"
@@ -1233,95 +1301,29 @@ export default function CRMPage() {
           </TabsContent>
 
           {/* DEALS TAB */}
-          <TabsContent value="deals" className="space-y-6">
-            {/* Add Deal Form */}
-            <Card className="bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-800/80 shadow-lg">
-              <CardHeader>
-                <CardTitle className="text-slate-900 dark:text-white flex items-center gap-2">
-                  <Plus className="h-5 w-5 text-blue-500" />
-                  + Neuen Deal hinzufügen
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Deal Title *</label>
-                    <Input 
-                      placeholder="Enter deal title" 
-                      value={newDeal.title} 
-                      onChange={(e) => setNewDeal({...newDeal, title: e.target.value})}
-                      className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
-                    {errors.title && <p className="text-xs text-red-500">{errors.title}</p>}
+          <TabsContent value="deals" className="space-y-4 sm:space-y-6">
+            {/* Create Deal (opens dialog) */}
+            <Card className="glass-card">
+              <CardContent className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 border border-white/10 flex items-center justify-center shrink-0">
+                    <Target className="h-5 w-5 text-blue-400" />
                   </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Company</label>
-                    <Input 
-                      placeholder="Company name" 
-                      value={newDeal.company} 
-                      onChange={(e) => setNewDeal({...newDeal, company: e.target.value})}
-                      className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Value (CHF)</label>
-                    <Input 
-                      placeholder="50000" 
-                      type="number" 
-                      value={newDeal.value} 
-                      onChange={(e) => setNewDeal({...newDeal, value: e.target.value})}
-                      className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Probability %</label>
-                    <Input 
-                      placeholder="50" 
-                      type="number" 
-                      value={newDeal.probability} 
-                      onChange={(e) => setNewDeal({...newDeal, probability: e.target.value})}
-                      className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Stage</label>
-                    <Input 
-                      placeholder="lead" 
-                      value={newDeal.stage} 
-                      onChange={(e) => setNewDeal({...newDeal, stage: e.target.value})}
-                      className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Close Date</label>
-                    <Input 
-                      placeholder="2024-12-31" 
-                      value={newDeal.expected_close_date} 
-                      onChange={(e) => setNewDeal({...newDeal, expected_close_date: e.target.value})}
-                      className="bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                    />
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">Deals</div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400">
+                      Deal per Dialog anlegen (Stage, Wert, Wahrscheinlichkeit, Owner, Close Date, Notizen).
+                    </div>
                   </div>
                 </div>
-
-                <div className="flex gap-3 mt-6">
-                  <Button 
-                    onClick={addDeal} 
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setCreateDealOpen(true)}
+                    disabled={!canWriteCrm}
                     className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20"
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    Add
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => clearForm('deal')}
-                    className="border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                  >
-                    Clear
+                    Neuer Deal
                   </Button>
                 </div>
               </CardContent>
@@ -1358,18 +1360,22 @@ export default function CRMPage() {
                             </div>
                             <div>
                               <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Company</p>
-                              <p className="text-sm text-slate-700 dark:text-slate-200">{deal.company || '—'}</p>
+                              <p className="text-sm text-slate-700 dark:text-slate-200">
+                                {companyById.get(Number(deal.company_id))?.name || '—'}
+                              </p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                {contactById.get(Number(deal.contact_id))?.name || '—'}
+                              </p>
                             </div>
                             <div>
                               <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Close Date</p>
                               <p className="text-sm text-slate-700 dark:text-slate-200">
-                                {deal.expected_close_date ? new Date(deal.expected_close_date).toLocaleDateString() : 
-                                 (deal.closeDate ? new Date(deal.closeDate).toLocaleDateString() : '—')}
+                                {deal.expected_close_date ? new Date(deal.expected_close_date).toLocaleDateString() : '—'}
                               </p>
                             </div>
                             <div>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Next Action</p>
-                              <p className="text-sm text-blue-600 dark:text-blue-400">{deal.nextAction || '—'}</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Owner</p>
+                              <p className="text-sm text-slate-700 dark:text-slate-200">{deal.owner || '—'}</p>
                             </div>
                           </div>
                         </div>

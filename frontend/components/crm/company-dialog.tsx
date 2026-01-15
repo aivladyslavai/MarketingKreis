@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { companiesAPI } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -38,8 +38,8 @@ const emptyCompany: Company = {
   phone: "",
   email: "",
   address: "",
-  employees: 0,
-  revenue: 0,
+  employees: undefined,
+  revenue: undefined,
   status: "prospect",
   notes: "",
 }
@@ -67,19 +67,33 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
     setLoading(true)
 
     try {
+      const payload: Company = {
+        ...formData,
+        name: String(formData.name || "").trim(),
+        industry: (formData.industry || "").trim() || undefined,
+        website: (formData.website || "").trim() || undefined,
+        phone: (formData.phone || "").trim() || undefined,
+        email: (formData.email || "").trim() || undefined,
+        address: (formData.address || "").trim() || undefined,
+        notes: (formData.notes || "").trim() || undefined,
+        status: (formData.status || "prospect").trim() || "prospect",
+        employees: typeof formData.employees === "number" ? formData.employees : undefined,
+        revenue: typeof formData.revenue === "number" ? formData.revenue : undefined,
+      }
+
       if (company?.id) {
         // Update existing company
-        await companiesAPI.update(company.id, formData)
+        await companiesAPI.update(company.id, payload)
         toast({
-          title: "Success",
-          description: "Company updated successfully",
+          title: "✅ Unternehmen gespeichert",
+          description: "Änderungen wurden übernommen.",
         })
       } else {
         // Create new company
-        await companiesAPI.create(formData)
+        await companiesAPI.create(payload)
         toast({
-          title: "Success",
-          description: "Company created successfully",
+          title: "✅ Unternehmen erstellt",
+          description: "Das Unternehmen wurde angelegt.",
         })
       }
       onOpenChange(false)
@@ -88,8 +102,8 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
     } catch (error: any) {
       console.error('Company save error:', error)
       toast({
-        title: "Error",
-        description: error.message || "Failed to save company",
+        title: "Fehler",
+        description: error.message || "Unternehmen konnte nicht gespeichert werden",
         variant: "destructive",
       })
     } finally {
@@ -103,9 +117,13 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900/80 border-slate-200 dark:border-white/10 backdrop-blur-xl">
         <DialogHeader>
-          <DialogTitle>{company?.id ? 'Edit Company' : 'New Company'}</DialogTitle>
+          <DialogTitle>
+            <span className="text-slate-900 dark:text-white">
+              {company?.id ? "Unternehmen bearbeiten" : "Neues Unternehmen"}
+            </span>
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
@@ -166,16 +184,16 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
               </div>
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>
-                <select
-                  id="status"
-                  value={formData.status || 'prospect'}
-                  onChange={(e) => handleChange('status', e.target.value)}
-                  className="w-full h-10 px-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="prospect">Prospect</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+                <Select value={String(formData.status || "prospect")} onValueChange={(v) => handleChange("status", v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Status wählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="prospect">Prospect</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -185,8 +203,10 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
                 <Input
                   id="employees"
                   type="number"
-                  value={formData.employees || 0}
-                  onChange={(e) => handleChange('employees', parseInt(e.target.value) || 0)}
+                  value={formData.employees ?? ""}
+                  onChange={(e) =>
+                    handleChange("employees", e.target.value === "" ? undefined : parseInt(e.target.value) || 0)
+                  }
                   min="0"
                 />
               </div>
@@ -195,8 +215,10 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
                 <Input
                   id="revenue"
                   type="number"
-                  value={formData.revenue || 0}
-                  onChange={(e) => handleChange('revenue', parseFloat(e.target.value) || 0)}
+                  value={formData.revenue ?? ""}
+                  onChange={(e) =>
+                    handleChange("revenue", e.target.value === "" ? undefined : parseFloat(e.target.value) || 0)
+                  }
                   min="0"
                   step="1000"
                 />
@@ -231,10 +253,10 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
               onClick={() => onOpenChange(false)}
               disabled={loading}
             >
-              Cancel
+              Abbrechen
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : company?.id ? 'Update' : 'Create'}
+              {loading ? "Speichern…" : company?.id ? "Speichern" : "Erstellen"}
             </Button>
           </DialogFooter>
         </form>
