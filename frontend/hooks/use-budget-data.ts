@@ -67,9 +67,12 @@ export function useBudgetData() {
         for (const d of deals) {
           const cat = categoryMap[d?.company?.industry || "Technology"] || "VERKAUFSFOERDERUNG"
           const value = Number(d?.value) || 0
+          const stage = String(d?.stage || "").toLowerCase()
           byCat[cat].planned += value
-          if (d?.stage === "WON") byCat[cat].actual += value
-          else if (["NEGOTIATION", "PROPOSAL"].includes(String(d?.stage))) byCat[cat].actual += value * ((Number(d?.probability) || 0) / 100)
+          if (stage === "won") byCat[cat].actual += value
+          else if (["negotiation", "proposal"].includes(stage)) {
+            byCat[cat].actual += value * ((Number(d?.probability) || 0) / 100)
+          }
         }
 
         const budgetPlans: BudgetPlan[] = Object.entries(byCat).map(([category, data], i) => ({
@@ -83,7 +86,7 @@ export function useBudgetData() {
 
         const totalPlanned = Object.values(byCat).reduce((s, v) => s + v.planned, 0)
         const totalActual = Object.values(byCat).reduce((s, v) => s + v.actual, 0)
-        const won = deals.filter((d) => d?.stage === "WON").length
+        const won = deals.filter((d) => String(d?.stage || "").toLowerCase() === "won").length
         const conversion = deals.length ? (won / deals.length) * 100 : 0
 
         const kpiTargets: KPITarget[] = [

@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useBudgetData } from "@/hooks/use-budget-data"
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from "recharts"
-import { DollarSign, Handshake, Target, RefreshCw, Wallet } from "lucide-react"
+import { AlertTriangle, DollarSign, Handshake, Target, RefreshCw, Wallet } from "lucide-react"
+import { motion } from "framer-motion"
 import { useEffect, useMemo, useState } from "react"
 
 export default function BudgetPage() {
@@ -13,6 +14,7 @@ export default function BudgetPage() {
   const [pct, setPct] = useState(20)
   const [elasticity, setElasticity] = useState(0.8)
   const [scenario, setScenario] = useState<any | null>(null)
+  const [scenarioLoading, setScenarioLoading] = useState(false)
   const [scenarioOpen, setScenarioOpen] = useState(true)
 
   const period = useMemo(() => {
@@ -21,6 +23,7 @@ export default function BudgetPage() {
   }, [])
 
   async function runScenario(p: number, e: number) {
+    setScenarioLoading(true)
     try {
       const res = await fetch('/api/budget/scenario', {
         method: 'POST',
@@ -37,6 +40,8 @@ export default function BudgetPage() {
       else setScenario({ error: json?.detail || json?.error })
     } catch (err: any) {
       setScenario({ error: err?.message || 'Scenario failed' })
+    } finally {
+      setScenarioLoading(false)
     }
   }
 
@@ -47,8 +52,17 @@ export default function BudgetPage() {
 
   if (loading || !budgetData) {
     return (
-      <div className="p-8 space-y-6">
-        <Card className="glass-card"><CardHeader><CardTitle className="text-white">Budget & KPIs</CardTitle></CardHeader><CardContent><p className="text-slate-300">Laden...</p></CardContent></Card>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16]">
+        <div className="p-6 sm:p-8 space-y-6">
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="text-white">Budget & KPIs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-slate-300">Laden...</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     )
   }
@@ -93,10 +107,19 @@ export default function BudgetPage() {
     )
   }
 
+  const pctFill = Math.round(((pct - (-50)) / (100 - (-50))) * 100)
+  const elFill = Math.round(((elasticity - 0) / (1.5 - 0)) * 100)
+
   return (
-    <div className="p-4 sm:p-6 md:p-8 pb-24 md:pb-8 space-y-6 sm:space-y-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16]">
+      <div className="p-4 sm:p-6 md:p-8 pb-24 md:pb-8 space-y-6 sm:space-y-8">
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-6 sm:p-8">
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45 }}
+        className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-6 sm:p-8"
+      >
         <div className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl animate-gradient-shift" />
         <div className="pointer-events-none absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-gradient-to-tr from-cyan-500/30 to-emerald-500/30 blur-3xl animate-gradient-shift" />
         <div className="flex items-center justify-between">
@@ -114,10 +137,17 @@ export default function BudgetPage() {
             <Button variant="outline" className="glass-card" onClick={()=> alert('Bearbeitung der Ziele – kommt bald')}>Ziele bearbeiten</Button>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Budget Scenario – premium controls (collapsible) */}
-      <Card className="glass-card overflow-hidden border border-white/15 bg-slate-950/80">
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.05 }}
+        className="relative"
+      >
+        <div className="pointer-events-none absolute -inset-8 rounded-[28px] bg-gradient-to-r from-blue-500/15 via-fuchsia-500/10 to-emerald-500/15 blur-2xl" />
+        <Card className="glass-card relative overflow-hidden border border-white/15 bg-slate-950/80">
         <CardHeader
           className="border-b border-white/10 px-5 sm:px-6 pt-4 pb-4 cursor-pointer select-none"
           onClick={() => setScenarioOpen((v) => !v)}
@@ -196,13 +226,24 @@ export default function BudgetPage() {
                   max={100}
                   value={pct}
                   onChange={e => setPct(Number(e.target.value))}
-                  className="w-full accent-blue-500"
+                  className="mk-range"
+                  style={
+                    {
+                      ["--mk-range-pct" as any]: pctFill,
+                      ["--mk-range-fill" as any]: "rgba(59, 130, 246, 0.95)",
+                    } as any
+                  }
                 />
                 <Input
                   value={pct}
                   onChange={e => setPct(Number(e.target.value || 0))}
                   className="w-20 h-9 bg-slate-900/70 border-slate-700 text-slate-100"
                 />
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-slate-500">
+                <span>-50%</span>
+                <span>0%</span>
+                <span>+100%</span>
               </div>
             </div>
             <div className="space-y-2">
@@ -220,7 +261,13 @@ export default function BudgetPage() {
                   step={0.05}
                   value={elasticity}
                   onChange={e => setElasticity(Number(e.target.value))}
-                  className="w-full accent-emerald-500"
+                  className="mk-range"
+                  style={
+                    {
+                      ["--mk-range-pct" as any]: elFill,
+                      ["--mk-range-fill" as any]: "rgba(16, 185, 129, 0.95)",
+                    } as any
+                  }
                 />
                 <Input
                   value={elasticity}
@@ -228,20 +275,58 @@ export default function BudgetPage() {
                   className="w-20 h-9 bg-slate-900/70 border-slate-700 text-slate-100"
                 />
               </div>
+              <div className="flex items-center justify-between text-[10px] text-slate-500">
+                <span>0.00</span>
+                <span>0.75</span>
+                <span>1.50</span>
+              </div>
             </div>
             <div className="flex items-end">
               <Button
                 className="button-glow w-full h-10 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400"
                 onClick={() => runScenario(pct, elasticity)}
+                disabled={scenarioLoading}
               >
-                Recalculate
+                {scenarioLoading ? (
+                  <span className="inline-flex items-center">
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Recalculate…
+                  </span>
+                ) : (
+                  "Recalculate"
+                )}
               </Button>
             </div>
           </div>
 
           {scenario?.error && (
-            <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
-              {String(scenario.error)}
+            <div className="rounded-xl border border-amber-400/35 bg-amber-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 h-9 w-9 rounded-xl bg-amber-500/15 border border-amber-400/30 flex items-center justify-center">
+                  <AlertTriangle className="h-5 w-5 text-amber-200" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-amber-100">Scenario konnte nicht geladen werden</div>
+                  <div className="mt-1 text-xs text-amber-100/80 break-words">{String(scenario.error)}</div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="glass-card border-amber-300/20 text-amber-100 hover:text-amber-50"
+                      onClick={() => runScenario(pct, elasticity)}
+                      disabled={scenarioLoading}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Retry
+                    </Button>
+                    {String(scenario.error).toLowerCase().includes("backend_url") && (
+                      <div className="text-[11px] text-amber-100/70">
+                        Hinweis: In Vercel muss <span className="font-semibold">BACKEND_URL</span> gesetzt sein.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -271,6 +356,7 @@ export default function BudgetPage() {
           )}
         </CardContent>
       </Card>
+      </motion.div>
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -380,6 +466,7 @@ export default function BudgetPage() {
       {error && (
         <p className="text-xs text-amber-300">Hinweis: {error}</p>
       )}
+      </div>
     </div>
   )
 }
