@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -18,6 +18,17 @@ class CalendarEntry(Base):
     event_type = Column(String(50), nullable=True)
     status = Column(String(50), nullable=True)  # e.g. PLANNED, ACTIVE, DONE, CANCELLED
     color = Column(String(32), nullable=True)
+    # User-defined category (e.g. Marketing circle ring / label)
+    category = Column(String(255), nullable=True)
+    # Optional metadata
+    location = Column(String(255), nullable=True)
+    attendees = Column(JSON, nullable=True)  # list[str]
+    priority = Column(String(20), nullable=True)  # low|medium|high|urgent (frontend)
+    # Simple recurrence structure:
+    # { freq: daily|weekly|monthly, interval?: int, count?: int, until?: YYYY-MM-DD }
+    recurrence = Column(JSON, nullable=True)
+    # Dates to skip for a series (YYYY-MM-DD)
+    recurrence_exceptions = Column(JSON, nullable=True)  # list[str]
 
     # Links into CRM / user domain
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)

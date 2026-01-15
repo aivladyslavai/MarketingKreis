@@ -20,7 +20,8 @@ const SimpleCalendar = dynamic(() => import("@/components/calendar/simple-calend
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, LineChart, Line } from "recharts"
 
 export default function CalendarPage() {
-  const { events, isLoading, error, createEvent, updateEvent, deleteEvent, refresh, addExceptionDate } = useCalendarApi() as any
+  const { events, isLoading, error, createEvent, updateEvent, deleteEvent, refresh, addExceptionDate, getExceptions } =
+    useCalendarApi() as any
   const { openModal } = useModal()
   const [companies, setCompanies] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
@@ -78,8 +79,14 @@ export default function CalendarPage() {
   
   // Convert CalendarEvent to Activity format + expand recurrences
   const safeEvents = Array.isArray(events) ? events : []
+  const now = new Date()
+  const horizonStart = new Date(now.getFullYear() - 1, 0, 1, 0, 0, 0, 0)
+  const horizonEnd = new Date(now.getFullYear() + 1, 11, 31, 23, 59, 59, 999)
   const expandRecurrence = (e: any): Activity[] => {
     const rec = (e as any).recurrence
+    const serverExceptions = Array.isArray((e as any).recurrence_exceptions) ? ((e as any).recurrence_exceptions as string[]) : []
+    const localExceptions = typeof getExceptions === "function" ? (getExceptions(String(e.id)) as string[]) : []
+    const exceptionSet = new Set<string>([...serverExceptions, ...(Array.isArray(localExceptions) ? localExceptions : [])])
     const companyId = (e as any).company_id
     const projectId = (e as any).project_id
     const company = companies.find((c: any) => String(c.id ?? c._id) === String(companyId))
@@ -112,26 +119,32 @@ export default function CalendarPage() {
     if (!rec || !rec.freq) return [base]
     const occurrences: Activity[] = []
     const interval = Math.max(1, rec.interval || 1)
-    const maxCount = Math.min(rec.count || 60, 120)
-    const until = rec.until ? new Date(rec.until) : null
+    const maxCount = Math.min(rec.count || 5000, 5000)
+    const untilIso =
+      typeof rec.until === "string" && String(rec.until).trim()
+        ? String(rec.until).trim().slice(0, 10)
+        : null
     let cursor = new Date(e.start)
     let i = 0
     while (i < maxCount) {
-      const iso = cursor.toISOString().slice(0,10)
-      occurrences.push({
-        ...base,
-        id: `${e.id}::${iso}`,
-        // @ts-ignore
-        sourceId: String(e.id),
-        // @ts-ignore
-        occurrenceDateISO: iso,
-        start: new Date(cursor),
-      })
+      if (cursor > horizonEnd) break
+      const iso = format(cursor, "yyyy-MM-dd")
+      if (untilIso && iso > untilIso) break
+      if (cursor >= horizonStart && cursor <= horizonEnd && !exceptionSet.has(iso)) {
+        occurrences.push({
+          ...base,
+          id: `${e.id}::${iso}`,
+          // @ts-ignore
+          sourceId: String(e.id),
+          // @ts-ignore
+          occurrenceDateISO: iso,
+          start: new Date(cursor),
+        })
+      }
       if (rec.freq === 'daily') cursor.setDate(cursor.getDate() + interval)
       else if (rec.freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * interval)
       else cursor.setMonth(cursor.getMonth() + interval)
       i++
-      if (until && cursor > until) break
     }
     return occurrences
   }
@@ -239,18 +252,37 @@ export default function CalendarPage() {
                 if (updates.title !== undefined) payload.title = updates.title
                 if ((updates as any).notes !== undefined) payload.description = (updates as any).notes
                 if ((updates as any).status !== undefined) payload.status = (updates as any).status
+                if ((updates as any).start !== undefined) {
+                  payload.start =
+                    updates.start instanceof Date
+                      ? (updates.start as Date).toISOString()
+                      : String(updates.start)
+                }
+                if ((updates as any).end !== undefined) {
+                  payload.end =
+                    updates.end instanceof Date
+                      ? (updates.end as Date).toISOString()
+                      : (updates.end ? String(updates.end) : undefined)
+                }
+                if ((updates as any).color !== undefined) payload.color = (updates as any).color
+                if ((updates as any).category !== undefined) payload.category = (updates as any).category
                 if (opts?.scope === 'only' && opts?.occurrenceDateISO && opts?.sourceId) {
                   // detach one occurrence: create a new event on that date and add exception to series locally
                   addExceptionDate(opts.sourceId, opts.occurrenceDateISO)
+                  // persist exception to backend (cross-browser)
+                  await updateEvent(String(opts.sourceId), { add_exception_date: opts.occurrenceDateISO } as any)
+                  const series = safeEvents.find((ev: any) => String(ev?.id) === String(opts.sourceId)) as any
                   await createEvent({
                     title: payload.title || updates.title,
                     description: payload.description,
                     status: payload.status,
-                    start: updates.start || (opts.occurrenceDateISO + 'T09:00:00'),
-                    end: updates.end,
+                    start: payload.start || (opts.occurrenceDateISO + 'T09:00:00'),
+                    end: payload.end,
                     type: 'event',
-                    category: updates.category,
-                    color: updates.color,
+                    category: payload.category || series?.category,
+                    color: payload.color || series?.color,
+                    company_id: series?.company_id ?? undefined,
+                    project_id: series?.project_id ?? undefined,
                   })
                 } else {
                   await updateEvent(String(id).split('::')[0], payload)
@@ -259,7 +291,20 @@ export default function CalendarPage() {
               } catch {}
             }}
             onDeleteActivity={async (id) => {
-              try { await deleteEvent(id as any); refresh() } catch {}
+              try {
+                const s = String(id)
+                if (s.includes('::')) {
+                  const [sourceId, iso] = s.split('::')
+                  if (sourceId && iso) {
+                    addExceptionDate(sourceId, iso)
+                    await updateEvent(String(sourceId), { add_exception_date: iso } as any)
+                    refresh()
+                    return
+                  }
+                }
+                await deleteEvent(id as any)
+                refresh()
+              } catch {}
             }}
             onDuplicateActivity={async (activity) => {
               // quick duplicate: create a new event on the same date with same title/category/color
@@ -271,6 +316,8 @@ export default function CalendarPage() {
                 type: 'event',
                 color: (activity as any).color,
                 category: activity.category,
+                company_id: (activity as any).companyId,
+                project_id: (activity as any).projectId,
               } as any)
               refresh()
             }}
@@ -337,6 +384,14 @@ function CalendarCreateForm({ date, companies, onCreate }: { date: Date; compani
   const [recInterval, setRecInterval] = useState<number>(1)
   const [recCount, setRecCount] = useState<number>(0)
   const [recUntil, setRecUntil] = useState<string>("")
+  const recEnabled = recFreq !== 'none'
+  useEffect(() => {
+    if (!recEnabled) {
+      setRecInterval(1)
+      setRecCount(0)
+      setRecUntil("")
+    }
+  }, [recEnabled])
 
   // Helper: produce local demo suggestions when server AI is unavailable or company is not selected
   const generateLocalSuggestion = () => {
@@ -360,15 +415,30 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
   const makeSuggestion = async () => {
     setAiLoading(true)
     try {
-      if (selectedCompanyId) {
-        const base = (process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '')
-        const url = `${base}/ai/activity_suggest`
-        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ company_id: selectedCompanyId, draft: { title, description, type: activityType } }) }).catch(()=>null)
-        const data = await (res ? res.json().catch(()=>({})) : ({}))
-        if (data?.title || data?.description) {
-          setAiPreview({ title: data.title, desc: data.description })
-          return
-        }
+      const url = `${apiBase}/ai/activity_suggest`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        cache: 'no-store',
+        body: JSON.stringify({
+          company_id: selectedCompanyId || undefined,
+          draft: {
+            title,
+            description,
+            type: activityType,
+            date: when,
+            startTime,
+            endTime,
+            priority,
+            recurrence: recFreq === 'none' ? undefined : { freq: recFreq, interval: recInterval || 1, count: recCount || undefined, until: recUntil || undefined },
+          }
+        })
+      }).catch(()=>null)
+      const data = await (res ? res.json().catch(()=>({})) : ({}))
+      if (data?.title || data?.description) {
+        setAiPreview({ title: data.title, desc: data.description })
+        return
       }
       const { t, d } = generateLocalSuggestion()
       setAiPreview({ title: t, desc: d })
@@ -379,12 +449,24 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
     if (!aiPreview) return
     setAiLoading(true)
     try {
-      const base = (process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '')
-      const url = `${base}/ai/activity_suggest`
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        company_id: selectedCompanyId || undefined,
-        prompt: { title: aiPreview.title, description: aiPreview.desc }
-      }) }).catch(()=>null)
+      const url = `${apiBase}/ai/activity_suggest`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        cache: 'no-store',
+        body: JSON.stringify({
+          company_id: selectedCompanyId || undefined,
+          prompt: { title: aiPreview.title, description: aiPreview.desc },
+          draft: {
+            type: activityType,
+            date: when,
+            startTime,
+            endTime,
+            priority,
+          }
+        })
+      }).catch(()=>null)
       const data = await (res ? res.json().catch(()=>({})) : ({}))
       if (data?.title || data?.description) {
         setAiPreview({ title: data.title || aiPreview.title, desc: data.description || aiPreview.desc })
@@ -592,15 +674,15 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
           </div>
           <div className="grid gap-2">
             <Label>Intervall</Label>
-            <Input type="number" min={1} value={recInterval} onChange={(e)=> setRecInterval(Number(e.target.value || 1))} />
+            <Input type="number" min={1} value={recInterval} disabled={!recEnabled} onChange={(e)=> setRecInterval(Number(e.target.value || 1))} />
           </div>
           <div className="grid gap-2">
             <Label>Wiederholungen (optional)</Label>
-            <Input type="number" min={0} value={recCount} onChange={(e)=> setRecCount(Number(e.target.value || 0))} placeholder="0 = unbegrenzt/bis Datum" />
+            <Input type="number" min={0} value={recCount} disabled={!recEnabled} onChange={(e)=> setRecCount(Number(e.target.value || 0))} placeholder="0 = unbegrenzt/bis Datum" />
           </div>
           <div className="grid gap-2">
             <Label>Bis (optional)</Label>
-            <Input type="date" value={recUntil} onChange={(e)=> setRecUntil(e.target.value)} />
+            <Input type="date" value={recUntil} disabled={!recEnabled} onChange={(e)=> setRecUntil(e.target.value)} />
                   </div>
                                 </div>
 

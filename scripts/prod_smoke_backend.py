@@ -199,7 +199,53 @@ def main() -> int:
         return 9
     print("OK crm company create (+extra fields)")
 
-    # 4) Upload + import
+    # 4) Create Calendar event with recurrence (verifies calendar sync)
+    cal_title = f"E2E Smoke Calendar {run_id}"
+    cal_payload = {
+        "title": cal_title,
+        "description": "prod-smoke calendar",
+        "type": "meeting",
+        "status": "PLANNED",
+        "color": "#3b82f6",
+        "category": "meeting",
+        "priority": "medium",
+        "start": "2026-01-10T09:00:00Z",
+        "end": "2026-01-10T10:00:00Z",
+        "recurrence": {"freq": "weekly", "interval": 1, "count": 3},
+    }
+    cal = c.post_json("/calendar", cal_payload)
+    if cal.status != 200:
+        print(f"FAIL calendar create: {cal.status} {cal.text[:800]}")
+        return 10
+    cal_obj = cal.json if isinstance(cal.json, dict) else None
+    if not isinstance(cal_obj, dict) or cal_obj.get("title") != cal_title:
+        print(f"FAIL calendar create shape: {cal.status} {cal.text[:800]}")
+        return 11
+    cal_id = cal_obj.get("id")
+    if not cal_id:
+        print("FAIL calendar create missing id")
+        return 12
+
+    cal_list = c.get("/calendar")
+    if cal_list.status != 200:
+        print(f"FAIL calendar list: {cal_list.status} {cal_list.text[:500]}")
+        return 13
+    cal_arr = cal_list.json if isinstance(cal_list.json, list) else None
+    if not isinstance(cal_arr, list) or not any(
+        isinstance(e, dict) and str(e.get("id")) == str(cal_id) for e in cal_arr
+    ):
+        print(f"FAIL calendar list missing event: {cal_list.text[:800]}")
+        return 14
+
+    found = next(
+        (e for e in cal_arr if isinstance(e, dict) and str(e.get("id")) == str(cal_id)), None
+    )
+    if isinstance(found, dict) and isinstance(found.get("recurrence"), dict):
+        print("OK calendar create (+recurrence)")
+    else:
+        print("WARN calendar recurrence not returned (backend may be outdated)")
+
+    # 5) Upload + import
     csv = (
         "title,category,status,budgetCHF,weight,start,end,notes\n"
         + f"{activity_title},VERKAUFSFOERDERUNG,ACTIVE,123,1,2026-01-01,2026-01-02,prod-smoke\n"
@@ -223,43 +269,43 @@ def main() -> int:
     )
     if up.status != 200:
         print(f"FAIL upload: {up.status} {up.text[:800]}")
-        return 10
+        return 20
     print("OK upload/import")
 
-    # 5) Verify uploads
+    # 6) Verify uploads
     ups = c.get("/uploads")
     if ups.status != 200:
         print(f"FAIL uploads list: {ups.status} {ups.text[:500]}")
-        return 11
+        return 21
     items = (ups.json or {}).get("items") if isinstance(ups.json, dict) else None
     if not isinstance(items, list) or len(items) == 0:
         print(f"FAIL uploads list shape: {ups.text[:500]}")
-        return 12
+        return 22
     print(f"OK uploads list ({len(items)} items)")
 
-    # 6) Verify activities contains imported title
+    # 7) Verify activities contains imported title
     acts = c.get("/activities")
     if acts.status != 200:
         print(f"FAIL activities: {acts.status} {acts.text[:500]}")
-        return 13
+        return 23
     arr = acts.json if isinstance(acts.json, list) else None
     if not isinstance(arr, list):
         print(f"FAIL activities shape: {acts.text[:500]}")
-        return 14
+        return 24
     if not any(str(a.get("title") or "") == activity_title for a in arr if isinstance(a, dict)):
         print("FAIL activity not found after import")
-        return 15
+        return 25
     print("OK activities import verified")
 
-    # 7) CRM stats reachable
+    # 8) CRM stats reachable
     stats = c.get("/crm/stats")
     if stats.status != 200:
         print(f"FAIL crm stats: {stats.status} {stats.text[:500]}")
-        return 16
+        return 26
     s = stats.json if isinstance(stats.json, dict) else None
     if not isinstance(s, dict) or "totalCompanies" not in s:
         print(f"FAIL crm stats shape: {stats.text[:500]}")
-        return 17
+        return 27
     print("OK crm stats")
 
     print(f"[{_now_iso()}] smoke PASS")

@@ -32,6 +32,7 @@ import {
 import { de } from "date-fns/locale"
 import { getISOWeek, getWeekLabel, formatWeekRange } from "@/lib/date"
 import { getCategoryColor, type CategoryType } from "@/lib/colors"
+import { apiBase } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 import { type Activity } from "@/components/circle/radial-circle"
@@ -424,11 +425,16 @@ export default function SimpleCalendarView({
                             setAiLoading(true)
                             try {
                               // Try server first (optional best-effort)
-                              const base = (process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '')
-                              const res = await fetch(`${base}/ai/activity_suggest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-                                company_id: undefined,
-                                draft: { title: draft?.title, description: draft?.notes, type: 'event' }
-                              }) }).catch(()=>null)
+                              const res = await fetch(`${apiBase}/ai/activity_suggest`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                credentials: 'include',
+                                cache: 'no-store',
+                                body: JSON.stringify({
+                                  company_id: undefined,
+                                  draft: { title: draft?.title, description: draft?.notes, type: 'event' }
+                                })
+                              }).catch(()=>null)
                               const data = await (res ? res.json().catch(()=>({})) : ({}))
                               if (data?.title || data?.description) {
                                 setAiSuggestion({ title: data.title, desc: data.description })

@@ -21,6 +21,14 @@ def _to_int(value: object) -> Optional[int]:
 
 
 # Frontend-compatible schema
+class OwnerOut(BaseModel):
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class CalendarEventFrontend(BaseModel):
     id: str
     title: str
@@ -29,17 +37,84 @@ class CalendarEventFrontend(BaseModel):
     end: Optional[str] = None
     type: str = "event"
     status: Optional[str] = None
+    category: Optional[str] = None
+    priority: Optional[str] = None
     attendees: Optional[List[str]] = None
     location: Optional[str] = None
     color: Optional[str] = None
+    # Simple RRULE-like structure (stored in DB)
+    recurrence: Optional[dict] = None
+    recurrence_exceptions: Optional[List[str]] = None
     company_id: Optional[int] = None
     project_id: Optional[int] = None
     owner_id: Optional[int] = None
+    owner: Optional[OwnerOut] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+def _normalize_recurrence(value: object) -> Optional[dict]:
+    """
+    Normalize recurrence payload to a safe JSON dict.
+    Expected shape: {freq: daily|weekly|monthly, interval?: int, count?: int, until?: str}
+    """
+    if not isinstance(value, dict):
+        return None
+    freq = str(value.get("freq") or "").strip().lower()
+    if freq not in {"daily", "weekly", "monthly"}:
+        return None
+    interval_raw = value.get("interval")
+    try:
+        interval = int(interval_raw) if interval_raw not in (None, "") else 1
+    except Exception:
+        interval = 1
+    interval = max(1, interval)
+
+    count_raw = value.get("count")
+    count: Optional[int] = None
+    try:
+        if count_raw not in (None, "", 0, "0"):
+            c = int(count_raw)
+            if c > 0:
+                count = c
+    except Exception:
+        count = None
+
+    until_raw = value.get("until")
+    until: Optional[str] = None
+    if isinstance(until_raw, str):
+        s = until_raw.strip()
+        if s:
+            # accept YYYY-MM-DD or full ISO; store as string
+            until = s
+
+    return {"freq": freq, "interval": interval, **({"count": count} if count else {}), **({"until": until} if until else {})}
+
+
+def _normalize_exceptions(value: object) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    out: List[str] = []
+    for v in value:
+        if v is None:
+            continue
+        s = str(v).strip()
+        if not s:
+            continue
+        # Store ISO date (YYYY-MM-DD) when possible; otherwise keep string
+        out.append(s)
+    # unique while preserving order
+    seen = set()
+    uniq: List[str] = []
+    for d in out:
+        if d in seen:
+            continue
+        seen.add(d)
+        uniq.append(d)
+    return uniq
 
 
 @router.get("", response_model=List[CalendarEventFrontend])
@@ -71,12 +146,17 @@ def list_calendar_events(
                     end=event.end_time.isoformat() if event.end_time else None,
                     type=getattr(event, "event_type", "event") or "event",
                     status=getattr(event, "status", None),
-                    attendees=None,
-                    location=None,
+                    category=getattr(event, "category", None),
+                    priority=getattr(event, "priority", None),
+                    attendees=getattr(event, "attendees", None),
+                    location=getattr(event, "location", None),
                     color=getattr(event, "color", None),
+                    recurrence=getattr(event, "recurrence", None),
+                    recurrence_exceptions=getattr(event, "recurrence_exceptions", None),
                     company_id=getattr(event, "company_id", None),
                     project_id=getattr(event, "project_id", None),
                     owner_id=getattr(event, "owner_id", None),
+                    owner=event.owner if getattr(event, "owner", None) is not None else None,
                     created_at=event.created_at.isoformat() if event.created_at else None,
                     updated_at=event.updated_at.isoformat() if event.updated_at else None,
                 )
@@ -109,6 +189,9 @@ def create_calendar_event(
             else start_time
         )
 
+        rec = _normalize_recurrence(event_data.get("recurrence"))
+        exceptions = _normalize_exceptions(event_data.get("recurrence_exceptions") or event_data.get("exceptions"))
+
         event = CalendarEntry(
             title=event_data.get("title", "Untitled Event"),
             description=event_data.get("description"),
@@ -117,6 +200,12 @@ def create_calendar_event(
             event_type=event_data.get("type", "event"),
             status=event_data.get("status"),
             color=event_data.get("color"),
+            category=event_data.get("category"),
+            priority=event_data.get("priority"),
+            location=event_data.get("location"),
+            attendees=event_data.get("attendees"),
+            recurrence=rec,
+            recurrence_exceptions=exceptions,
             company_id=_to_int(event_data.get("company_id")),
             project_id=_to_int(event_data.get("project_id")),
             owner_id=current_user.id,
@@ -133,12 +222,17 @@ def create_calendar_event(
             end=event.end_time.isoformat() if event.end_time else None,
             type=event.event_type or "event",
             status=event.status,
-            attendees=event_data.get("attendees"),
-            location=event_data.get("location"),
+            category=event.category,
+            priority=event.priority,
+            attendees=event.attendees,
+            location=event.location,
             color=event.color,
+            recurrence=event.recurrence,
+            recurrence_exceptions=event.recurrence_exceptions,
             company_id=event.company_id,
             project_id=event.project_id,
             owner_id=event.owner_id,
+            owner=event.owner if getattr(event, "owner", None) is not None else None,
             created_at=event.created_at.isoformat() if event.created_at else None,
             updated_at=event.updated_at.isoformat() if event.updated_at else None,
         )
@@ -185,6 +279,34 @@ def update_calendar_event(
             event.color = event_data.get("color")
         if "type" in event_data:
             event.event_type = event_data.get("type")
+        if "category" in event_data:
+            event.category = event_data.get("category")
+        if "priority" in event_data:
+            event.priority = event_data.get("priority")
+        if "location" in event_data:
+            event.location = event_data.get("location")
+        if "attendees" in event_data:
+            event.attendees = event_data.get("attendees")
+        if "recurrence" in event_data:
+            event.recurrence = _normalize_recurrence(event_data.get("recurrence"))
+        if "recurrence_exceptions" in event_data or "exceptions" in event_data:
+            event.recurrence_exceptions = _normalize_exceptions(
+                event_data.get("recurrence_exceptions") or event_data.get("exceptions")
+            )
+        if "add_exception_date" in event_data:
+            add_raw = event_data.get("add_exception_date")
+            add_s = str(add_raw or "").strip()
+            if add_s:
+                existing = _normalize_exceptions(getattr(event, "recurrence_exceptions", None) or [])
+                if add_s not in existing:
+                    existing.append(add_s)
+                event.recurrence_exceptions = existing
+        if "remove_exception_date" in event_data:
+            rm_raw = event_data.get("remove_exception_date")
+            rm_s = str(rm_raw or "").strip()
+            if rm_s:
+                existing = _normalize_exceptions(getattr(event, "recurrence_exceptions", None) or [])
+                event.recurrence_exceptions = [d for d in existing if d != rm_s]
         if "company_id" in event_data:
             event.company_id = _to_int(event_data.get("company_id"))
         if "project_id" in event_data:
@@ -202,12 +324,17 @@ def update_calendar_event(
             end=event.end_time.isoformat() if event.end_time else None,
             type=event.event_type or "event",
             status=event.status,
-            attendees=event_data.get("attendees"),
-            location=event_data.get("location"),
+            category=event.category,
+            priority=event.priority,
+            attendees=event.attendees,
+            location=event.location,
             color=event.color,
+            recurrence=event.recurrence,
+            recurrence_exceptions=event.recurrence_exceptions,
             company_id=event.company_id,
             project_id=event.project_id,
             owner_id=event.owner_id,
+            owner=event.owner if getattr(event, "owner", None) is not None else None,
             created_at=event.created_at.isoformat() if event.created_at else None,
             updated_at=event.updated_at.isoformat() if event.updated_at else None,
         )

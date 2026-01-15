@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260115_0003"
+    target_revision = "20260115_0004"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:
@@ -129,6 +129,14 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("alter table companies add column if not exists next_follow_up_at timestamptz;"))
         conn.execute(text("alter table companies add column if not exists linkedin_url varchar(255);"))
         conn.execute(text("alter table companies add column if not exists tags varchar(255);"))
+
+        # Calendar entries: store category + recurrence in DB (cross-browser)
+        conn.execute(text("alter table calendar_entries add column if not exists category varchar(255);"))
+        conn.execute(text("alter table calendar_entries add column if not exists location varchar(255);"))
+        conn.execute(text("alter table calendar_entries add column if not exists priority varchar(20);"))
+        conn.execute(text("alter table calendar_entries add column if not exists attendees jsonb;"))
+        conn.execute(text("alter table calendar_entries add column if not exists recurrence jsonb;"))
+        conn.execute(text("alter table calendar_entries add column if not exists recurrence_exceptions jsonb;"))
 
         # Ensure version table has exactly one row with target head.
         conn.execute(text("delete from alembic_version;"))

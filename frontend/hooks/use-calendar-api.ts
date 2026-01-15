@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from 'react'
 import useSWR from 'swr'
 import { authFetch } from '@/lib/api'
 import { sync } from '@/lib/sync'
@@ -18,6 +19,7 @@ export interface CalendarEvent {
   status?: 'PLANNED' | 'DONE' | 'DELAYED' | 'CANCELLED'
   // simple RRULE-like structure stored client-side when backend lacks support
   recurrence?: { freq: 'daily' | 'weekly' | 'monthly'; interval?: number; count?: number; until?: string }
+  recurrence_exceptions?: string[]
   created_at?: string
   updated_at?: string
 }
@@ -38,6 +40,13 @@ export function useCalendarApi() {
     refreshInterval: 0,
     revalidateOnFocus: false,
   })
+
+  // subscribe to global sync events (with cleanup)
+  useEffect(() => {
+    const u1 = sync.on('global:refresh', () => mutate())
+    const u2 = sync.on('calendar:changed', () => mutate())
+    return () => { u1(); u2() }
+  }, [mutate])
 
   // Persist colors locally so UI can render chosen color even if backend doesn't store it
   const STORAGE_KEY = 'mk_calendar_colors'
@@ -142,6 +151,8 @@ export function useCalendarApi() {
     if (newEvent?.id && (event as any).color) setEventColor(String(newEvent.id), (event as any).color as string)
     if (newEvent?.id && (event as any).category) setEventCategory(String(newEvent.id), (event as any).category as string)
     if (newEvent?.id && (event as any).description) setEventDescription(String(newEvent.id), (event as any).description as string)
+    if (newEvent?.id && (event as any).recurrence) setEventRecurrence(String(newEvent.id), (event as any).recurrence as any)
+    if (newEvent?.id && (event as any).status) setEventStatus(String(newEvent.id), (event as any).status as any)
     await mutate()
     sync.emit('calendar:changed')
     return newEvent
@@ -181,18 +192,15 @@ export function useCalendarApi() {
     const statuses = loadMap(STORAGE_STATUS_KEY)
     return list.map((e) => ({ 
       ...e, 
-      color: colors[String(e.id)] || (e as any).color, 
-      category: cats[String(e.id)] || (e as any).category,
+      // Prefer backend values; fall back to local only if backend doesn't store
+      color: (e as any).color || colors[String(e.id)], 
+      category: (e as any).category || cats[String(e.id)],
       description: (e as any).description || descs[String(e.id)],
       recurrence: (e as any).recurrence || recs[String(e.id)],
       status: (e as any).status || statuses[String(e.id)],
+      recurrence_exceptions: (e as any).recurrence_exceptions || undefined,
     }))
   })()
-
-  if (typeof window !== 'undefined') {
-    sync.on('global:refresh', () => mutate())
-    sync.on('calendar:changed', () => mutate())
-  }
 
   return {
     events: normalized,
