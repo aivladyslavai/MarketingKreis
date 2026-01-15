@@ -22,6 +22,16 @@ interface Company {
   revenue?: number
   status?: string
   notes?: string
+  contact_person_name?: string
+  contact_person_position?: string
+  contact_person_email?: string
+  contact_person_phone?: string
+  vat_id?: string
+  lead_source?: string
+  priority?: string
+  next_follow_up_at?: string
+  linkedin_url?: string
+  tags?: string
 }
 
 interface CompanyDialogProps {
@@ -41,6 +51,16 @@ const emptyCompany: Company = {
   employees: undefined,
   revenue: undefined,
   status: "prospect",
+  contact_person_name: "",
+  contact_person_position: "",
+  contact_person_email: "",
+  contact_person_phone: "",
+  vat_id: "",
+  lead_source: "",
+  priority: "medium",
+  next_follow_up_at: "",
+  linkedin_url: "",
+  tags: "",
   notes: "",
 }
 
@@ -56,6 +76,9 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
       setFormData({
         ...emptyCompany,
         ...company,
+        next_follow_up_at: (company as any)?.next_follow_up_at
+          ? String((company as any).next_follow_up_at).slice(0, 10)
+          : "",
       })
     } else {
       setFormData(emptyCompany)
@@ -79,6 +102,18 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
         status: (formData.status || "prospect").trim() || "prospect",
         employees: typeof formData.employees === "number" ? formData.employees : undefined,
         revenue: typeof formData.revenue === "number" ? formData.revenue : undefined,
+        contact_person_name: (formData.contact_person_name || "").trim() || undefined,
+        contact_person_position: (formData.contact_person_position || "").trim() || undefined,
+        contact_person_email: (formData.contact_person_email || "").trim() || undefined,
+        contact_person_phone: (formData.contact_person_phone || "").trim() || undefined,
+        vat_id: (formData.vat_id || "").trim() || undefined,
+        lead_source: (formData.lead_source || "").trim() || undefined,
+        priority: (formData.priority || "").trim() || undefined,
+        next_follow_up_at: formData.next_follow_up_at
+          ? new Date(formData.next_follow_up_at).toISOString()
+          : undefined,
+        linkedin_url: (formData.linkedin_url || "").trim() || undefined,
+        tags: (formData.tags || "").trim() || undefined,
       }
 
       if (company?.id) {
@@ -217,11 +252,127 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
                   type="number"
                   value={formData.revenue ?? ""}
                   onChange={(e) =>
-                    handleChange("revenue", e.target.value === "" ? undefined : parseFloat(e.target.value) || 0)
+                    handleChange("revenue", e.target.value === "" ? undefined : parseInt(e.target.value) || 0)
                   }
                   min="0"
                   step="1000"
                 />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-white/5 p-3">
+              <div className="text-sm font-semibold text-slate-900 dark:text-white">Kontaktperson (optional)</div>
+              <div className="text-xs text-slate-600 dark:text-slate-400">
+                Diese Felder sind nicht Pflicht. Wenn du später mehrere Kontakte pflegen willst, nutze den Tab{" "}
+                <span className="font-medium">Kontakte</span>.
+              </div>
+              <div className="grid grid-cols-2 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label htmlFor="contact_person_name">Name</Label>
+                  <Input
+                    id="contact_person_name"
+                    value={formData.contact_person_name || ""}
+                    onChange={(e) => handleChange("contact_person_name", e.target.value)}
+                    placeholder="Max Mustermann"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="contact_person_position">Position</Label>
+                  <Input
+                    id="contact_person_position"
+                    value={formData.contact_person_position || ""}
+                    onChange={(e) => handleChange("contact_person_position", e.target.value)}
+                    placeholder="Marketing Manager"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="contact_person_email">E-Mail</Label>
+                  <Input
+                    id="contact_person_email"
+                    type="email"
+                    value={formData.contact_person_email || ""}
+                    onChange={(e) => handleChange("contact_person_email", e.target.value)}
+                    placeholder="max@company.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="contact_person_phone">Telefon</Label>
+                  <Input
+                    id="contact_person_phone"
+                    value={formData.contact_person_phone || ""}
+                    onChange={(e) => handleChange("contact_person_phone", e.target.value)}
+                    placeholder="+41 44 123 45 67"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-white/5 p-3">
+              <div className="text-sm font-semibold text-slate-900 dark:text-white">Wichtige Infos (optional)</div>
+              <div className="text-xs text-slate-600 dark:text-slate-400">Alles hier ist optional – hilft aber im CRM.</div>
+              <div className="grid grid-cols-2 gap-4 mt-3">
+                <div className="space-y-2">
+                  <Label htmlFor="vat_id">UID / MWST</Label>
+                  <Input
+                    id="vat_id"
+                    value={formData.vat_id || ""}
+                    onChange={(e) => handleChange("vat_id", e.target.value)}
+                    placeholder="CHE-123.456.789"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lead_source">Lead Source</Label>
+                  <Input
+                    id="lead_source"
+                    value={formData.lead_source || ""}
+                    onChange={(e) => handleChange("lead_source", e.target.value)}
+                    placeholder="Website, Empfehlung, Event…"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="priority">Priorität</Label>
+                  <Select
+                    value={String(formData.priority || "medium")}
+                    onValueChange={(v) => handleChange("priority", v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Priorität wählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="next_follow_up_at">Next Follow-up</Label>
+                  <Input
+                    id="next_follow_up_at"
+                    type="date"
+                    value={formData.next_follow_up_at || ""}
+                    onChange={(e) => handleChange("next_follow_up_at", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="linkedin_url">LinkedIn</Label>
+                  <Input
+                    id="linkedin_url"
+                    type="url"
+                    value={formData.linkedin_url || ""}
+                    onChange={(e) => handleChange("linkedin_url", e.target.value)}
+                    placeholder="https://www.linkedin.com/company/…"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tags">Tags</Label>
+                  <Input
+                    id="tags"
+                    value={formData.tags || ""}
+                    onChange={(e) => handleChange("tags", e.target.value)}
+                    placeholder="retail, b2b, newsletter"
+                  />
+                </div>
               </div>
             </div>
 

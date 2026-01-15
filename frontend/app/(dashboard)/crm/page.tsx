@@ -687,8 +687,21 @@ export default function CRMPage() {
       const industry = String(company.industry || "").toLowerCase()
       const website = String(company.website || "").toLowerCase()
       const email = String(company.email || "").toLowerCase()
+      const contact = String(company.contact_person_name || "").toLowerCase()
+      const vat = String(company.vat_id || "").toLowerCase()
+      const lead = String(company.lead_source || "").toLowerCase()
+      const tags = String(company.tags || "").toLowerCase()
 
-      const matchesSearch = !q || name.includes(q) || industry.includes(q) || website.includes(q) || email.includes(q)
+      const matchesSearch =
+        !q ||
+        name.includes(q) ||
+        industry.includes(q) ||
+        website.includes(q) ||
+        email.includes(q) ||
+        contact.includes(q) ||
+        vat.includes(q) ||
+        lead.includes(q) ||
+        tags.includes(q)
       if (!matchesSearch) return false
 
       // Simple, easy-to-understand filters:
@@ -1115,6 +1128,19 @@ export default function CRMPage() {
                     <div className="text-slate-400 mb-1">Address</div>
                     <div className="font-medium whitespace-pre-wrap">{viewingCompany.address || "—"}</div>
                   </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 col-span-2">
+                    <div className="text-slate-400 mb-1">Kontaktperson</div>
+                    <div className="font-medium">
+                      {viewingCompany.contact_person_name || "—"}
+                      {viewingCompany.contact_person_position ? (
+                        <span className="text-slate-500 dark:text-slate-400"> · {viewingCompany.contact_person_position}</span>
+                      ) : null}
+                    </div>
+                    <div className="text-xs text-slate-600 dark:text-slate-400 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                      <span>{viewingCompany.contact_person_email || "—"}</span>
+                      <span>{viewingCompany.contact_person_phone || "—"}</span>
+                    </div>
+                  </div>
                   <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
                     <div className="text-slate-400 mb-1">Employees</div>
                     <div className="font-medium">{viewingCompany.employees ?? "—"}</div>
@@ -1122,6 +1148,40 @@ export default function CRMPage() {
                   <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
                     <div className="text-slate-400 mb-1">Revenue (CHF)</div>
                     <div className="font-medium">{viewingCompany.revenue ?? "—"}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
+                    <div className="text-slate-400 mb-1">UID / MWST</div>
+                    <div className="font-medium break-all">{viewingCompany.vat_id || "—"}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
+                    <div className="text-slate-400 mb-1">Lead Source</div>
+                    <div className="font-medium">{viewingCompany.lead_source || "—"}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
+                    <div className="text-slate-400 mb-1">Priorität</div>
+                    <div className="font-medium capitalize">{viewingCompany.priority || "—"}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
+                    <div className="text-slate-400 mb-1">Next Follow-up</div>
+                    <div className="font-medium">
+                      {viewingCompany.next_follow_up_at ? new Date(viewingCompany.next_follow_up_at).toLocaleDateString() : "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 col-span-2">
+                    <div className="text-slate-400 mb-1">LinkedIn</div>
+                    <div className="font-medium break-all">
+                      {viewingCompany.linkedin_url ? (
+                        <a href={viewingCompany.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
+                          {viewingCompany.linkedin_url}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 col-span-2">
+                    <div className="text-slate-400 mb-1">Tags</div>
+                    <div className="font-medium whitespace-pre-wrap">{viewingCompany.tags || "—"}</div>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
                     <div className="text-slate-400 mb-1">Contacts</div>

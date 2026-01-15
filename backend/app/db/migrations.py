@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260113_0002"
+    target_revision = "20260115_0003"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:
@@ -117,6 +117,18 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("alter table uploads add column if not exists sha256 varchar(64);"))
         conn.execute(text("alter table uploads add column if not exists stored_in_db boolean not null default true;"))
         conn.execute(text("create index if not exists ix_uploads_sha256 on uploads (sha256);"))
+
+        # Companies: extra optional CRM fields (all nullable)
+        conn.execute(text("alter table companies add column if not exists contact_person_name varchar(255);"))
+        conn.execute(text("alter table companies add column if not exists contact_person_position varchar(100);"))
+        conn.execute(text("alter table companies add column if not exists contact_person_email varchar(255);"))
+        conn.execute(text("alter table companies add column if not exists contact_person_phone varchar(50);"))
+        conn.execute(text("alter table companies add column if not exists vat_id varchar(64);"))
+        conn.execute(text("alter table companies add column if not exists lead_source varchar(100);"))
+        conn.execute(text("alter table companies add column if not exists priority varchar(20);"))
+        conn.execute(text("alter table companies add column if not exists next_follow_up_at timestamptz;"))
+        conn.execute(text("alter table companies add column if not exists linkedin_url varchar(255);"))
+        conn.execute(text("alter table companies add column if not exists tags varchar(255);"))
 
         # Ensure version table has exactly one row with target head.
         conn.execute(text("delete from alembic_version;"))

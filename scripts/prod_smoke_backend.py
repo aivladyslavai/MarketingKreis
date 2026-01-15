@@ -126,6 +126,7 @@ def main() -> int:
     password = f"SmokePass-{run_id}!"
     activity_title = f"E2E Smoke Activity {run_id}"
     upload_name = f"e2e-smoke-{run_id}.csv"
+    company_name = f"E2E Smoke Company {run_id}"
 
     print(f"[{_now_iso()}] smoke start")
     print(f"base: {base}")
@@ -158,7 +159,47 @@ def main() -> int:
         return 5
     print("OK profile")
 
-    # 3) Upload + import
+    # 3) Create CRM company with extra fields (verifies DB schema sync)
+    company_payload = {
+        "name": company_name,
+        "industry": "Technology",
+        "website": "https://company.com",
+        "email": "contact@company.com",
+        "phone": "+41 44 123 45 67",
+        "status": "prospect",
+        "employees": 12,
+        "revenue": 500000,
+        "address": "Street 1, 8000 Zürich",
+        "notes": "prod-smoke",
+        "contact_person_name": "Max Mustermann",
+        "contact_person_position": "Marketing Manager",
+        "contact_person_email": "max@company.com",
+        "contact_person_phone": "+41 44 111 22 33",
+        "vat_id": "CHE-123.456.789",
+        "lead_source": "Website",
+        "priority": "medium",
+        "next_follow_up_at": "2026-02-01T00:00:00Z",
+        "linkedin_url": "https://www.linkedin.com/company/company",
+        "tags": "smoke,crm",
+    }
+    comp = c.post_json("/crm/companies", company_payload)
+    if comp.status != 200:
+        print(f"FAIL crm company create: {comp.status} {comp.text[:800]}")
+        return 6
+    comp_obj = comp.json if isinstance(comp.json, dict) else None
+    if not isinstance(comp_obj, dict) or comp_obj.get("name") != company_name:
+        print(f"FAIL crm company create shape: {comp.status} {comp.text[:800]}")
+        return 7
+    # Basic sanity on new fields (must not crash / must be present)
+    if comp_obj.get("contact_person_name") != "Max Mustermann":
+        print("FAIL crm company field contact_person_name mismatch")
+        return 8
+    if comp_obj.get("vat_id") != "CHE-123.456.789":
+        print("FAIL crm company field vat_id mismatch")
+        return 9
+    print("OK crm company create (+extra fields)")
+
+    # 4) Upload + import
     csv = (
         "title,category,status,budgetCHF,weight,start,end,notes\n"
         + f"{activity_title},VERKAUFSFOERDERUNG,ACTIVE,123,1,2026-01-01,2026-01-02,prod-smoke\n"
@@ -182,43 +223,43 @@ def main() -> int:
     )
     if up.status != 200:
         print(f"FAIL upload: {up.status} {up.text[:800]}")
-        return 6
+        return 10
     print("OK upload/import")
 
-    # 4) Verify uploads
+    # 5) Verify uploads
     ups = c.get("/uploads")
     if ups.status != 200:
         print(f"FAIL uploads list: {ups.status} {ups.text[:500]}")
-        return 7
+        return 11
     items = (ups.json or {}).get("items") if isinstance(ups.json, dict) else None
     if not isinstance(items, list) or len(items) == 0:
         print(f"FAIL uploads list shape: {ups.text[:500]}")
-        return 8
+        return 12
     print(f"OK uploads list ({len(items)} items)")
 
-    # 5) Verify activities contains imported title
+    # 6) Verify activities contains imported title
     acts = c.get("/activities")
     if acts.status != 200:
         print(f"FAIL activities: {acts.status} {acts.text[:500]}")
-        return 9
+        return 13
     arr = acts.json if isinstance(acts.json, list) else None
     if not isinstance(arr, list):
         print(f"FAIL activities shape: {acts.text[:500]}")
-        return 10
+        return 14
     if not any(str(a.get("title") or "") == activity_title for a in arr if isinstance(a, dict)):
         print("FAIL activity not found after import")
-        return 11
+        return 15
     print("OK activities import verified")
 
-    # 6) CRM stats reachable
+    # 7) CRM stats reachable
     stats = c.get("/crm/stats")
     if stats.status != 200:
         print(f"FAIL crm stats: {stats.status} {stats.text[:500]}")
-        return 12
+        return 16
     s = stats.json if isinstance(stats.json, dict) else None
     if not isinstance(s, dict) or "totalCompanies" not in s:
         print(f"FAIL crm stats shape: {stats.text[:500]}")
-        return 13
+        return 17
     print("OK crm stats")
 
     print(f"[{_now_iso()}] smoke PASS")
