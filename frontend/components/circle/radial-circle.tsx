@@ -83,8 +83,38 @@ export default function RadialCircle({
   const monthNames = isTiny ? monthNamesTiny : monthNamesFull
   const weeksInYear = getISOWeeksInYear(new Date(year, 0, 4))
 
+  // "Month magnifier" (click month -> zoom into month view)
+  const [focusedMonth, setFocusedMonth] = React.useState<number | null>(null) // 0..11
+
+  const focusMeta = React.useMemo(() => {
+    if (focusedMonth == null) return null
+    const start = new Date(year, focusedMonth, 1, 0, 0, 0, 0)
+    const end = new Date(year, focusedMonth + 1, 0, 23, 59, 59, 999)
+    const daysInMonth = new Date(year, focusedMonth + 1, 0).getDate()
+    return { start, end, daysInMonth }
+  }, [focusedMonth, year])
+
+  const displayActivities = React.useMemo(() => {
+    if (!focusMeta) return activities
+    const { start, end } = focusMeta
+    return activities.filter((a) => {
+      const s = a.start instanceof Date ? a.start : null
+      const e = a.end instanceof Date ? a.end : null
+      if (!s && !e) return false
+      const ss = s || e!
+      const ee = e || s!
+      return ss <= end && ee >= start
+    })
+  }, [activities, focusMeta])
+
   const getAngle = (date?: Date) => {
     const d = date ?? new Date()
+    if (focusedMonth != null && focusMeta) {
+      const days = Math.max(1, focusMeta.daysInMonth)
+      const day = Math.max(1, Math.min(days, d.getDate()))
+      const frac = ((day - 1) + (d.getHours() / 24)) / days
+      return frac * Math.PI * 2 - Math.PI / 2
+    }
     const m = d.getMonth() + d.getDate() / 30
     return (m / months) * Math.PI * 2 - Math.PI / 2
   }
@@ -95,6 +125,11 @@ export default function RadialCircle({
     while (a < 0) a += Math.PI * 2
     a = a % (Math.PI * 2)
     const fraction = a / (Math.PI * 2) // 0..1
+    if (focusedMonth != null && focusMeta) {
+      const daysInMonth = Math.max(1, focusMeta.daysInMonth)
+      const day = Math.max(1, Math.min(daysInMonth, Math.round(fraction * (daysInMonth - 1)) + 1))
+      return new Date(year, focusedMonth, day, 9, 0, 0)
+    }
     const monthFloat = fraction * 12
     const month = Math.floor(monthFloat)
     const monthFrac = monthFloat - month
@@ -147,12 +182,19 @@ export default function RadialCircle({
 
   const resolvedLabelMode: RadialCircleLabelMode = React.useMemo(() => {
     if (labelMode !== "auto") return labelMode
+    const count = displayActivities.length
     if (isTiny) return "hover"
+    if (focusedMonth != null) {
+      // In month zoom, we can afford more labels.
+      if (count <= (isSmall ? 18 : 26)) return "all"
+      if (count <= (isSmall ? 28 : 36)) return "smart"
+      return "hover"
+    }
     // If we render many labels, it becomes unreadable very quickly.
-    if (activities.length <= (isSmall ? 8 : 12)) return "all"
-    if (activities.length <= (isSmall ? 14 : 18)) return "smart"
+    if (count <= (isSmall ? 8 : 12)) return "all"
+    if (count <= (isSmall ? 14 : 18)) return "smart"
     return "hover"
-  }, [labelMode, activities.length, isTiny, isSmall])
+  }, [labelMode, displayActivities.length, focusedMonth, isTiny, isSmall])
 
   const truncateLabel = React.useCallback((value: string, max: number) => {
     const s = String(value || "")
@@ -164,7 +206,7 @@ export default function RadialCircle({
     const selectedId = popup?.a?.id
 
     if (resolvedLabelMode === "none") return new Set<string>()
-    if (resolvedLabelMode === "all") return new Set<string>(activities.map((a) => a.id))
+    if (resolvedLabelMode === "all") return new Set<string>(displayActivities.map((a) => a.id))
     if (resolvedLabelMode === "hover") return selectedId ? new Set<string>([selectedId]) : new Set<string>()
 
     // smart: show only the most important labels + currently selected one
@@ -196,32 +238,32 @@ export default function RadialCircle({
     if (selectedId) ids.add(selectedId)
 
     // Prefer currently ongoing items first
-    for (const a of activities) {
+    for (const a of displayActivities) {
       if (ids.size >= max) break
       if (isOngoing(a)) ids.add(a.id)
     }
 
     // Then fill with high-scoring ones
-    const sorted = [...activities].sort((a, b) => score(b) - score(a))
+    const sorted = [...displayActivities].sort((a, b) => score(b) - score(a))
     for (const a of sorted) {
       if (ids.size >= max) break
       ids.add(a.id)
     }
     return ids
-  }, [activities, isSmall, popup?.a?.id, resolvedLabelMode])
+  }, [displayActivities, isSmall, popup?.a?.id, resolvedLabelMode])
 
   const resolvedConnectionMode: RadialCircleConnectionMode = React.useMemo(() => {
     if (connectionMode !== "auto") return connectionMode
-    if (activities.length <= 18) return "all"
+    if (displayActivities.length <= 18) return "all"
     // With many items, connection lines are too noisy; keep only for labeled/selected ones.
     return "labeled"
-  }, [connectionMode, activities.length])
+  }, [connectionMode, displayActivities.length])
 
   const connectionIds = React.useMemo(() => {
     if (resolvedConnectionMode === "none") return new Set<string>()
-    if (resolvedConnectionMode === "all") return new Set<string>(activities.map((a) => a.id))
+    if (resolvedConnectionMode === "all") return new Set<string>(displayActivities.map((a) => a.id))
     return labeledIds
-  }, [activities, labeledIds, resolvedConnectionMode])
+  }, [displayActivities, labeledIds, resolvedConnectionMode])
 
   const getPointerAngle = (e: PointerEvent | MouseEvent): number => {
     const svg = svgRef.current
