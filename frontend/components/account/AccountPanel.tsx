@@ -5,7 +5,24 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { RotateCcw, Shield, LogOut, Sparkles, BookOpen, Keyboard } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Switch } from "@/components/ui/switch"
+import {
+  BookOpen,
+  Bug,
+  Check,
+  Copy,
+  Keyboard,
+  LifeBuoy,
+  LogOut,
+  RotateCcw,
+  Settings2,
+  Shield,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+  ZapOff,
+} from "lucide-react"
 import { restartOnboarding } from "@/components/onboarding/onboarding-tour"
 
 interface AccountPanelProps {
@@ -15,6 +32,28 @@ interface AccountPanelProps {
 export function AccountPanel({ onClose }: AccountPanelProps) {
   const { user, logout } = useAuth()
   const router = useRouter()
+  const [tab, setTab] = React.useState<"overview" | "settings" | "help">("overview")
+  const [copied, setCopied] = React.useState(false)
+  const [reducedMotion, setReducedMotion] = React.useState(false)
+  const [debugNetwork, setDebugNetwork] = React.useState(false)
+
+  React.useEffect(() => {
+    // Reduced motion
+    try {
+      const raw = localStorage.getItem("mk_reduced_motion")
+      const enabled = raw === "1" || raw === "true"
+      setReducedMotion(enabled)
+      document.documentElement.classList.toggle("mk-reduced-motion", enabled)
+    } catch {}
+
+    // Debug network (featureFlags.debugNetwork)
+    try {
+      const flags = JSON.parse(localStorage.getItem("featureFlags") || "{}")
+      setDebugNetwork(Boolean(flags?.debugNetwork))
+    } catch {
+      setDebugNetwork(false)
+    }
+  }, [])
 
   const handleLogout = async () => {
     try {
@@ -33,9 +72,10 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
   const isDemo = (user?.email || "").trim().toLowerCase() === "demo@marketingkreis.ch"
   const initial = (user?.email || "A").trim().charAt(0).toUpperCase()
   const primaryLabel = user?.email || "Unbekannter Benutzer"
+  const userIdLabel = (user as any)?.id != null ? String((user as any).id) : "—"
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Hero header */}
       <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/15 via-purple-500/10 to-pink-500/10 px-5 py-5 sm:px-7 sm:py-6">
         <div className="pointer-events-none absolute -top-24 -right-24 h-40 w-40 rounded-full bg-gradient-to-tr from-fuchsia-500/25 to-blue-500/25 blur-3xl" />
@@ -46,7 +86,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
             <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-kaboom-red to-red-600 flex items-center justify-center text-white text-xl font-semibold shadow-xl ring-2 ring-white/40">
               {initial}
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-200/80">
                 Angemeldet als
               </div>
@@ -95,87 +135,298 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
         </div>
       </div>
 
-      {/* Settings sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Appearance (dark-only) */}
-        <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 space-y-3">
-          <div>
-            <div className="text-sm font-semibold text-slate-50">Darstellung</div>
-            <div className="text-xs text-slate-400 mt-1">
-              Die Plattform nutzt ausschließlich den Dunkelmodus.
+      {/* Tabs */}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="space-y-4">
+        <TabsList className="w-full justify-between bg-slate-900/40 dark:bg-slate-900/40 border-white/10">
+          <TabsTrigger value="overview" className="flex-1 text-xs sm:text-sm flex items-center justify-center gap-2">
+            <SlidersHorizontal className="h-4 w-4 flex-shrink-0" />
+            <span className="min-w-0 truncate">Überblick</span>
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="flex-1 text-xs sm:text-sm flex items-center justify-center gap-2">
+            <Settings2 className="h-4 w-4 flex-shrink-0" />
+            <span className="min-w-0 truncate">Einstellungen</span>
+          </TabsTrigger>
+          <TabsTrigger value="help" className="flex-1 text-xs sm:text-sm flex items-center justify-center gap-2">
+            <LifeBuoy className="h-4 w-4 flex-shrink-0" />
+            <span className="min-w-0 truncate">Hilfe</span>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Overview */}
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-slate-200">Account</div>
+                  <div className="mt-1 text-sm font-medium text-white truncate">
+                    {primaryLabel}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-200 hover:bg-white/10 flex-shrink-0"
+                  onClick={async () => {
+                    try {
+                      if (navigator?.clipboard?.writeText && user?.email) {
+                        await navigator.clipboard.writeText(user.email)
+                        setCopied(true)
+                        window.setTimeout(() => setCopied(false), 900)
+                      }
+                    } catch {}
+                  }}
+                  title="E‑Mail kopieren"
+                >
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? "Kopiert" : "Copy"}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-[11px] text-slate-400">User ID</div>
+                  <div className="mt-0.5 font-semibold text-slate-100">{userIdLabel}</div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-[11px] text-slate-400">Modus</div>
+                  <div className="mt-0.5 font-semibold text-slate-100">Dark</div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-[11px] text-slate-400">
+                <span className="font-semibold text-slate-200">Hinweis:</span> Die Plattform nutzt ausschließlich den
+                Dunkelmodus für konsistentes UI.
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
+              <div className="text-xs font-semibold text-slate-200">Schnellaktionen</div>
+              <div className="flex flex-col gap-2">
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    className="glass-card h-auto min-h-11 py-2.5 justify-start text-left"
+                    onClick={() => {
+                      router.push("/admin")
+                      onClose()
+                    }}
+                  >
+                    <Shield className="h-4 w-4 mr-2 text-emerald-300 flex-shrink-0" />
+                    <span className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-white leading-tight">Admin‑Bereich</div>
+                      <div className="text-[11px] text-slate-400 leading-snug line-clamp-2">
+                        Benutzer, Seeds, System‑Checks und Debug‑Tools
+                      </div>
+                    </span>
+                  </Button>
+                )}
+
+                <Button
+                  variant="outline"
+                  className="glass-card h-auto min-h-11 py-2.5 justify-start text-left border-red-400/30 bg-red-500/10 hover:bg-red-500/15"
+                  onClick={handleLogout}
+                >
+                  <LogOut className="h-4 w-4 mr-2 text-red-300 flex-shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-white leading-tight">Abmelden</div>
+                    <div className="text-[11px] text-slate-400 leading-snug line-clamp-2">
+                      Sitzung beenden und zur Anmeldung zurückkehren
+                    </div>
+                  </span>
+                </Button>
+
+                {isDemo && (
+                  <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-[11px] text-amber-100">
+                    <div className="font-semibold">Demo‑Account</div>
+                    <div className="mt-0.5 text-amber-100/80">
+                      Dieser Account ist read‑only. Änderungen werden blockiert.
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-100">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            Dark Mode aktiv
-          </div>
-          <div className="text-[11px] text-slate-500">
-            (Kein Theme‑Wechsel mehr – konsistentes UI auf allen Geräten.)
-          </div>
-        </div>
+        </TabsContent>
 
-        {/* Help / onboarding */}
-        <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 space-y-4">
-          <div>
-            <div className="text-sm font-semibold text-slate-50 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-amber-400" />
-              Hilfe & Einführung
+        {/* Settings */}
+        <TabsContent value="settings" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
+              <div className="text-xs font-semibold text-slate-200">Interface</div>
+
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-white leading-tight">Reduced Motion</div>
+                  <div className="mt-0.5 text-[11px] text-slate-400 leading-snug">
+                    Weniger Animationen für bessere Lesbarkeit & Performance.
+                  </div>
+                </div>
+                <Switch
+                  checked={reducedMotion}
+                  onCheckedChange={(v) => {
+                    setReducedMotion(v)
+                    try {
+                      localStorage.setItem("mk_reduced_motion", v ? "1" : "0")
+                    } catch {}
+                    document.documentElement.classList.toggle("mk-reduced-motion", v)
+                  }}
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <ZapOff className="h-4 w-4 text-slate-300" />
+                    <div className="text-sm font-semibold text-white leading-tight">Dark‑only</div>
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-slate-400 leading-snug">
+                    Theme‑Wechsel ist deaktiviert (konsistentes Design).
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold text-emerald-300 border border-emerald-400/20 bg-emerald-500/10 px-2 py-1 rounded-full whitespace-nowrap">
+                  aktiv
+                </span>
+              </div>
+
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Trash2 className="h-4 w-4 text-slate-300" />
+                    <div className="text-sm font-semibold text-white leading-tight">Lokale UI‑Daten zurücksetzen</div>
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-slate-400 leading-snug">
+                    Löscht UI‑Einstellungen (z.B. Flags, Onboarding‑Seen). Login bleibt erhalten.
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  className="h-9 px-3 text-xs bg-white/5 border-white/15 hover:bg-white/10"
+                  onClick={() => {
+                    try {
+                      const keysToRemove = ["featureFlags", "mk_reduced_motion"]
+                      keysToRemove.forEach((k) => localStorage.removeItem(k))
+                      document.documentElement.classList.remove("mk-reduced-motion")
+                      window.dispatchEvent(new Event("mk:flags"))
+                      window.location.reload()
+                    } catch {}
+                  }}
+                >
+                  Reset
+                </Button>
+              </div>
             </div>
-            <div className="text-xs text-slate-400 mt-1">
-              Interaktive Rundgänge für jede Seite – starte sie jederzeit neu.
+
+            <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
+              <div className="text-xs font-semibold text-slate-200">Developer</div>
+
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Bug className="h-4 w-4 text-slate-300" />
+                    <div className="text-sm font-semibold text-white leading-tight">Network Debug Logs</div>
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-slate-400 leading-snug">
+                    Schreibt Fetch‑Timing in die Browser‑Konsole (für Debug).
+                  </div>
+                </div>
+                <Switch
+                  checked={debugNetwork}
+                  onCheckedChange={(v) => {
+                    setDebugNetwork(v)
+                    try {
+                      const flags = JSON.parse(localStorage.getItem("featureFlags") || "{}")
+                      flags.debugNetwork = v
+                      localStorage.setItem("featureFlags", JSON.stringify(flags))
+                      window.dispatchEvent(new Event("mk:flags"))
+                    } catch {}
+                  }}
+                />
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-[11px] text-slate-400">
+                <span className="font-semibold text-slate-200">Tipp:</span> Wenn du Performance‑Probleme siehst, aktiviere
+                “Reduced Motion” und deaktiviere Debug‑Logs.
+              </div>
             </div>
           </div>
+        </TabsContent>
 
-          <div className="flex flex-col gap-2">
-            <Button
-              variant="outline"
-              className="glass-card h-auto min-h-11 py-2.5 text-xs sm:text-sm border-rose-500/30 bg-rose-500/10 text-white hover:bg-rose-500/20 hover:border-rose-500/50 justify-start items-start"
-              onClick={() => {
-                onClose()
-                setTimeout(() => restartOnboarding("welcome"), 300)
-              }}
-            >
-              <RotateCcw className="h-4 w-4 mr-2 mt-0.5 text-rose-400 flex-shrink-0" />
-              <span className="flex-1 min-w-0 text-left leading-tight">
-                Welcome Tour
-              </span>
-              <span className="mt-0.5 text-[10px] text-slate-400 whitespace-nowrap flex-shrink-0">
-                ~2 min
-              </span>
-            </Button>
-            <Button
-              variant="outline"
-              className="glass-card h-auto min-h-11 py-2.5 text-xs sm:text-sm border-white/20 bg-white/5 text-white hover:bg-white/10 justify-start items-start"
-              onClick={() => {
-                onClose()
-                setTimeout(() => restartOnboarding(), 300)
-              }}
-            >
-              <BookOpen className="h-4 w-4 mr-2 mt-0.5 text-blue-400 flex-shrink-0" />
-              <span className="flex-1 min-w-0 text-left leading-tight">
-                Seiten‑Tour (aktuelle Seite)
-              </span>
-              <span className="mt-0.5 text-[10px] text-slate-400 whitespace-nowrap flex-shrink-0">
-                ~1 min
-              </span>
-            </Button>
-          </div>
+        {/* Help */}
+        <TabsContent value="help" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
+              <div className="text-xs font-semibold text-slate-200 flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-300" />
+                Rundgänge
+              </div>
 
-          {/* Keyboard shortcuts hint */}
-          <div className="rounded-xl bg-white/5 border border-white/10 p-3">
-            <div className="flex items-center gap-2 text-xs text-slate-300">
-              <Keyboard className="h-3.5 w-3.5 text-slate-400" />
-              <span>Tastenkürzel:</span>
-              <kbd className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-200 font-mono text-[10px]">ESC</kbd>
-              <span className="text-slate-400">schließt Rundgang</span>
+              <div className="grid gap-2">
+                <button
+                  type="button"
+                  className="w-full rounded-xl border border-rose-500/25 bg-rose-500/10 hover:bg-rose-500/15 px-3 py-3 text-left"
+                  onClick={() => {
+                    onClose()
+                    setTimeout(() => restartOnboarding("welcome"), 250)
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <RotateCcw className="h-4 w-4 mt-0.5 text-rose-300 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-white leading-tight">Welcome Tour</div>
+                      <div className="mt-0.5 text-[11px] text-slate-300/80 leading-snug line-clamp-2">
+                        Kurzer Überblick über Navigation, Module und wichtige Bereiche.
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-slate-200/80 whitespace-nowrap flex-shrink-0">~2 min</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  className="w-full rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 px-3 py-3 text-left"
+                  onClick={() => {
+                    onClose()
+                    setTimeout(() => restartOnboarding(), 250)
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <BookOpen className="h-4 w-4 mt-0.5 text-blue-300 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-white leading-tight">Seiten‑Tour</div>
+                      <div className="mt-0.5 text-[11px] text-slate-300/80 leading-snug line-clamp-2">
+                        Zeigt die wichtigsten Elemente der aktuellen Seite.
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-slate-200/80 whitespace-nowrap flex-shrink-0">~1 min</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
+              <div className="text-xs font-semibold text-slate-200 flex items-center gap-2">
+                <Keyboard className="h-4 w-4 text-slate-300" />
+                Shortcuts & Tipps
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                  <span className="font-semibold text-slate-100">ESC</span>
+                  <span className="text-slate-400">schließt Rundgang / Drawer</span>
+                </div>
+                <div className="mt-2 text-[11px] text-slate-400 leading-snug">
+                  Wenn Text zu lang ist: nutze Filter/Zoom oder öffne Details per Klick.
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-[11px] text-slate-400">
+                <span className="font-semibold text-slate-200">Support:</span> Wenn etwas komisch aussieht, mach einen
+                Screenshot und sag kurz welche Seite — ich fix es.
+              </div>
             </div>
           </div>
-
-          <div className="text-[11px] text-slate-500">
-            💡 Jede Seite hat einen eigenen Mini‑Rundgang. Beim ersten Besuch startet er automatisch.
-          </div>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
