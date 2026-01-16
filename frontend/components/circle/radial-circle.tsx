@@ -75,6 +75,10 @@ export default function RadialCircle({
   const center = rs / 2
   const months = 12
 
+  // Month focus ("loupe"): click a month label to zoom into it.
+  // In focus mode, we map the selected month to the full circle for better readability.
+  const [monthFocus, setMonthFocus] = React.useState<number | null>(null) // 0..11
+
   // Normalize category names so lookups are stable regardless of case/whitespace
   const normalizeCategoryName = React.useCallback((name?: string) => String(name ?? "").trim().toUpperCase(), [])
 
@@ -83,40 +87,41 @@ export default function RadialCircle({
   const monthNames = isTiny ? monthNamesTiny : monthNamesFull
   const weeksInYear = getISOWeeksInYear(new Date(year, 0, 4))
 
-  // "Month magnifier" (click month -> zoom into month view)
-  const [focusedMonth, setFocusedMonth] = React.useState<number | null>(null) // 0..11
-
-  const focusMeta = React.useMemo(() => {
-    if (focusedMonth == null) return null
-    const start = new Date(year, focusedMonth, 1, 0, 0, 0, 0)
-    const end = new Date(year, focusedMonth + 1, 0, 23, 59, 59, 999)
-    const daysInMonth = new Date(year, focusedMonth + 1, 0).getDate()
-    return { start, end, daysInMonth }
-  }, [focusedMonth, year])
+  const monthFocusStart = React.useMemo(() => {
+    return monthFocus == null ? null : new Date(year, monthFocus, 1, 0, 0, 0)
+  }, [monthFocus, year])
+  const monthFocusEnd = React.useMemo(() => {
+    return monthFocus == null ? null : new Date(year, monthFocus + 1, 0, 23, 59, 59)
+  }, [monthFocus, year])
+  const monthDays = React.useMemo(() => {
+    return monthFocus == null ? null : new Date(year, monthFocus + 1, 0).getDate()
+  }, [monthFocus, year])
 
   const displayActivities = React.useMemo(() => {
-    if (!focusMeta) return activities
-    const { start, end } = focusMeta
+    if (monthFocus == null || !monthFocusStart || !monthFocusEnd) return activities
     return activities.filter((a) => {
       const s = a.start instanceof Date ? a.start : null
-      const e = a.end instanceof Date ? a.end : null
-      if (!s && !e) return false
-      const ss = s || e!
-      const ee = e || s!
-      return ss <= end && ee >= start
+      const e = a.end instanceof Date ? a.end : s
+      if (!s) return false
+      const end = e || s
+      return s <= monthFocusEnd && end >= monthFocusStart
     })
-  }, [activities, focusMeta])
+  }, [activities, monthFocus, monthFocusStart, monthFocusEnd])
 
   const getAngle = (date?: Date) => {
-    const d = date ?? new Date()
-    if (focusedMonth != null && focusMeta) {
-      const days = Math.max(1, focusMeta.daysInMonth)
-      const day = Math.max(1, Math.min(days, d.getDate()))
-      const frac = ((day - 1) + (d.getHours() / 24)) / days
-      return frac * Math.PI * 2 - Math.PI / 2
+    const d0 = date ?? new Date()
+    if (monthFocus == null || !monthFocusStart || !monthFocusEnd || !monthDays) {
+      const m = d0.getMonth() + d0.getDate() / 30
+      return (m / months) * Math.PI * 2 - Math.PI / 2
     }
-    const m = d.getMonth() + d.getDate() / 30
-    return (m / months) * Math.PI * 2 - Math.PI / 2
+    // Month loupe: clamp into month and map day-of-month to full circle.
+    const d = new Date(
+      Math.min(monthFocusEnd.getTime(), Math.max(monthFocusStart.getTime(), d0.getTime())),
+    )
+    const fracDay = (d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()) / 86400
+    const dayFloat = (d.getDate() - 1) + fracDay
+    const fraction = (dayFloat / Math.max(1, monthDays)) % 1
+    return fraction * Math.PI * 2 - Math.PI / 2
   }
 
   const angleToDate = (angle: number): Date => {
@@ -125,11 +130,15 @@ export default function RadialCircle({
     while (a < 0) a += Math.PI * 2
     a = a % (Math.PI * 2)
     const fraction = a / (Math.PI * 2) // 0..1
-    if (focusedMonth != null && focusMeta) {
-      const daysInMonth = Math.max(1, focusMeta.daysInMonth)
-      const day = Math.max(1, Math.min(daysInMonth, Math.round(fraction * (daysInMonth - 1)) + 1))
-      return new Date(year, focusedMonth, day, 9, 0, 0)
+
+    // Month loupe: map back within focused month (keeps drag intuitive).
+    if (monthFocus != null && monthDays) {
+      const dayFloat = fraction * monthDays
+      const day = Math.max(1, Math.min(monthDays, Math.floor(dayFloat) + 1))
+      return new Date(year, monthFocus, day, 9, 0, 0)
     }
+
+    // Year mapping
     const monthFloat = fraction * 12
     const month = Math.floor(monthFloat)
     const monthFrac = monthFloat - month
@@ -182,19 +191,17 @@ export default function RadialCircle({
 
   const resolvedLabelMode: RadialCircleLabelMode = React.useMemo(() => {
     if (labelMode !== "auto") return labelMode
-    const count = displayActivities.length
     if (isTiny) return "hover"
-    if (focusedMonth != null) {
-      // In month zoom, we can afford more labels.
-      if (count <= (isSmall ? 18 : 26)) return "all"
-      if (count <= (isSmall ? 28 : 36)) return "smart"
-      return "hover"
+    // Month loupe: prefer labels (we'll lay them out neatly outside).
+    if (monthFocus != null) {
+      if (displayActivities.length <= (isSmall ? 20 : 26)) return "all"
+      return "smart"
     }
-    // If we render many labels, it becomes unreadable very quickly.
-    if (count <= (isSmall ? 8 : 12)) return "all"
-    if (count <= (isSmall ? 14 : 18)) return "smart"
+    // Year view: if we render many labels, it becomes unreadable very quickly.
+    if (displayActivities.length <= (isSmall ? 8 : 12)) return "all"
+    if (displayActivities.length <= (isSmall ? 14 : 18)) return "smart"
     return "hover"
-  }, [labelMode, displayActivities.length, focusedMonth, isTiny, isSmall])
+  }, [labelMode, displayActivities.length, isTiny, isSmall, monthFocus])
 
   const truncateLabel = React.useCallback((value: string, max: number) => {
     const s = String(value || "")
@@ -254,16 +261,116 @@ export default function RadialCircle({
 
   const resolvedConnectionMode: RadialCircleConnectionMode = React.useMemo(() => {
     if (connectionMode !== "auto") return connectionMode
+    if (monthFocus != null) return "none"
     if (displayActivities.length <= 18) return "all"
     // With many items, connection lines are too noisy; keep only for labeled/selected ones.
     return "labeled"
-  }, [connectionMode, displayActivities.length])
+  }, [connectionMode, displayActivities.length, monthFocus])
 
   const connectionIds = React.useMemo(() => {
     if (resolvedConnectionMode === "none") return new Set<string>()
     if (resolvedConnectionMode === "all") return new Set<string>(displayActivities.map((a) => a.id))
     return labeledIds
   }, [displayActivities, labeledIds, resolvedConnectionMode])
+
+  const monthLabelLayout = React.useMemo(() => {
+    if (monthFocus == null) return null
+    if (!monthFocusStart || !monthFocusEnd) return null
+    if (resolvedLabelMode === "none") return { left: [], right: [], fontSize: fs(10) }
+
+    const items = displayActivities
+      .filter((a) => labeledIds.has(a.id))
+      .map((a) => {
+        const ang = getAngle(a.start)
+        const catKey = resolveRingKey(a.category)
+        const r = ringRadiusByCategory[catKey] ?? radius * 0.7
+        const x = center + Math.cos(ang) * r
+        const y = center + Math.sin(ang) * r
+        const edgeX = center + Math.cos(ang) * (radius + 6 * scale)
+        const edgeY = center + Math.sin(ang) * (radius + 6 * scale)
+        const side = x >= center ? "right" : "left"
+
+        const rawStart = a.start instanceof Date ? a.start : null
+        let day: number | undefined = undefined
+        if (rawStart) {
+          const t = Math.min(monthFocusEnd.getTime(), Math.max(monthFocusStart.getTime(), rawStart.getTime()))
+          day = new Date(t).getDate()
+        }
+
+        return { a, ang, x, y, edgeX, edgeY, side, day }
+      })
+
+    const fontSize = fs(isTiny ? 9 : isSmall ? 10 : 11)
+    const paddingY = 18 * scale
+    const minY = center - radius + paddingY
+    const maxY = center + radius - paddingY
+    const available = Math.max(1, maxY - minY)
+
+    const makeSide = (side: "left" | "right") => {
+      const sideItems = items.filter((it) => it.side === side).sort((p, q) => p.edgeY - q.edgeY)
+      const n = sideItems.length
+      if (n === 0) return []
+
+      // Spacing: if too dense, reduce spacing (but keep readable).
+      const baseSpacing = fontSize + 7
+      const minSpacing = Math.max(10, fontSize + 2)
+      const spacing = n <= 1 ? baseSpacing : Math.max(minSpacing, Math.min(baseSpacing, available / (n - 1)))
+
+      const ys = sideItems.map((it) => it.edgeY)
+      // forward pass
+      for (let i = 1; i < ys.length; i++) {
+        ys[i] = Math.max(ys[i], ys[i - 1] + spacing)
+      }
+      // shift into bounds
+      if (ys[ys.length - 1] > maxY) {
+        const delta = ys[ys.length - 1] - maxY
+        for (let i = 0; i < ys.length; i++) ys[i] -= delta
+      }
+      // backward pass
+      for (let i = ys.length - 2; i >= 0; i--) {
+        ys[i] = Math.min(ys[i], ys[i + 1] - spacing)
+      }
+      // clamp top
+      if (ys[0] < minY) {
+        const delta = minY - ys[0]
+        for (let i = 0; i < ys.length; i++) ys[i] += delta
+      }
+
+      const labelX = side === "right"
+        ? center + radius + 26 * scale
+        : center - radius - 26 * scale
+      const textAnchor = side === "right" ? "start" : "end"
+
+      return sideItems.map((it, idx) => ({
+        ...it,
+        ly: ys[idx],
+        lx: labelX,
+        textAnchor,
+      }))
+    }
+
+    return {
+      left: makeSide("left"),
+      right: makeSide("right"),
+      fontSize,
+    }
+  }, [
+    monthFocus,
+    monthFocusStart,
+    monthFocusEnd,
+    resolvedLabelMode,
+    displayActivities,
+    labeledIds,
+    getAngle,
+    resolveRingKey,
+    ringRadiusByCategory,
+    radius,
+    center,
+    scale,
+    fs,
+    isSmall,
+    isTiny,
+  ])
 
   const getPointerAngle = (e: PointerEvent | MouseEvent): number => {
     const svg = svgRef.current
@@ -341,7 +448,18 @@ export default function RadialCircle({
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', width: '100%', maxWidth: size, aspectRatio: '1 / 1', margin: '0 auto' }}>
-      <svg ref={svgRef} width={rs} height={rs} viewBox={`0 0 ${rs} ${rs}`} style={{ overflow: 'visible', position: 'absolute', inset: 0 }} onClick={(e)=>{ if (e.target === e.currentTarget) setPopup(null) }}>
+      <svg
+        ref={svgRef}
+        width={rs}
+        height={rs}
+        viewBox={`0 0 ${rs} ${rs}`}
+        style={{ overflow: 'visible', position: 'absolute', inset: 0 }}
+        onClick={(e) => {
+          if (e.target !== e.currentTarget) return
+          if (popup) { setPopup(null); return }
+          if (monthFocus != null) { setMonthFocus(null); return }
+        }}
+      >
       <defs>
         {/* Glow filters for activity dots */}
         {rings.map((ring, i) => (
@@ -370,8 +488,8 @@ export default function RadialCircle({
         )
       })}
 
-      {/* Month ticks and labels */}
-      {Array.from({ length: months }).map((_, i) => {
+      {/* Month ticks and labels (click to zoom into month) */}
+      {monthFocus == null && Array.from({ length: months }).map((_, i) => {
         const angle = (i / months) * Math.PI * 2 - Math.PI / 2
         // Outer tick
         const x1 = center + Math.cos(angle) * (radius - 10 * scale)
@@ -381,18 +499,27 @@ export default function RadialCircle({
         // Label position
         const labelX = center + Math.cos(angle) * (radius + 18 * scale)
         const labelY = center + Math.sin(angle) * (radius + 18 * scale)
-        
+
         return (
-          <g key={i}>
+          <g
+            key={i}
+            cursor="pointer"
+            onClick={(e) => {
+              e.stopPropagation()
+              setPopup(null)
+              setMonthFocus(i)
+            }}
+          >
             <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#475569" strokeWidth={sw(2)} />
-            <text 
-              x={labelX} 
-              y={labelY} 
-              fontSize={fs(12)} 
-              fill="#94a3b8" 
-              textAnchor="middle" 
+            <text
+              x={labelX}
+              y={labelY}
+              fontSize={fs(12)}
+              fill="#94a3b8"
+              textAnchor="middle"
               dominantBaseline="middle"
-              fontWeight="500"
+              fontWeight="700"
+              style={{ paintOrder: "stroke", stroke: "rgba(2,6,23,.75)", strokeWidth: sw(4) }}
             >
               {monthNames[i]}
             </text>
@@ -400,8 +527,55 @@ export default function RadialCircle({
         )
       })}
 
+      {/* Month loupe day ticks */}
+      {monthFocus != null && monthDays && (
+        <g>
+          {Array.from({ length: monthDays }).map((_, i) => {
+            const day = i + 1
+            const angle = ((day - 0.5) / monthDays) * Math.PI * 2 - Math.PI / 2
+            const isMajor = day === 1 || day % 7 === 1
+            const inner = radius - (isMajor ? 16 : 12) * scale
+            const outer = radius - 6 * scale
+            const x1 = center + Math.cos(angle) * inner
+            const y1 = center + Math.sin(angle) * inner
+            const x2 = center + Math.cos(angle) * outer
+            const y2 = center + Math.sin(angle) * outer
+            const showLabel = isMajor && !isTiny
+            const lx = center + Math.cos(angle) * (radius + 18 * scale)
+            const ly = center + Math.sin(angle) * (radius + 18 * scale)
+            return (
+              <g key={`d-${day}`}>
+                <line
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke="#475569"
+                  strokeWidth={sw(isMajor ? 1.8 : 1)}
+                  opacity={isMajor ? 0.9 : 0.55}
+                />
+                {showLabel && (
+                  <text
+                    x={lx}
+                    y={ly}
+                    fontSize={fs(10)}
+                    fill="#94a3b8"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontWeight="600"
+                    style={{ paintOrder: "stroke", stroke: "rgba(2,6,23,.75)", strokeWidth: sw(4) }}
+                  >
+                    {day}
+                  </text>
+                )}
+              </g>
+            )
+          })}
+        </g>
+      )}
+
       {/* Week ticks and sparse labels (KW) */}
-      {Array.from({ length: weeksInYear }).map((_, i) => {
+      {monthFocus == null && Array.from({ length: weeksInYear }).map((_, i) => {
         const w = i + 1
         const angle = (w / weeksInYear) * Math.PI * 2 - Math.PI / 2
         const inner = radius - 16 * scale
@@ -434,7 +608,7 @@ export default function RadialCircle({
       })}
 
       {/* Connection lines from activities to circle edge */}
-      {activities.filter((a) => connectionIds.has(a.id)).map((a) => {
+      {displayActivities.filter((a) => connectionIds.has(a.id)).map((a) => {
         const angle = getAngle(a.start)
         const catKey = resolveRingKey(a.category)
         const r = ringRadiusByCategory[catKey] ?? radius * 0.7
@@ -460,7 +634,7 @@ export default function RadialCircle({
       })}
 
       {/* Activity dots and ranges aligned to category ring */}
-      {activities.map((a) => {
+      {displayActivities.map((a) => {
         const startAngle = getAngle(a.start)
         const catKey = resolveRingKey(a.category)
         const r = ringRadiusByCategory[catKey] ?? radius * 0.7
@@ -468,8 +642,8 @@ export default function RadialCircle({
         const y = center + Math.sin(startAngle) * r
         const color = ringColorByCategory[catKey] || "#64748b"
 
-        const showLabel = labeledIds.has(a.id)
-        const labelText = resolvedLabelMode === "all"
+        const showInlineLabel = monthFocus == null && labeledIds.has(a.id)
+        const inlineLabelText = resolvedLabelMode === "all"
           ? a.title
           : truncateLabel(a.title, isSmall ? 18 : 26)
         const labelR = 18 * scale
@@ -569,7 +743,7 @@ export default function RadialCircle({
                 </g>
               )
             })()}
-            {showLabel && (
+            {showInlineLabel && (
               <text
                 x={lx}
                 y={ly}
@@ -585,12 +759,58 @@ export default function RadialCircle({
                   strokeWidth: sw(4),
                 }}
               >
-                {labelText}
+                {inlineLabelText}
               </text>
             )}
           </g>
         )
       })}
+
+      {/* Month loupe label callouts (collision-free) */}
+      {monthFocus != null && monthLabelLayout && (
+        <g>
+          {[...monthLabelLayout.left, ...monthLabelLayout.right].map((it: any) => {
+            const catKey = resolveRingKey(it.a.category)
+            const c = ringColorByCategory[catKey] || "#94a3b8"
+            const isSelected = popup?.a?.id === it.a.id
+            const lineToX = it.side === "right" ? it.lx - 6 * scale : it.lx + 6 * scale
+            const title = String(it.a.title || "")
+            const label = truncateLabel(
+              `${it.day ? String(it.day).padStart(2, "0") + " · " : ""}${title}`,
+              isSmall ? 28 : 36,
+            )
+            return (
+              <g key={`ml-${it.a.id}`}>
+                <title>{title}</title>
+                <polyline
+                  points={`${it.x},${it.y} ${it.edgeX},${it.edgeY} ${lineToX},${it.ly}`}
+                  fill="none"
+                  stroke={c}
+                  strokeWidth={sw(isSelected ? 2.2 : 1.6)}
+                  opacity={isSelected ? 0.7 : 0.35}
+                />
+                <text
+                  x={it.lx}
+                  y={it.ly}
+                  fontSize={monthLabelLayout.fontSize}
+                  fill={isSelected ? "#ffffff" : "#e2e8f0"}
+                  fontWeight={isSelected ? "800" : "650"}
+                  textAnchor={it.textAnchor}
+                  dominantBaseline="middle"
+                  style={{
+                    pointerEvents: "none",
+                    paintOrder: "stroke",
+                    stroke: "rgba(2, 6, 23, 0.9)",
+                    strokeWidth: sw(4),
+                  }}
+                >
+                  {label}
+                </text>
+              </g>
+            )
+          })}
+        </g>
+      )}
 
 
       {/* Center year label */}
@@ -602,8 +822,15 @@ export default function RadialCircle({
         textAnchor="middle" 
         dominantBaseline="middle"
         fontWeight="300"
+        onClick={(e) => {
+          if (monthFocus == null) return
+          e.stopPropagation()
+          setPopup(null)
+          setMonthFocus(null)
+        }}
+        style={{ cursor: monthFocus != null ? "pointer" : "default" }}
       >
-        {year}
+        {monthFocus != null ? `${monthNamesFull[monthFocus]} ${year}` : year}
       </text>
       </svg>
       {/* Inline light popup near the clicked activity (HTML overlay, sibling of SVG) */}
