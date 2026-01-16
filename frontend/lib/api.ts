@@ -105,6 +105,7 @@ export type ContentTaskDTO = {
   deadline?: string | null
   activity_id?: number | null
   owner_id?: number | null
+  owner?: { id: number; email: string; role: string } | null
   created_at: string
   updated_at: string
 }
@@ -118,12 +119,28 @@ export type ContentTaskCreateDTO = {
   notes?: string | null
   deadline?: string | null
   activity_id?: number | null
+  owner_id?: number | null
 }
 
 export type ContentTaskUpdateDTO = Partial<ContentTaskCreateDTO>
 
+export type ContentTasksListParams = {
+  status?: ContentTaskDTO["status"]
+  owner_id?: number
+  unassigned?: boolean
+  q?: string
+}
+
 export const contentTasksAPI = {
-  list: () => request<ContentTaskDTO[]>(`/content/tasks`),
+  list: (params?: ContentTasksListParams) => {
+    const sp = new URLSearchParams()
+    if (params?.status) sp.set("status", params.status)
+    if (params?.owner_id != null) sp.set("owner_id", String(params.owner_id))
+    if (params?.unassigned) sp.set("unassigned", "true")
+    if (params?.q) sp.set("q", params.q)
+    const qs = sp.toString()
+    return request<ContentTaskDTO[]>(`/content/tasks${qs ? `?${qs}` : ""}`)
+  },
   create: (payload: ContentTaskCreateDTO) =>
     request<ContentTaskDTO>(`/content/tasks`, {
       method: "POST",

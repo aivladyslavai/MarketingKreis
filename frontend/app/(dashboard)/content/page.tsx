@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { FileText, Plus, ArrowLeft, Filter, Download, Image, Video, Calendar as CalIcon, MoreHorizontal, User, File } from "lucide-react"
@@ -13,6 +13,8 @@ import { GlassSelect } from "@/components/ui/glass-select"
 import { Input } from "@/components/ui/input"
 import KanbanBoard, { type TaskStatus as KanbanStatus } from "@/components/kanban/kanban-board"
 import { useContentData, type ContentTask } from "@/hooks/use-content-data"
+import { useAuth } from "@/hooks/use-auth"
+import { adminAPI, type AdminUser } from "@/lib/api"
 
 type ContentStatus = "idea" | "draft" | "review" | "approved" | "published"
 
@@ -29,6 +31,8 @@ interface ContentItem {
 
 interface TaskQuickCreateProps {
   defaultStatus: KanbanStatus
+  ownerOptions?: { value: string; label: string }[]
+  defaultOwnerId?: string
   onCreate: (payload: {
     title: string
     channel: string
@@ -37,16 +41,19 @@ interface TaskQuickCreateProps {
     priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT"
     notes?: string
     deadline?: Date
+    ownerId?: string
   }) => Promise<void> | void
 }
 
-function TaskQuickCreate({ defaultStatus, onCreate }: TaskQuickCreateProps) {
+function TaskQuickCreate({ defaultStatus, onCreate, ownerOptions, defaultOwnerId }: TaskQuickCreateProps) {
+  const { closeModal } = useModal()
   const [title, setTitle] = useState("")
   const [channel, setChannel] = useState("Website")
   const [format, setFormat] = useState<string | undefined>("Landing Page")
   const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM")
   const [deadline, setDeadline] = useState<string>("")
   const [notes, setNotes] = useState("")
+  const [ownerId, setOwnerId] = useState<string>(defaultOwnerId || "")
   const [saving, setSaving] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,7 +69,9 @@ function TaskQuickCreate({ defaultStatus, onCreate }: TaskQuickCreateProps) {
         priority,
         notes: notes.trim() || undefined,
         deadline: deadline ? new Date(deadline) : undefined,
+        ownerId: ownerOptions && ownerOptions.length > 0 ? (ownerId || undefined) : undefined,
       })
+      closeModal()
     } finally {
       setSaving(false)
     }
@@ -77,7 +86,7 @@ function TaskQuickCreate({ defaultStatus, onCreate }: TaskQuickCreateProps) {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="z.B. Q4 Launch Landingpage"
-          className="h-9 text-sm"
+          className="text-sm"
         />
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -100,7 +109,7 @@ function TaskQuickCreate({ defaultStatus, onCreate }: TaskQuickCreateProps) {
             value={format || ""}
             onChange={(e) => setFormat(e.target.value || undefined)}
             placeholder="Landing Page, Newsletter..."
-            className="h-9 text-sm"
+            className="text-sm"
           />
         </div>
       </div>
@@ -124,10 +133,21 @@ function TaskQuickCreate({ defaultStatus, onCreate }: TaskQuickCreateProps) {
             type="date"
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
-            className="h-9 text-sm"
+            className="text-sm"
           />
         </div>
       </div>
+      {ownerOptions && ownerOptions.length > 0 && (
+        <div className="space-y-1">
+          <label className="text-xs text-slate-300">Zuständig</label>
+          <GlassSelect
+            value={ownerId}
+            onChange={(v) => setOwnerId(v)}
+            options={ownerOptions}
+            placeholder="Zuweisen (optional)"
+          />
+        </div>
+      )}
       <div className="space-y-1">
         <label className="text-xs text-slate-300">Notizen</label>
         <textarea
@@ -146,8 +166,170 @@ function TaskQuickCreate({ defaultStatus, onCreate }: TaskQuickCreateProps) {
   )
 }
 
+function TaskEditForm({
+  task,
+  isAdmin,
+  users,
+  onSave,
+  onDelete,
+}: {
+  task: ContentTask
+  isAdmin: boolean
+  users: AdminUser[]
+  onSave: (taskId: string, updates: Partial<ContentTask>) => Promise<void>
+  onDelete: (taskId: string) => Promise<void> | void
+}) {
+  const { closeModal } = useModal()
+  const [title, setTitle] = useState(task.title || "")
+  const [channel, setChannel] = useState(task.channel || "Website")
+  const [format, setFormat] = useState(task.format || "")
+  const [status, setStatus] = useState<KanbanStatus>((task.status as any) || "TODO")
+  const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">((task.priority as any) || "MEDIUM")
+  const [deadline, setDeadline] = useState<string>(task.deadline ? task.deadline.toISOString().slice(0, 10) : "")
+  const [notes, setNotes] = useState(task.notes || "")
+  const [activityId, setActivityId] = useState(task.activityId || "")
+  const [ownerId, setOwnerId] = useState<string>(() => {
+    if (!isAdmin) return ""
+    const v = task.ownerId
+    if (v == null || String(v).trim() === "") return "unassigned"
+    return String(v)
+  })
+  const [saving, setSaving] = useState(false)
+
+  const ownerOptions = useMemo(() => {
+    if (!isAdmin) return []
+    return [
+      { value: "unassigned", label: "— Unassigned —" },
+      ...users.map((u) => ({ value: String(u.id), label: `${u.email} (${u.role})` })),
+    ]
+  }, [isAdmin, users])
+
+  const save = async () => {
+    if (!title.trim()) return
+    setSaving(true)
+    try {
+      await onSave(task.id, {
+        title: title.trim(),
+        channel: channel.trim() || "Website",
+        format: format.trim() || undefined,
+        status: status as any,
+        priority: priority as any,
+        notes: notes.trim() || undefined,
+        deadline: deadline ? new Date(deadline) : undefined,
+        activityId: activityId.trim() || undefined,
+        ownerId: isAdmin ? (ownerId || "unassigned") : undefined,
+      })
+      closeModal()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-1 sm:col-span-2">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Titel</label>
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titel" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Channel</label>
+          <Input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="Website / Email / Social ..." />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Format</label>
+          <Input value={format} onChange={(e) => setFormat(e.target.value)} placeholder="Landing Page, Newsletter..." />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Status</label>
+          <GlassSelect
+            value={status}
+            onChange={(v) => setStatus(v as any)}
+            options={[
+              { value: "TODO", label: "TODO" },
+              { value: "IN_PROGRESS", label: "IN PROGRESS" },
+              { value: "REVIEW", label: "REVIEW" },
+              { value: "APPROVED", label: "APPROVED" },
+              { value: "PUBLISHED", label: "PUBLISHED" },
+              { value: "ARCHIVED", label: "ARCHIVED" },
+            ]}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Priorität</label>
+          <GlassSelect
+            value={priority}
+            onChange={(v) => setPriority(v as any)}
+            options={[
+              { value: "LOW", label: "LOW" },
+              { value: "MEDIUM", label: "MEDIUM" },
+              { value: "HIGH", label: "HIGH" },
+              { value: "URGENT", label: "URGENT" },
+            ]}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Fällig am</label>
+          <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Deal/Activity ID (optional)</label>
+          <Input value={activityId} onChange={(e) => setActivityId(e.target.value)} placeholder="z.B. 123" />
+        </div>
+        {isAdmin && (
+          <div className="space-y-1 sm:col-span-2">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Zuständig</label>
+            <GlassSelect value={ownerId} onChange={setOwnerId} options={ownerOptions} />
+          </div>
+        )}
+        <div className="space-y-1 sm:col-span-2">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Notizen</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="min-h-[110px] w-full rounded-md bg-white/70 dark:bg-slate-900/60 border border-slate-300/60 dark:border-slate-700 px-3 py-2 text-sm"
+            placeholder="Kurzbeschreibung / nächste Schritte..."
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+        <Button
+          variant="destructive"
+          onClick={async () => {
+            if (!confirm("Task wirklich löschen?")) return
+            await onDelete(task.id)
+            closeModal()
+          }}
+        >
+          Löschen
+        </Button>
+        <div className="flex flex-col-reverse sm:flex-row gap-2">
+          <Button variant="outline" onClick={closeModal}>
+            Abbrechen
+          </Button>
+          <Button onClick={save} disabled={saving || !title.trim()}>
+            {saving ? "Speichere..." : "Speichern"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ContentPage() {
   const { openModal } = useModal()
+  const { user } = useAuth()
+  const isAdmin = user?.role === "admin" || user?.role === "editor"
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
+  const [taskScope, setTaskScope] = useState<"mine" | "all">(() => {
+    if (typeof window === "undefined") return "mine"
+    const v = localStorage.getItem("content:taskScope")
+    return v === "all" || v === "mine" ? (v as any) : "mine"
+  })
+  const [ownerFilter, setOwnerFilter] = useState<string>("all") // all | unassigned | <id>
+  const [taskQ, setTaskQ] = useState<string>("")
+  const [showPlanner, setShowPlanner] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deals, setDeals] = useState<any[]>([])
@@ -165,7 +347,23 @@ export default function ContentPage() {
     addTask,
     updateTask,
     deleteTask,
-  } = useContentData()
+    refetch: refetchTasks,
+  } = useContentData(
+    useMemo(() => {
+      const p: any = {}
+      const q = taskQ.trim()
+      if (q) p.q = q
+      if (isAdmin) {
+        if (taskScope === "mine") {
+          if (user?.id != null) p.owner_id = user.id
+        } else {
+          if (ownerFilter === "unassigned") p.unassigned = true
+          else if (ownerFilter !== "all") p.owner_id = Number(ownerFilter)
+        }
+      }
+      return p
+    }, [taskQ, isAdmin, taskScope, ownerFilter, user?.id])
+  )
   const [view, setView] = useState<"grid" | "kanban">(() => {
     if (typeof window === "undefined") return "grid"
     return (localStorage.getItem("contentView") as "grid" | "kanban") || "grid"
@@ -173,6 +371,36 @@ export default function ContentPage() {
   useEffect(() => {
     try { localStorage.setItem("contentView", view) } catch {}
   }, [view])
+  useEffect(() => {
+    try {
+      localStorage.setItem("content:taskScope", taskScope)
+    } catch {}
+  }, [taskScope])
+  useEffect(() => {
+    if (!isAdmin) return
+    try {
+      const saved = localStorage.getItem("content:taskScope")
+      if (!saved) setTaskScope("all")
+    } catch {}
+  }, [isAdmin])
+  useEffect(() => {
+    if (!isAdmin) {
+      setAdminUsers([])
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await adminAPI.getUsers({ limit: 100 })
+        if (!cancelled) setAdminUsers(res.items || [])
+      } catch {
+        if (!cancelled) setAdminUsers([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin])
   const [statusTab, setStatusTab] = useState<"ALL" | ContentStatus>("ALL")
   const [q, setQ] = useState<string>("")
   const [typeFilter, setTypeFilter] = useState<"all" | ContentItem["type"]>("all")
@@ -306,15 +534,57 @@ export default function ContentPage() {
           </div>
           {/* Action buttons */}
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="ghost" size="sm" className="bg-white/10 text-white hover:bg-white/20 h-8 text-xs sm:text-sm">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="bg-white/10 text-white hover:bg-white/20 h-8 text-xs sm:text-sm"
+              onClick={() => setShowPlanner((v) => !v)}
+            >
               <Filter className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Filter</span>
+              <span className="hidden sm:inline">{showPlanner ? "Planner ausblenden" : "Planner anzeigen"}</span>
+              <span className="sm:hidden">{showPlanner ? "Planner" : "Planner"}</span>
             </Button>
             <Button variant="ghost" size="sm" className="bg-white/10 text-white hover:bg-white/20 h-8 text-xs sm:text-sm">
               <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
               <span className="hidden sm:inline">Export</span>
             </Button>
-            <Button size="sm" className="bg-white text-slate-900 hover:bg-white/90 h-8 text-xs sm:text-sm ml-auto" onClick={() => openModal({ type: "form", title: "Neuen Content hinzufügen", fields: [{ name: "title", type: "text", label: "Titel", required: true }], onSubmit: () => openModal({ type: "info", title: "Content erstellt!" }) })}>
+            <Button
+              size="sm"
+              className="bg-white text-slate-900 hover:bg-white/90 h-8 text-xs sm:text-sm ml-auto"
+              onClick={() =>
+                openModal({
+                  type: "custom",
+                  title: "Neue Content‑Aufgabe",
+                  content: (
+                    <TaskQuickCreate
+                      defaultStatus={"TODO"}
+                      ownerOptions={
+                        isAdmin
+                          ? [
+                              { value: "", label: "Zuweisen (optional)" },
+                              { value: "unassigned", label: "— Unassigned —" },
+                              ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
+                            ]
+                          : undefined
+                      }
+                      defaultOwnerId={
+                        isAdmin
+                          ? ownerFilter === "unassigned"
+                            ? "unassigned"
+                            : ownerFilter !== "all"
+                            ? ownerFilter
+                            : ""
+                          : undefined
+                      }
+                      onCreate={async (payload) => {
+                        await addTask(payload as any)
+                        refetchTasks()
+                      }}
+                    />
+                  ),
+                })
+              }
+            >
               <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
               Neu
             </Button>
@@ -322,6 +592,9 @@ export default function ContentPage() {
         </div>
       </div>
 
+      {showPlanner && (
+      <>
+      {/* Planner / Templates (optional) */}
       {/* Toolbar: tabs + search/filters + view toggle */}
       <div className="flex flex-col gap-3">
         {/* Status tabs - horizontal scroll on mobile */}
@@ -530,6 +803,8 @@ export default function ContentPage() {
           })}
         </div>
       )}
+      </>
+      )}
 
       {/* Task Board – реальная двухуровневая система задач, сохраняется в Backend */}
       <Card className="glass-card">
@@ -551,6 +826,79 @@ export default function ContentPage() {
               {tasksError && <span className="ml-2 text-amber-300">· {tasksError}</span>}
             </div>
           </div>
+          <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <Input
+              value={taskQ}
+              onChange={(e) => setTaskQ(e.target.value)}
+              placeholder="Suche Tasks..."
+              className="sm:max-w-[320px] bg-white/10 dark:bg-slate-900/50 text-white placeholder:text-white/50 border border-white/20 dark:border-slate-700"
+            />
+            {isAdmin && (
+              <GlassSelect
+                value={taskScope}
+                onChange={(v) => setTaskScope(v as any)}
+                options={[
+                  { value: "mine", label: "Nur meine" },
+                  { value: "all", label: "Alle" },
+                ]}
+                className="sm:w-40"
+              />
+            )}
+            {isAdmin && taskScope === "all" && (
+              <GlassSelect
+                value={ownerFilter}
+                onChange={(v) => setOwnerFilter(v)}
+                options={[
+                  { value: "all", label: "Alle Owner" },
+                  { value: "unassigned", label: "Unassigned" },
+                  ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
+                ]}
+                className="sm:w-64"
+              />
+            )}
+            <Button variant="outline" size="sm" className="ml-auto glass-card" onClick={() => refetchTasks()}>
+              Refresh
+            </Button>
+            <Button
+              size="sm"
+              className="bg-white text-slate-900 hover:bg-white/90"
+              onClick={() =>
+                openModal({
+                  type: "custom",
+                  title: "Neue Content‑Aufgabe",
+                  content: (
+                    <TaskQuickCreate
+                      defaultStatus={"TODO"}
+                      ownerOptions={
+                        isAdmin
+                          ? [
+                              { value: "", label: "Zuweisen (optional)" },
+                              { value: "unassigned", label: "— Unassigned —" },
+                              ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
+                            ]
+                          : undefined
+                      }
+                      defaultOwnerId={
+                        isAdmin
+                          ? ownerFilter === "unassigned"
+                            ? "unassigned"
+                            : ownerFilter !== "all"
+                            ? ownerFilter
+                            : ""
+                          : undefined
+                      }
+                      onCreate={async (payload) => {
+                        await addTask(payload as any)
+                        refetchTasks()
+                      }}
+                    />
+                  ),
+                })
+              }
+            >
+              <Plus className="h-4 w-4 mr-2" /> Task
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="px-2 sm:px-4 py-4">
           <KanbanBoard
@@ -560,6 +908,28 @@ export default function ContentPage() {
               if (!task) return
               await updateTask(taskId, { status: newStatus as any })
             }}
+            onTaskClick={(task) => {
+              const backendId =
+                (task as any)?.backendId ??
+                (() => {
+                  const m = String((task as any)?.id || "").match(/content-(\d+)/)
+                  return m ? Number(m[1]) : undefined
+                })()
+              openModal({
+                type: "custom",
+                title: "Task bearbeiten",
+                description: backendId ? `#${backendId}` : undefined,
+                content: (
+                  <TaskEditForm
+                    task={task as any}
+                    isAdmin={!!isAdmin}
+                    users={adminUsers}
+                    onSave={updateTask as any}
+                    onDelete={deleteTask as any}
+                  />
+                ),
+              })
+            }}
             onCreateTask={(status: KanbanStatus) => {
               openModal({
                 type: "custom",
@@ -567,8 +937,27 @@ export default function ContentPage() {
                 content: (
                   <TaskQuickCreate
                     defaultStatus={status}
+                    ownerOptions={
+                      isAdmin
+                        ? [
+                            { value: "", label: "Zuweisen (optional)" },
+                            { value: "unassigned", label: "— Unassigned —" },
+                            ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
+                          ]
+                        : undefined
+                    }
+                    defaultOwnerId={
+                      isAdmin
+                        ? ownerFilter === "unassigned"
+                          ? "unassigned"
+                          : ownerFilter !== "all"
+                          ? ownerFilter
+                          : ""
+                        : undefined
+                    }
                     onCreate={async (payload) => {
                       await addTask(payload)
+                      refetchTasks()
                     }}
                   />
                 ),

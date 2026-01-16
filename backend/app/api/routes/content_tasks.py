@@ -1,11 +1,12 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.api.deps import get_db_session, get_current_user
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.content_task import ContentTask, ContentTaskStatus, ContentTaskPriority
 from app.schemas.content_task import ContentTaskCreate, ContentTaskUpdate, ContentTaskOut
 
@@ -16,6 +17,9 @@ router = APIRouter(prefix="/content/tasks", tags=["content-tasks"])
 @router.get("", response_model=List[ContentTaskOut])
 def list_content_tasks(
     status: Optional[ContentTaskStatus] = None,
+    owner_id: Optional[int] = None,
+    unassigned: bool = False,
+    q: Optional[str] = None,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -24,11 +28,33 @@ def list_content_tasks(
 
     For now, we return tasks owned by the user, ordered by deadline then created_at.
     """
-    query = db.query(ContentTask).filter(
-        (ContentTask.owner_id == current_user.id) | (ContentTask.owner_id.is_(None))
-    )
+    can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
+
+    query = db.query(ContentTask)
+    if can_manage_all:
+        if unassigned:
+            query = query.filter(ContentTask.owner_id.is_(None))
+        elif owner_id is not None:
+            query = query.filter(ContentTask.owner_id == owner_id)
+    else:
+        # regular users can only see their tasks + unassigned
+        query = query.filter(
+            (ContentTask.owner_id == current_user.id) | (ContentTask.owner_id.is_(None))
+        )
+
     if status is not None:
         query = query.filter(ContentTask.status == status)
+    if q:
+        qv = q.strip()
+        if qv:
+            like = f"%{qv}%"
+            query = query.filter(
+                or_(
+                    ContentTask.title.ilike(like),
+                    ContentTask.channel.ilike(like),
+                    ContentTask.notes.ilike(like),
+                )
+            )
 
     tasks = (
         query.order_by(
@@ -48,6 +74,17 @@ def create_content_task(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new content task for the current user."""
+    can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
+
+    desired_owner_id: Optional[int] = current_user.id
+    # Allow admins/editors to explicitly assign tasks (including unassigned = None)
+    if can_manage_all and hasattr(payload, "model_fields_set") and "owner_id" in payload.model_fields_set:
+        desired_owner_id = payload.owner_id
+        if desired_owner_id is not None:
+            exists = db.query(User).filter(User.id == int(desired_owner_id)).first()
+            if not exists:
+                raise HTTPException(status_code=400, detail="Owner user not found")
+
     task = ContentTask(
         title=payload.title.strip(),
         channel=(payload.channel or "Website").strip(),
@@ -57,7 +94,7 @@ def create_content_task(
         notes=payload.notes.strip() if payload.notes else None,
         deadline=payload.deadline,
         activity_id=payload.activity_id,
-        owner_id=current_user.id,
+        owner_id=desired_owner_id,
     )
     db.add(task)
     db.commit()
@@ -73,11 +110,11 @@ def update_content_task(
     current_user: User = Depends(get_current_user),
 ):
     """Patch update a content task. Only the owner can modify their tasks."""
-    task = (
-        db.query(ContentTask)
-        .filter(ContentTask.id == task_id, ContentTask.owner_id == current_user.id)
-        .first()
-    )
+    can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
+    q = db.query(ContentTask).filter(ContentTask.id == task_id)
+    if not can_manage_all:
+        q = q.filter(ContentTask.owner_id == current_user.id)
+    task = q.first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -98,6 +135,17 @@ def update_content_task(
         task.deadline = data["deadline"]
     if "activity_id" in data:
         task.activity_id = data["activity_id"]
+    if "owner_id" in data:
+        if not can_manage_all:
+            # ignore for regular users
+            pass
+        else:
+            desired_owner_id = data["owner_id"]
+            if desired_owner_id is not None:
+                exists = db.query(User).filter(User.id == int(desired_owner_id)).first()
+                if not exists:
+                    raise HTTPException(status_code=400, detail="Owner user not found")
+            task.owner_id = desired_owner_id
 
     # Ensure updated_at reflects manual changes even if DB back-end doesn't auto-update
     task.updated_at = datetime.utcnow()
@@ -114,11 +162,11 @@ def delete_content_task(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a content task. Only the owner can delete their tasks."""
-    task = (
-        db.query(ContentTask)
-        .filter(ContentTask.id == task_id, ContentTask.owner_id == current_user.id)
-        .first()
-    )
+    can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
+    q = db.query(ContentTask).filter(ContentTask.id == task_id)
+    if not can_manage_all:
+        q = q.filter(ContentTask.owner_id == current_user.id)
+    task = q.first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 

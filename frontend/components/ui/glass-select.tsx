@@ -18,12 +18,12 @@ interface GlassSelectProps {
 
 export function GlassSelect({ value, onChange, placeholder, options, className = "", disabled }: GlassSelectProps) {
   return (
-    <div className={`relative group rounded-xl h-10 flex items-center px-3 border transition-colors backdrop-blur-md bg-white/10 dark:bg-slate-900/50 border-white/20 dark:border-slate-700 focus-within:border-blue-400/50 focus-within:ring-1 focus-within:ring-blue-500/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${className}`}>
+    <div className={`relative group rounded-xl h-11 sm:h-10 flex items-center px-3 border transition-colors backdrop-blur-md bg-white/10 dark:bg-slate-900/50 border-white/20 dark:border-slate-700 focus-within:border-blue-400/50 focus-within:ring-1 focus-within:ring-blue-500/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${className}`}>
       <select
         value={value ?? ""}
         onChange={(e) => onChange?.(e.target.value)}
         disabled={disabled}
-        className="appearance-none bg-transparent border-none outline-none w-full text-slate-900 dark:text-slate-200 pr-6"
+        className="appearance-none bg-transparent border-none outline-none w-full text-base sm:text-sm text-slate-900 dark:text-slate-200 pr-6"
       >
         <option value="" disabled>{placeholder || "Auswählen"}</option>
         {options.map((o) => (

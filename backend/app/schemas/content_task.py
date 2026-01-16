@@ -6,6 +6,15 @@ from pydantic import BaseModel, Field
 from app.models.content_task import ContentTaskStatus, ContentTaskPriority
 
 
+class ContentTaskOwnerOut(BaseModel):
+    id: int
+    email: str
+    role: str
+
+    class Config:
+        from_attributes = True
+
+
 class ContentTaskBase(BaseModel):
     title: str = Field(..., max_length=255)
     channel: str = Field("Website", max_length=100)
@@ -18,7 +27,8 @@ class ContentTaskBase(BaseModel):
 
 
 class ContentTaskCreate(ContentTaskBase):
-    pass
+    # Admin can assign tasks to other users or leave unassigned (None).
+    owner_id: Optional[int] = None
 
 
 class ContentTaskUpdate(BaseModel):
@@ -30,11 +40,13 @@ class ContentTaskUpdate(BaseModel):
     notes: Optional[str] = Field(None, max_length=2000)
     deadline: Optional[datetime] = None
     activity_id: Optional[int] = None
+    owner_id: Optional[int] = None
 
 
 class ContentTaskOut(ContentTaskBase):
     id: int
     owner_id: Optional[int] = None
+    owner: Optional[ContentTaskOwnerOut] = None
     created_at: datetime
     updated_at: datetime
 
