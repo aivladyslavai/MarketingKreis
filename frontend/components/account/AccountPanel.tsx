@@ -81,7 +81,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
         <div className="pointer-events-none absolute -top-24 -right-24 h-40 w-40 rounded-full bg-gradient-to-tr from-fuchsia-500/25 to-blue-500/25 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-28 -left-24 h-44 w-44 rounded-full bg-gradient-to-tr from-cyan-500/25 to-emerald-500/25 blur-3xl" />
 
-        <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="relative flex flex-col gap-4">
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-kaboom-red to-red-600 flex items-center justify-center text-white text-xl font-semibold shadow-xl ring-2 ring-white/40">
               {initial}
@@ -111,25 +111,27 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
             </div>
           </div>
 
-          <div className="flex flex-col items-stretch sm:flex-row sm:items-center gap-2">
+          <div className="grid grid-cols-1 gap-2 w-full">
             {isAdmin && (
               <Button
                 variant="outline"
-                className="glass-card h-9 text-xs sm:text-sm border-white/30 bg-white/10 text-white hover:bg-white/20"
+                className="glass-card w-full h-auto min-h-11 py-2.5 text-xs sm:text-sm border-white/30 bg-white/10 text-white hover:bg-white/20"
                 onClick={() => {
                   router.push("/admin")
                   onClose()
                 }}
               >
-                <Shield className="h-4 w-4 mr-2" /> Admin‑Bereich öffnen
+                <Shield className="h-4 w-4 mr-2 flex-shrink-0" />
+                <span className="min-w-0 truncate">Admin‑Bereich</span>
               </Button>
             )}
             <Button
               variant="outline"
-              className="h-9 text-xs sm:text-sm border-red-400/60 bg-red-500/80 text-white hover:bg-red-500"
+              className="w-full h-auto min-h-11 py-2.5 text-xs sm:text-sm border-red-400/60 bg-red-500/80 text-white hover:bg-red-500"
               onClick={handleLogout}
             >
-              <LogOut className="h-4 w-4 mr-2" /> Abmelden
+              <LogOut className="h-4 w-4 mr-2 flex-shrink-0" />
+              <span className="min-w-0 truncate">Abmelden</span>
             </Button>
           </div>
         </div>
@@ -154,7 +156,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
 
         {/* Overview */}
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -205,34 +207,34 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                 {isAdmin && (
                   <Button
                     variant="outline"
-                    className="glass-card h-auto min-h-11 py-2.5 justify-start text-left"
+                    className="glass-card h-auto min-h-11 py-3 px-3 justify-start items-start text-left gap-3 overflow-hidden"
                     onClick={() => {
                       router.push("/admin")
                       onClose()
                     }}
                   >
                     <Shield className="h-4 w-4 mr-2 text-emerald-300 flex-shrink-0" />
-                    <span className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold text-white leading-tight">Admin‑Bereich</div>
-                      <div className="text-[11px] text-slate-400 leading-snug line-clamp-2">
+                    <div className="min-w-0 flex-1 flex flex-col">
+                      <div className="text-sm font-semibold text-white leading-tight truncate">Admin‑Bereich</div>
+                      <div className="mt-0.5 text-[11px] text-slate-400 leading-snug truncate">
                         Benutzer, Seeds, System‑Checks und Debug‑Tools
                       </div>
-                    </span>
+                    </div>
                   </Button>
                 )}
 
                 <Button
                   variant="outline"
-                  className="glass-card h-auto min-h-11 py-2.5 justify-start text-left border-red-400/30 bg-red-500/10 hover:bg-red-500/15"
+                  className="glass-card h-auto min-h-11 py-3 px-3 justify-start items-start text-left gap-3 border-red-400/30 bg-red-500/10 hover:bg-red-500/15 overflow-hidden"
                   onClick={handleLogout}
                 >
                   <LogOut className="h-4 w-4 mr-2 text-red-300 flex-shrink-0" />
-                  <span className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-white leading-tight">Abmelden</div>
-                    <div className="text-[11px] text-slate-400 leading-snug line-clamp-2">
+                  <div className="min-w-0 flex-1 flex flex-col">
+                    <div className="text-sm font-semibold text-white leading-tight truncate">Abmelden</div>
+                    <div className="mt-0.5 text-[11px] text-slate-400 leading-snug truncate">
                       Sitzung beenden und zur Anmeldung zurückkehren
                     </div>
-                  </span>
+                  </div>
                 </Button>
 
                 {isDemo && (
@@ -250,7 +252,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
 
         {/* Settings */}
         <TabsContent value="settings" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
               <div className="text-xs font-semibold text-slate-200">Interface</div>
 
@@ -353,7 +355,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
 
         {/* Help */}
         <TabsContent value="help" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
               <div className="text-xs font-semibold text-slate-200 flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-amber-300" />
@@ -373,7 +375,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                     <RotateCcw className="h-4 w-4 mt-0.5 text-rose-300 flex-shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-white leading-tight">Welcome Tour</div>
-                      <div className="mt-0.5 text-[11px] text-slate-300/80 leading-snug line-clamp-2">
+                      <div className="mt-0.5 text-[11px] text-slate-300/80 leading-snug truncate">
                         Kurzer Überblick über Navigation, Module und wichtige Bereiche.
                       </div>
                     </div>
@@ -393,7 +395,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                     <BookOpen className="h-4 w-4 mt-0.5 text-blue-300 flex-shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-white leading-tight">Seiten‑Tour</div>
-                      <div className="mt-0.5 text-[11px] text-slate-300/80 leading-snug line-clamp-2">
+                      <div className="mt-0.5 text-[11px] text-slate-300/80 leading-snug truncate">
                         Zeigt die wichtigsten Elemente der aktuellen Seite.
                       </div>
                     </div>
