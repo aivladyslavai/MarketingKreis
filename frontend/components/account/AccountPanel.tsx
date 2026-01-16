@@ -129,27 +129,35 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
           <div className="flex flex-col gap-2">
             <Button
               variant="outline"
-              className="glass-card h-10 text-xs sm:text-sm border-rose-500/30 bg-rose-500/10 text-white hover:bg-rose-500/20 hover:border-rose-500/50 justify-start"
+              className="glass-card h-auto min-h-11 py-2.5 text-xs sm:text-sm border-rose-500/30 bg-rose-500/10 text-white hover:bg-rose-500/20 hover:border-rose-500/50 justify-start items-start"
               onClick={() => {
                 onClose()
                 setTimeout(() => restartOnboarding("welcome"), 300)
               }}
             >
-              <RotateCcw className="h-4 w-4 mr-2 text-rose-400" />
-              <span className="flex-1 text-left">Welcome Tour</span>
-              <span className="text-[10px] text-slate-400">~2 min</span>
+              <RotateCcw className="h-4 w-4 mr-2 mt-0.5 text-rose-400 flex-shrink-0" />
+              <span className="flex-1 min-w-0 text-left leading-tight">
+                Welcome Tour
+              </span>
+              <span className="mt-0.5 text-[10px] text-slate-400 whitespace-nowrap flex-shrink-0">
+                ~2 min
+              </span>
             </Button>
             <Button
               variant="outline"
-              className="glass-card h-10 text-xs sm:text-sm border-white/20 bg-white/5 text-white hover:bg-white/10 justify-start"
+              className="glass-card h-auto min-h-11 py-2.5 text-xs sm:text-sm border-white/20 bg-white/5 text-white hover:bg-white/10 justify-start items-start"
               onClick={() => {
                 onClose()
                 setTimeout(() => restartOnboarding(), 300)
               }}
             >
-              <BookOpen className="h-4 w-4 mr-2 text-blue-400" />
-              <span className="flex-1 text-left">Seiten-Tour (aktuelle Seite)</span>
-              <span className="text-[10px] text-slate-400">~1 min</span>
+              <BookOpen className="h-4 w-4 mr-2 mt-0.5 text-blue-400 flex-shrink-0" />
+              <span className="flex-1 min-w-0 text-left leading-tight">
+                Seiten‑Tour (aktuelle Seite)
+              </span>
+              <span className="mt-0.5 text-[10px] text-slate-400 whitespace-nowrap flex-shrink-0">
+                ~1 min
+              </span>
             </Button>
           </div>
 
