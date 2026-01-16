@@ -22,28 +22,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="de" suppressHydrationWarning>
+    <html lang="de" className="dark" data-theme-mode="dark" suppressHydrationWarning style={{ colorScheme: "dark" }}>
+      <head>
+        <meta name="color-scheme" content="dark" />
+      </head>
       <body className={`${inter.className} min-h-screen bg-[hsl(var(--background))] text-[hsl(var(--foreground))] antialiased`}>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-            try {
-              var mode = localStorage.getItem('themeMode');
-              // backward compatibility
-              if (!mode) {
-                var legacy = localStorage.getItem('theme');
-                if (legacy === 'dark' || legacy === 'light') { mode = legacy; }
-              }
-              if (!mode) { mode = 'auto'; }
-              var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-              var isDark = (mode === 'dark') || (mode === 'auto' && prefersDark);
-              document.documentElement.classList.toggle('dark', isDark);
-              document.documentElement.setAttribute('data-theme-mode', mode);
-              localStorage.setItem('themeMode', mode);
-            } catch (e) {}
-          `,
-          }}
-        />
         <script
           dangerouslySetInnerHTML={{
             __html: `

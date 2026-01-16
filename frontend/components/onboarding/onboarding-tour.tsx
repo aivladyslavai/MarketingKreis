@@ -99,16 +99,6 @@ function buildTours(): Record<TourKey, EnhancedStep[]> {
         tip: "Auf dem Desktop ist die Sidebar immer sichtbar",
       },
       {
-        target: '[data-tour="theme-toggle"]',
-        title: "Dein Style, deine Wahl",
-        content:
-          "Hell, Dunkel oder Auto – wähle das Theme, das zu deiner Arbeitsweise passt. Auto folgt deinen Systemeinstellungen.",
-        placement: "left",
-        icon: <Zap className="h-5 w-5" />,
-        emoji: "🎨",
-        shortcut: "⌘+D",
-      },
-      {
         target: '[data-tour="user-menu"]',
         title: "Dein Account-Bereich",
         content:
@@ -116,7 +106,7 @@ function buildTours(): Record<TourKey, EnhancedStep[]> {
         placement: "bottom",
         icon: <Users className="h-5 w-5" />,
         emoji: "👤",
-        tip: "In den Einstellungen kannst du auch das Theme wechseln",
+        tip: "Hier kannst du den Rundgang jederzeit neu starten",
       },
       {
         target: "body",

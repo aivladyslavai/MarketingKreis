@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { HelpCircle, RotateCcw, Sun, Moon, MonitorCog, Shield, LogOut, Sparkles, BookOpen, Keyboard } from "lucide-react"
+import { RotateCcw, Shield, LogOut, Sparkles, BookOpen, Keyboard } from "lucide-react"
 import { restartOnboarding } from "@/components/onboarding/onboarding-tour"
-
-type Mode = "auto" | "light" | "dark"
 
 interface AccountPanelProps {
   onClose: () => void
@@ -17,32 +15,6 @@ interface AccountPanelProps {
 export function AccountPanel({ onClose }: AccountPanelProps) {
   const { user, logout } = useAuth()
   const router = useRouter()
-  const [mode, setMode] = React.useState<Mode>("auto")
-  const [mounted, setMounted] = React.useState(false)
-
-  React.useEffect(() => {
-    setMounted(true)
-    try {
-      const saved = (localStorage.getItem("themeMode") as Mode | null) || "auto"
-      applyMode(saved, false)
-    } catch {
-      applyMode("auto", false)
-    }
-  }, [])
-
-  const applyMode = (m: Mode, persist = true) => {
-    setMode(m)
-    if (persist) {
-      try {
-        localStorage.setItem("themeMode", m)
-      } catch {}
-    }
-    if (typeof window === "undefined") return
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
-    const isDark = m === "dark" || (m === "auto" && prefersDark)
-    document.documentElement.classList.toggle("dark", isDark)
-    document.documentElement.setAttribute("data-theme-mode", m)
-  }
 
   const handleLogout = async () => {
     try {
@@ -125,44 +97,20 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
 
       {/* Settings sections */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Theme / appearance */}
-        <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 space-y-4">
+        {/* Appearance (dark-only) */}
+        <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 space-y-3">
           <div>
             <div className="text-sm font-semibold text-slate-50">Darstellung</div>
             <div className="text-xs text-slate-400 mt-1">
-              Steuern Sie Modus und Verhalten der Oberfläche.
+              Die Plattform nutzt ausschließlich den Dunkelmodus.
             </div>
           </div>
-          {mounted && (
-            <div className="flex flex-wrap gap-2">
-              {[
-                { value: "auto" as Mode, label: "Auto", Icon: MonitorCog, hint: "System" },
-                { value: "light" as Mode, label: "Hell", Icon: Sun, hint: "Tag" },
-                { value: "dark" as Mode, label: "Dunkel", Icon: Moon, hint: "Nacht" },
-              ].map(({ value, label, Icon, hint }) => {
-                const active = mode === value
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => applyMode(value)}
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                      active
-                        ? "bg-slate-100 text-slate-900 border-slate-100 shadow-[0_0_0_1px_rgba(15,23,42,0.15)]"
-                        : "bg-slate-900/50 text-slate-200 border-slate-700 hover:bg-slate-800"
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    <span>{label}</span>
-                    <span className="text-[10px] opacity-70">{hint}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-100">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            Dark Mode aktiv
+          </div>
           <div className="text-[11px] text-slate-500">
-            Der Modus wird pro Browser gespeichert. <span className="font-medium">Auto</span> folgt den
-            Systemeinstellungen.
+            (Kein Theme‑Wechsel mehr – konsistentes UI auf allen Geräten.)
           </div>
         </div>
 
