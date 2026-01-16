@@ -18,7 +18,7 @@ import {
   AdminUser,
   AdminSeedStatus,
 } from "@/lib/api"
-import { Shield, Server, Settings, PlayCircle, RefreshCw, Database, Wrench, Flag, Info, Users, Briefcase, Contact2, Tag, Plus, FlaskConical, PanelLeft, Bug, Bot, Globe, Clock3, Monitor, Sun, Moon, Wifi, Grid3X3, Lock } from "lucide-react"
+import { Shield, Server, Settings, PlayCircle, RefreshCw, RotateCcw, Database, Wrench, Flag, Info, Users, Briefcase, Contact2, Tag, Plus, FlaskConical, PanelLeft, Bug, Bot, Globe, Clock3, Monitor, Sun, Moon, Wifi, Grid3X3, Lock } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
 export default function AdminPage() {
@@ -39,6 +39,7 @@ export default function AdminPage() {
   const [seedStatus, setSeedStatus] = React.useState<AdminSeedStatus | null>(null)
   const [seedLoading, setSeedLoading] = React.useState(false)
   const [seedError, setSeedError] = React.useState<string | null>(null)
+  const [seedDemoLoading, setSeedDemoLoading] = React.useState(false)
   const [adminUsers, setAdminUsers] = React.useState<AdminUser[]>([])
   const [usersTotal, setUsersTotal] = React.useState(0)
   const [usersLoading, setUsersLoading] = React.useState(false)
@@ -252,6 +253,39 @@ export default function AdminPage() {
       setSeedError(e?.message || "Fehler beim Laden des Seed‑Status")
     } finally {
       setSeedLoading(false)
+    }
+  }
+
+  const runSeedDemo = async (opts?: { reset?: boolean }) => {
+    const reset = !!opts?.reset
+    if (reset) {
+      const ok = window.confirm("Demo‑Datenset wirklich löschen und neu erstellen?")
+      if (!ok) return
+    }
+    const value = window.prompt("Passwort für demo@marketingkreis.ch (min. 6 Zeichen)", "")
+    if (value === null) return
+    const pwd = value.trim()
+    if (pwd.length < 6) {
+      alert("Passwort muss mindestens 6 Zeichen haben")
+      return
+    }
+    setSeedDemoLoading(true)
+    try {
+      const res = await adminAPI.seedDemo({
+        email: "demo@marketingkreis.ch",
+        password: pwd,
+        reset,
+      })
+      await loadSeedStatus()
+      alert(
+        `Demo готово:\n${res?.demo?.email || "demo@marketingkreis.ch"}\n\n` +
+          `Created: ${JSON.stringify(res?.created || {}, null, 2)}\n` +
+          `Updated: ${JSON.stringify(res?.updated || {}, null, 2)}`,
+      )
+    } catch (e: any) {
+      alert(e?.message || "Seed demo failed")
+    } finally {
+      setSeedDemoLoading(false)
     }
   }
 
@@ -859,6 +893,31 @@ export default function AdminPage() {
                   </div>
                 </div>
               )}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="text-[10px] sm:text-xs text-slate-400">
+                  Demo‑Account (read‑only): <span className="text-slate-200">demo@marketingkreis.ch</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="glass-card h-8 text-xs"
+                    onClick={() => runSeedDemo({ reset: false })}
+                    disabled={seedDemoLoading}
+                  >
+                    <FlaskConical className="h-4 w-4 mr-2" /> Demo seed
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="glass-card h-8 text-xs border-red-400/40 text-red-200 hover:text-red-100 hover:bg-red-500/10"
+                    onClick={() => runSeedDemo({ reset: true })}
+                    disabled={seedDemoLoading}
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" /> Reset + seed
+                  </Button>
+                </div>
+              </div>
               {seedError && (
                 <div className="text-[10px] sm:text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg sm:rounded-xl px-2 sm:px-3 py-1.5 sm:py-2">
                   {seedError}

@@ -6,7 +6,7 @@ from datetime import datetime, date
 from app.db.session import get_db_session
 from app.models.activity import Activity, ActivityType
 from app.models.user import User
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_writable_user
 from pydantic import BaseModel
 from typing import Optional
 
@@ -88,7 +88,7 @@ def list_activities(
 def create_activity(
     activity_data: dict,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """Create a new activity for the current user."""
     try:
@@ -148,7 +148,7 @@ def update_activity(
     activity_id: str,
     activity_data: dict,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """Update an activity owned by the current user."""
     try:
@@ -220,7 +220,7 @@ def update_activity(
 def delete_activity(
     activity_id: str,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """Delete an activity owned by the current user."""
     try:

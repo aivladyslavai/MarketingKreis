@@ -221,6 +221,20 @@ export type AdminSeedStatus = {
   }
 }
 
+export type AdminSeedDemoPayload = {
+  email?: string
+  password: string
+  reset?: boolean
+}
+
+export type AdminSeedDemoResult = {
+  ok: boolean
+  demo: { email: string; userId: number; readonly: boolean }
+  created: Record<string, number>
+  updated: Record<string, number>
+  targets?: { clients?: number; projects?: number; activities?: number }
+}
+
 export type AdminUserUpdatePayload = {
   email?: string
   role?: "user" | "editor" | "admin"
@@ -233,6 +247,11 @@ export const adminAPI = {
   // receives the authentication cookies. Direct calls to the backend URL from
   // the browser would otherwise result in 401 on Vercel.
   getSeedStatus: () => requestLocal<AdminSeedStatus>(`/api/admin/seed-status`),
+  seedDemo: (payload: AdminSeedDemoPayload) =>
+    requestLocal<AdminSeedDemoResult>(`/api/admin/seed-demo`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   getUsers: (params?: { skip?: number; limit?: number; search?: string; role?: string }) => {
     const searchParams = new URLSearchParams()
     if (params?.skip != null) searchParams.set("skip", String(params.skip))

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.db.session import get_db_session
 from app.models.calendar import CalendarEntry
 from app.models.user import User
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_writable_user
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -172,7 +172,7 @@ def list_calendar_events(
 def create_calendar_event(
     event_data: dict,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """Create a new calendar event owned by the current user."""
     try:
@@ -246,7 +246,7 @@ def update_calendar_event(
     event_id: str,
     event_data: dict,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """Update a calendar event owned by the current user."""
     try:
@@ -349,7 +349,7 @@ def update_calendar_event(
 def delete_calendar_event(
     event_id: str,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """Delete a calendar event owned by the current user."""
     try:

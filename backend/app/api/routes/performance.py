@@ -4,11 +4,13 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, date, timedelta
 
 from app.db.session import get_db_session
+from app.demo import DEMO_SEED_SOURCE
+from app.models.company import Company
 from app.models.deal import Deal
 from app.models.activity import Activity
 from app.models.calendar import CalendarEntry
 from app.models.user import User
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, is_demo_user
 
 router = APIRouter(prefix="/performance", tags=["performance"])
 
@@ -39,9 +41,20 @@ def get_performance(
   now = datetime.utcnow()
   year = year or now.year
 
-  deals: List[Deal] = db.query(Deal).all()
-  activities: List[Activity] = db.query(Activity).all()
-  events: List[CalendarEntry] = db.query(CalendarEntry).all()
+  if is_demo_user(current_user):
+    # Demo mode should only reflect demo-tagged CRM data + demo-owned user domain objects.
+    deals = (
+      db.query(Deal)
+      .join(Company, Company.id == Deal.company_id)
+      .filter(Company.lead_source == DEMO_SEED_SOURCE)
+      .all()
+    )
+    activities = db.query(Activity).filter(Activity.owner_id == current_user.id).all()
+    events = db.query(CalendarEntry).filter(CalendarEntry.owner_id == current_user.id).all()
+  else:
+    deals = db.query(Deal).all()
+    activities = db.query(Activity).all()
+    events = db.query(CalendarEntry).all()
 
   # --- KPI totals (same logic as in frontend) ---
   total_revenue = sum(_to_float(d.value) for d in deals if _stage(d) == "won")

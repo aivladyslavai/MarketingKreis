@@ -58,6 +58,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
   }
 
   const isAdmin = user?.role === "admin"
+  const isDemo = (user?.email || "").trim().toLowerCase() === "demo@marketingkreis.ch"
   const initial = (user?.email || "A").trim().charAt(0).toUpperCase()
   const primaryLabel = user?.email || "Unbekannter Benutzer"
 
@@ -84,6 +85,11 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                 <Badge className="border-white/20 bg-black/20 text-slate-100">
                   Rolle: {user?.role || "user"}
                 </Badge>
+                {isDemo && (
+                  <Badge className="border-amber-300/40 bg-amber-500/20 text-amber-100 inline-flex items-center gap-1">
+                    <Sparkles className="h-3.5 w-3.5" /> DEMO · Read‑only
+                  </Badge>
+                )}
                 {isAdmin && (
                   <Badge className="border-emerald-400/50 bg-emerald-500/80 text-white inline-flex items-center gap-1">
                     <Shield className="h-3.5 w-3.5" /> Admin

@@ -11,7 +11,7 @@ from app.models.upload import Upload
 from app.models.job import Job
 from app.models.activity import Activity, ActivityType
 from app.models.user import User
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, is_demo_user, require_writable_user
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/uploads", tags=["uploads"]) 
@@ -41,6 +41,9 @@ def list_uploads(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
+    # Uploads are global in current schema; do not show them in demo mode to avoid leaking real data.
+    if is_demo_user(current_user):
+        return {"items": []}
     items = (
         db.query(Upload)
         .order_by(Upload.created_at.desc())
@@ -67,7 +70,7 @@ def upload_file(
     file: UploadFile = File(...),
     mapping: Optional[str] = Form(default=None),
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """
     Accept a file upload.

@@ -11,7 +11,8 @@ from app.schemas.company import CompanyCreate, CompanyUpdate, CompanyOut
 from app.schemas.contact import ContactCreate, ContactUpdate, ContactOut
 from app.schemas.deal import DealCreate, DealUpdate, DealOut
 from app.schemas.user import UserOut
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, is_demo_user, require_writable_user
+from app.demo import DEMO_SEED_SOURCE
 
 
 router = APIRouter(prefix="/crm", tags=["crm"])
@@ -24,7 +25,10 @@ def list_companies(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
-    return db.query(Company).offset(skip).limit(limit).all()
+    q = db.query(Company)
+    if is_demo_user(current_user):
+        q = q.filter(Company.lead_source == DEMO_SEED_SOURCE)
+    return q.offset(skip).limit(limit).all()
 
 
 @router.get("/contacts", response_model=List[ContactOut])
@@ -36,6 +40,8 @@ def list_contacts(
     current_user: User = Depends(get_current_user),
 ):
     q = db.query(Contact)
+    if is_demo_user(current_user):
+        q = q.join(Company, Company.id == Contact.company_id).filter(Company.lead_source == DEMO_SEED_SOURCE)
     if company_id:
         q = q.filter(Contact.company_id == company_id)
     return q.offset(skip).limit(limit).all()
@@ -51,6 +57,8 @@ def list_deals(
     current_user: User = Depends(get_current_user),
 ):
     q = db.query(Deal)
+    if is_demo_user(current_user):
+        q = q.join(Company, Company.id == Deal.company_id).filter(Company.lead_source == DEMO_SEED_SOURCE)
     if company_id:
         q = q.filter(Deal.company_id == company_id)
     if stage:
@@ -82,10 +90,24 @@ def get_crm_stats(
     - wonValue: сумма value по выигранным сделкам (stage == 'won')
     - conversionRate: доля выигранных сделок от всех (в процентах)
     """
-    total_companies = db.query(Company).count()
-    total_contacts = db.query(Contact).count()
-
-    deals: List[Deal] = db.query(Deal).all()
+    if is_demo_user(current_user):
+        total_companies = db.query(Company).filter(Company.lead_source == DEMO_SEED_SOURCE).count()
+        total_contacts = (
+            db.query(Contact)
+            .join(Company, Company.id == Contact.company_id)
+            .filter(Company.lead_source == DEMO_SEED_SOURCE)
+            .count()
+        )
+        deals: List[Deal] = (
+            db.query(Deal)
+            .join(Company, Company.id == Deal.company_id)
+            .filter(Company.lead_source == DEMO_SEED_SOURCE)
+            .all()
+        )
+    else:
+        total_companies = db.query(Company).count()
+        total_contacts = db.query(Contact).count()
+        deals = db.query(Deal).all()
     total_deals = len(deals)
 
     open_deals = [d for d in deals if _stage(d) not in ("lost",)]
@@ -115,6 +137,9 @@ def list_users(
 
     Возвращает упорядоченный список всех пользователей без паролей.
     """
+    if is_demo_user(current_user):
+        # Avoid leaking other real users in demo mode.
+        return db.query(User).filter(User.id == current_user.id).all()
     return db.query(User).order_by(User.id.asc()).all()
 
 
@@ -134,6 +159,8 @@ def list_projects(
       брать id и title.
     """
     q = db.query(Deal)
+    if is_demo_user(current_user):
+        q = q.join(Company, Company.id == Deal.company_id).filter(Company.lead_source == DEMO_SEED_SOURCE)
     if company_id:
         q = q.filter(Deal.company_id == company_id)
     # По умолчанию не фильтруем по стадии, чтобы можно было привязать событие к любому deal
@@ -144,7 +171,7 @@ def list_projects(
 def create_company(
     company: CompanyCreate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     db_company = Company(**company.dict())
     db.add(db_company)
@@ -158,7 +185,7 @@ def update_company(
     company_id: int,
     payload: CompanyUpdate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """
     Частичное обновление компании.
@@ -184,7 +211,7 @@ def update_company(
 def create_contact(
     contact: ContactCreate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     # Convert first_name + last_name to single name field
     contact_data = contact.dict()
@@ -209,7 +236,7 @@ def update_contact(
     contact_id: int,
     payload: ContactUpdate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """
     Частичное обновление контакта.
@@ -246,7 +273,7 @@ def update_contact(
 def create_deal(
     deal: DealCreate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     db_deal = Deal(**deal.dict())
     db.add(db_deal)

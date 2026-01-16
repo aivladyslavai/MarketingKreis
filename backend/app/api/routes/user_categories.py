@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_writable_user
 from app.db.session import get_db_session
 from app.models.user import User
 from app.models.user_category import UserCategory
@@ -38,7 +38,7 @@ class SaveCategoriesPayload(BaseModel):
 def save_user_categories(
     payload: SaveCategoriesPayload,
     db: Session = Depends(get_db_session),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_writable_user),
 ) -> List[UserCategoryOut]:
     """
     Полная замена пользовательских категорий для текущего пользователя.

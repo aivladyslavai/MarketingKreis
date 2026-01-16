@@ -304,3 +304,32 @@ def seed_status_admin(
     }
 
 
+class SeedDemoPayload(BaseModel):
+    email: EmailStr = Field(default="demo@marketingkreis.ch")
+    password: str = Field(min_length=6, description="Demo account password (admin-only).")
+    reset: bool = Field(default=False, description="If true, wipes previous demo dataset before seeding.")
+
+
+@router.post("/seed-demo")
+def seed_demo_admin(
+    payload: SeedDemoPayload,
+    db: Session = Depends(get_db_session),
+    _: User = Depends(require_role(UserRole.admin)),
+) -> Dict[str, Any]:
+    """
+    Create (or refresh) a full demo dataset and a demo account.
+
+    Admin-only because it can create users and demo-tagged CRM rows.
+    """
+    from app.demo_seed import seed_demo_agency
+
+    try:
+        return seed_demo_agency(
+            db,
+            email=str(payload.email).lower(),
+            password=payload.password,
+            reset=bool(payload.reset),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+

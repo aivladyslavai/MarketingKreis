@@ -38,3 +38,22 @@ def require_role(*allowed_roles: UserRole) -> Callable:
     return role_checker
 
 
+def is_demo_user(user: User) -> bool:
+    """Return True if the user is configured as demo read-only."""
+    settings = get_settings()
+    raw = (getattr(settings, "demo_readonly_emails", "") or "").strip()
+    if not raw:
+        return False
+    emails = {e.strip().lower() for e in raw.split(",") if e and e.strip()}
+    return (user.email or "").strip().lower() in emails
+
+
+def require_writable_user(user: User = Depends(get_current_user)) -> User:
+    """
+    Enforce a strict read-only mode for demo accounts on mutating endpoints.
+    """
+    if is_demo_user(user):
+        raise HTTPException(status_code=403, detail="Demo account is read-only")
+    return user
+
+

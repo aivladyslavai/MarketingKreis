@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from app.api.deps import get_db_session, get_current_user
+from app.api.deps import get_db_session, get_current_user, is_demo_user, require_writable_user
 from app.models.user import User, UserRole
 from app.models.content_task import ContentTask, ContentTaskStatus, ContentTaskPriority
 from app.schemas.content_task import ContentTaskCreate, ContentTaskUpdate, ContentTaskOut
@@ -29,18 +29,20 @@ def list_content_tasks(
     For now, we return tasks owned by the user, ordered by deadline then created_at.
     """
     can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
+    demo_mode = is_demo_user(current_user)
 
     query = db.query(ContentTask)
-    if can_manage_all:
+    if demo_mode:
+        # Do not expose unassigned/shared tasks in demo mode.
+        query = query.filter(ContentTask.owner_id == current_user.id)
+    elif can_manage_all:
         if unassigned:
             query = query.filter(ContentTask.owner_id.is_(None))
         elif owner_id is not None:
             query = query.filter(ContentTask.owner_id == owner_id)
     else:
         # regular users can only see their tasks + unassigned
-        query = query.filter(
-            (ContentTask.owner_id == current_user.id) | (ContentTask.owner_id.is_(None))
-        )
+        query = query.filter((ContentTask.owner_id == current_user.id) | (ContentTask.owner_id.is_(None)))
 
     if status is not None:
         query = query.filter(ContentTask.status == status)
@@ -71,7 +73,7 @@ def list_content_tasks(
 def create_content_task(
     payload: ContentTaskCreate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """Create a new content task for the current user."""
     can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
@@ -107,7 +109,7 @@ def update_content_task(
     task_id: int,
     payload: ContentTaskUpdate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """Patch update a content task. Only the owner can modify their tasks."""
     can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
@@ -159,7 +161,7 @@ def update_content_task(
 def delete_content_task(
     task_id: int,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_writable_user),
 ):
     """Delete a content task. Only the owner can delete their tasks."""
     can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}

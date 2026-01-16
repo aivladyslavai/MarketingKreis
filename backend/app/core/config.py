@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     # Feature flags
     skip_email_verify: bool = Field(default=False, env="SKIP_EMAIL_VERIFY")
 
+    # Demo mode
+    # Comma-separated list of demo emails which should be enforced as read-only on mutating endpoints.
+    demo_readonly_emails: str = Field(default="demo@marketingkreis.ch", env="DEMO_READONLY_EMAILS")
+
     # Upload storage (free-tier friendly):
     # Store file bytes in Postgres so uploads survive deploys/restarts.
     upload_store_in_db: bool = Field(default=True, env="UPLOAD_STORE_IN_DB")
