@@ -16,6 +16,8 @@ export type Activity = {
   ownerId?: string
   owner?: { name: string }
   notes?: string
+  // Optional UI-only color (calendar/labels)
+  color?: string
   // Optional links into CRM
   companyId?: string
   companyName?: string
