@@ -391,6 +391,140 @@ export default function SimpleCalendarView({
                   {selectedActivity.category}
                 </Badge>
               </div>
+
+              {/* Date/time + category + color */}
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                <div className="md:col-span-2">
+                  <div className="text-xs text-slate-400 mb-1">Datum</div>
+                  {isEditing ? (
+                    <input
+                      type="date"
+                      className="h-10 w-full rounded-md bg-white/5 border border-white/10 text-slate-100 px-3"
+                      value={format(((draft as any)?.start as any) || (selectedActivity as any)?.start || new Date(), 'yyyy-MM-dd')}
+                      onChange={(e) => {
+                        const dateStr = e.target.value
+                        const baseStart = (draft as any)?.start ? new Date((draft as any).start) : ((selectedActivity as any)?.start ? new Date((selectedActivity as any).start) : new Date())
+                        const baseEnd = (draft as any)?.end ? new Date((draft as any).end) : ((selectedActivity as any)?.end ? new Date((selectedActivity as any).end) : undefined)
+                        const durationMs = baseEnd ? Math.max(0, baseEnd.getTime() - baseStart.getTime()) : 0
+                        const timeStr = format(baseStart, 'HH:mm')
+                        const [y, m, d] = dateStr.split('-').map((x) => Number(x))
+                        const [hh, mm] = timeStr.split(':').map((x) => Number(x))
+                        const next = new Date(baseStart)
+                        if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
+                          next.setFullYear(y, Math.max(0, m - 1), d)
+                        }
+                        next.setHours(hh || 0, mm || 0, 0, 0)
+                        const nextEnd = baseEnd ? new Date(next.getTime() + durationMs) : undefined
+                        setDraft((cur) => (cur ? ({ ...cur, start: next, end: nextEnd } as any) : cur))
+                      }}
+                    />
+                  ) : (
+                    <div className="h-10 flex items-center px-3 rounded-md bg-white/5 border border-white/10 text-slate-100">
+                      {selectedActivity.start ? format(selectedActivity.start as any, 'EEEE, dd.MM.yyyy', { locale: de }) : '—'}
+                    </div>
+                  )}
+                </div>
+                <div className="md:col-span-1">
+                  <div className="text-xs text-slate-400 mb-1">Start</div>
+                  {isEditing ? (
+                    <input
+                      type="time"
+                      className="h-10 w-full rounded-md bg-white/5 border border-white/10 text-slate-100 px-3"
+                      value={format(((draft as any)?.start as any) || (selectedActivity as any)?.start || new Date(), 'HH:mm')}
+                      onChange={(e) => {
+                        const t = e.target.value
+                        const baseStart = (draft as any)?.start ? new Date((draft as any).start) : ((selectedActivity as any)?.start ? new Date((selectedActivity as any).start) : new Date())
+                        const baseEnd = (draft as any)?.end ? new Date((draft as any).end) : ((selectedActivity as any)?.end ? new Date((selectedActivity as any).end) : undefined)
+                        const durationMs = baseEnd ? Math.max(0, baseEnd.getTime() - baseStart.getTime()) : 0
+                        const [hh, mm] = t.split(':').map((x) => Number(x))
+                        const next = new Date(baseStart)
+                        next.setHours(hh || 0, mm || 0, 0, 0)
+                        const nextEnd = baseEnd ? new Date(next.getTime() + durationMs) : undefined
+                        setDraft((cur) => (cur ? ({ ...cur, start: next, end: nextEnd } as any) : cur))
+                      }}
+                    />
+                  ) : (
+                    <div className="h-10 flex items-center px-3 rounded-md bg-white/5 border border-white/10 text-slate-100">
+                      {selectedActivity.start ? format(selectedActivity.start as any, 'HH:mm') : '—'}
+                    </div>
+                  )}
+                </div>
+                <div className="md:col-span-1">
+                  <div className="text-xs text-slate-400 mb-1">Ende</div>
+                  {isEditing ? (
+                    <input
+                      type="time"
+                      className="h-10 w-full rounded-md bg-white/5 border border-white/10 text-slate-100 px-3"
+                      value={(draft as any)?.end ? format((draft as any).end as any, 'HH:mm') : ''}
+                      onChange={(e) => {
+                        const t = e.target.value
+                        if (!t) {
+                          setDraft((cur) => (cur ? ({ ...cur, end: undefined } as any) : cur))
+                          return
+                        }
+                        const base = (draft as any)?.start ? new Date((draft as any).start) : ((selectedActivity as any)?.start ? new Date((selectedActivity as any).start) : new Date())
+                        const [hh, mm] = t.split(':').map((x) => Number(x))
+                        const next = new Date(base)
+                        next.setHours(hh || 0, mm || 0, 0, 0)
+                        // keep end after start (fallback +60min)
+                        if (next.getTime() < base.getTime()) {
+                          next.setTime(base.getTime() + 60 * 60 * 1000)
+                        }
+                        setDraft((cur) => (cur ? ({ ...cur, end: next } as any) : cur))
+                      }}
+                    />
+                  ) : (
+                    <div className="h-10 flex items-center px-3 rounded-md bg-white/5 border border-white/10 text-slate-100">
+                      {(selectedActivity as any).end ? format((selectedActivity as any).end as any, 'HH:mm') : '—'}
+                    </div>
+                  )}
+                </div>
+                <div className="md:col-span-1">
+                  <div className="text-xs text-slate-400 mb-1">Typ</div>
+                  {isEditing ? (
+                    <select
+                      className="h-10 w-full rounded-md bg-white/5 border border-white/10 text-slate-100 px-2"
+                      value={String(((draft as any)?.category ?? selectedActivity.category) || 'event')}
+                      onChange={(e) => setDraft((cur) => (cur ? ({ ...cur, category: e.target.value } as any) : cur))}
+                    >
+                      <option value="event">Event</option>
+                      <option value="meeting">Meeting</option>
+                      <option value="task">Aufgabe</option>
+                      <option value="campaign">Kampagne</option>
+                      <option value="reminder">Erinnerung</option>
+                    </select>
+                  ) : (
+                    <div className="h-10 flex items-center px-3 rounded-md bg-white/5 border border-white/10 text-slate-100">
+                      {String(selectedActivity.category || '—')}
+                    </div>
+                  )}
+                </div>
+                <div className="md:col-span-1">
+                  <div className="text-xs text-slate-400 mb-1">Farbe</div>
+                  {isEditing ? (
+                    <div className="h-10 rounded-md bg-white/5 border border-white/10 px-2 flex items-center gap-2">
+                      {['#3b82f6','#a78bfa','#10b981','#f59e0b','#ef4444','#06b6d4'].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setDraft((cur) => (cur ? ({ ...cur, color: c } as any) : cur))}
+                          className={`h-6 w-6 rounded-full border ${String((draft as any)?.color || (selectedActivity as any)?.color) === c ? 'ring-2 ring-white border-white' : 'border-slate-600'}`}
+                          style={{ backgroundColor: c }}
+                          aria-label={`color-${c}`}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="h-10 flex items-center px-3 rounded-md bg-white/5 border border-white/10 text-slate-100 gap-2">
+                      <span
+                        className="inline-block h-3 w-3 rounded-full border border-white/20"
+                        style={{ backgroundColor: String((selectedActivity as any)?.color || '#3b82f6') }}
+                      />
+                      <span className="text-sm opacity-80">{String((selectedActivity as any)?.color || '')}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
                 
                 {/* Quick status when editing */}
                 {isEditing && (
@@ -580,7 +714,7 @@ export default function SimpleCalendarView({
                         <button onClick={()=> setScope('only')} className={`px-2 h-8 text-xs ${scope==='only'?'bg-white/20 text-white':'bg-white/5 text-white/70'}`}>Nur dieses</button>
                       </div>
                     )}
-                    <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/30" onClick={async ()=>{ if (draft) { await onUpdateActivity?.(selectedActivity.id as any, { title: (draft as any).title, status: (draft as any).status, notes: (draft as any).notes, start: (draft as any).start, end: (draft as any).end }, { scope, occurrenceDateISO: (selectedActivity as any).occurrenceDateISO, sourceId: (selectedActivity as any).sourceId }); setSelectedActivity({ ...selectedActivity, title: draft.title, status: (draft as any).status, notes: (draft as any).notes } as any); setIsEditing(false) } }}>Speichern</Button>
+                      <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/30" onClick={async ()=>{ if (draft) { await onUpdateActivity?.(selectedActivity.id as any, { title: (draft as any).title, status: (draft as any).status, notes: (draft as any).notes, start: (draft as any).start, end: (draft as any).end, category: (draft as any).category, color: (draft as any).color }, { scope, occurrenceDateISO: (selectedActivity as any).occurrenceDateISO, sourceId: (selectedActivity as any).sourceId }); setSelectedActivity({ ...selectedActivity, title: (draft as any).title, status: (draft as any).status, notes: (draft as any).notes, start: (draft as any).start, end: (draft as any).end, category: (draft as any).category || selectedActivity.category, color: (draft as any).color } as any); setIsEditing(false) } }}>Speichern</Button>
                     <Button size="sm" variant="outline" className="border-white/20 bg-white/5" onClick={()=>{ setIsEditing(false); setDraft(selectedActivity) }}>Abbrechen</Button>
                   </>
                 ) : (
