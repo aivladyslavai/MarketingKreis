@@ -125,7 +125,7 @@ function TaskCard({ task, onTaskClick, onDragStart }: {
   return (
     <Card 
       className={cn(
-        "mb-3 cursor-pointer hover:shadow-md transition-all select-none",
+        "mb-3 cursor-pointer hover:shadow-md transition-all select-none overflow-hidden",
         isDragging && "opacity-50 rotate-2 shadow-lg scale-105"
       )}
       data-task-id={task.id}
@@ -153,32 +153,42 @@ function TaskCard({ task, onTaskClick, onDragStart }: {
     >
       <CardContent className="p-4">
         <div className="space-y-3">
-          <div className="flex items-start justify-between">
-            <h4 className="font-medium text-sm line-clamp-2">{task.title}</h4>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <h4 className="font-medium text-sm leading-tight line-clamp-2 break-words" title={task.title}>
+                {task.title}
+              </h4>
+            </div>
             <Badge 
               variant="secondary" 
-              className={cn("text-xs", priorityConfig[task.priority].color)}
+              className={cn("text-xs whitespace-nowrap flex-shrink-0", priorityConfig[task.priority].color)}
             >
               {priorityConfig[task.priority].label}
             </Badge>
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="px-2 py-1 bg-muted dark:bg-muted/80 rounded text-xs">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground min-w-0">
+              <span
+                className="inline-flex max-w-full items-center px-2 py-1 bg-muted dark:bg-muted/80 rounded text-xs truncate"
+                title={task.channel}
+              >
                 {task.channel}
               </span>
               {task.format && (
-                <span className="px-2 py-1 bg-muted dark:bg-muted/80 rounded text-xs">
+                <span
+                  className="inline-flex max-w-full items-center px-2 py-1 bg-muted dark:bg-muted/80 rounded text-xs truncate"
+                  title={task.format}
+                >
                   {task.format}
                 </span>
               )}
             </div>
 
             {task.deadline && (
-              <div className={cn("flex items-center gap-1 text-xs", getDeadlineColor())}>
-                <Calendar className="h-3 w-3" />
-                <span>
+              <div className={cn("flex items-center gap-1 text-xs min-w-0", getDeadlineColor())}>
+                <Calendar className="h-3 w-3 flex-shrink-0" />
+                <span className="min-w-0 truncate">
                   {formatDistanceToNow(task.deadline, { 
                     addSuffix: true, 
                     locale: de 
@@ -188,23 +198,25 @@ function TaskCard({ task, onTaskClick, onDragStart }: {
             )}
 
             {task.owner && (
-              <div className="flex items-center gap-2">
-                <Avatar className="h-6 w-6">
+              <div className="flex items-center gap-2 min-w-0">
+                <Avatar className="h-6 w-6 flex-shrink-0">
                   <AvatarImage src={task.owner.avatar} />
                   <AvatarFallback className="text-xs">
                     {task.owner.name.split(' ').map(n => n[0]).join('')}
                   </AvatarFallback>
                 </Avatar>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground min-w-0 truncate" title={task.owner.name}>
                   {task.owner.name}
                 </span>
               </div>
             )}
 
             {task.activity && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <AlertCircle className="h-3 w-3" />
-                <span>{task.activity.title}</span>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+                <AlertCircle className="h-3 w-3 flex-shrink-0" />
+                <span className="min-w-0 truncate" title={task.activity.title}>
+                  {task.activity.title}
+                </span>
               </div>
             )}
           </div>
@@ -286,10 +298,10 @@ function KanbanColumn({
       onDrop={handleDrop}
     >
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Icon className={cn("h-4 w-4 text-white rounded p-0.5", config.color)} />
-          <h3 className="font-medium text-sm">{config.title}</h3>
-          <Badge variant="secondary" className="text-xs">
+        <div className="flex items-center gap-2 min-w-0">
+          <Icon className={cn("h-4 w-4 text-white rounded p-0.5 flex-shrink-0", config.color)} />
+          <h3 className="font-medium text-sm min-w-0 truncate">{config.title}</h3>
+          <Badge variant="secondary" className="text-xs flex-shrink-0 whitespace-nowrap">
             {tasks.length}
           </Badge>
         </div>

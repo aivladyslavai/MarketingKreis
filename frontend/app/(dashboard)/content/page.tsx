@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useId } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { FileText, Plus, ArrowLeft, Filter, Download, Image, Video, Calendar as CalIcon, MoreHorizontal, User, File } from "lucide-react"
@@ -29,8 +29,99 @@ interface ContentItem {
   priority: "low" | "medium" | "high"
 }
 
+type TwoLevelTaxonomy = {
+  channels: string[]
+  formatsByChannel: Record<string, string[]>
+  quickCombos: Array<{ channel: string; format: string }>
+}
+
+const DEFAULT_TWO_LEVEL_PRESETS: Array<{ channel: string; formats: string[] }> = [
+  { channel: "Website", formats: ["Landing Page", "Blog", "Case Study"] },
+  { channel: "Email", formats: ["Newsletter", "Automation", "Onboarding"] },
+  { channel: "LinkedIn", formats: ["Post", "Carousel", "Video"] },
+  { channel: "Meta", formats: ["Ads", "Creatives", "Retargeting"] },
+  { channel: "Google", formats: ["Search Ads", "Display", "Performance Max"] },
+  { channel: "PR", formats: ["List", "Press Kit", "Outreach"] },
+]
+
+function _normToken(v?: string | null) {
+  return String(v ?? "").trim()
+}
+
+function buildTwoLevelTaxonomy(
+  tasks: Array<{ channel?: string | null; format?: string | null }>
+): TwoLevelTaxonomy {
+  const channelByKey = new Map<string, string>()
+  const formatsByChannelKey = new Map<string, Map<string, string>>() // channelKey -> (formatKey -> format)
+  const pairCounts = new Map<string, number>() // channelKey||formatKey -> count
+
+  const add = (channelRaw?: string | null, formatRaw?: string | null) => {
+    const ch = _normToken(channelRaw)
+    if (!ch) return
+    const chKey = ch.toLowerCase()
+    if (!channelByKey.has(chKey)) channelByKey.set(chKey, ch)
+
+    const fmt = _normToken(formatRaw)
+    if (!fmt) return
+    const fmtKey = fmt.toLowerCase()
+    let fmts = formatsByChannelKey.get(chKey)
+    if (!fmts) {
+      fmts = new Map<string, string>()
+      formatsByChannelKey.set(chKey, fmts)
+    }
+    if (!fmts.has(fmtKey)) fmts.set(fmtKey, fmt)
+    const pairKey = `${chKey}||${fmtKey}`
+    pairCounts.set(pairKey, (pairCounts.get(pairKey) || 0) + 1)
+  }
+
+  // Seed with defaults so UI has good suggestions even when list is empty/filtered.
+  for (const p of DEFAULT_TWO_LEVEL_PRESETS) {
+    add(p.channel, p.formats[0])
+    for (const f of p.formats) add(p.channel, f)
+  }
+  for (const t of tasks) add(t.channel, t.format)
+
+  const channels = Array.from(channelByKey.values()).sort((a, b) => a.localeCompare(b, "de"))
+
+  const formatsByChannel: Record<string, string[]> = {}
+  for (const ch of channels) {
+    const chKey = ch.toLowerCase()
+    const fmts = formatsByChannelKey.get(chKey)
+    formatsByChannel[ch] = fmts ? Array.from(fmts.values()).sort((a, b) => a.localeCompare(b, "de")) : []
+  }
+
+  const quickCombos: Array<{ channel: string; format: string }> = []
+  const seenCombos = new Set<string>()
+  const pushCombo = (channel: string, format: string) => {
+    const c = _normToken(channel)
+    const f = _normToken(format)
+    if (!c || !f) return
+    const key = `${c.toLowerCase()}||${f.toLowerCase()}`
+    if (seenCombos.has(key)) return
+    seenCombos.add(key)
+    quickCombos.push({ channel: c, format: f })
+  }
+
+  // Most common combos from tasks (best UX), then fall back to defaults.
+  for (const pairKey of Array.from(pairCounts.keys()).sort((a, b) => (pairCounts.get(b) || 0) - (pairCounts.get(a) || 0))) {
+    const [chKey, fmtKey] = pairKey.split("||")
+    const ch = channelByKey.get(chKey) || chKey
+    const fmts = formatsByChannelKey.get(chKey)
+    const fmt = fmts?.get(fmtKey) || fmtKey
+    pushCombo(ch, fmt)
+    if (quickCombos.length >= 10) break
+  }
+  for (const p of DEFAULT_TWO_LEVEL_PRESETS) {
+    for (const f of p.formats.slice(0, 2)) pushCombo(p.channel, f)
+    if (quickCombos.length >= 12) break
+  }
+
+  return { channels, formatsByChannel, quickCombos }
+}
+
 interface TaskQuickCreateProps {
   defaultStatus: KanbanStatus
+  taxonomy?: TwoLevelTaxonomy
   ownerOptions?: { value: string; label: string }[]
   defaultOwnerId?: string
   onCreate: (payload: {
@@ -45,7 +136,7 @@ interface TaskQuickCreateProps {
   }) => Promise<void> | void
 }
 
-function TaskQuickCreate({ defaultStatus, onCreate, ownerOptions, defaultOwnerId }: TaskQuickCreateProps) {
+function TaskQuickCreate({ defaultStatus, taxonomy, onCreate, ownerOptions, defaultOwnerId }: TaskQuickCreateProps) {
   const { closeModal } = useModal()
   const [title, setTitle] = useState("")
   const [channel, setChannel] = useState("Website")
@@ -56,15 +147,61 @@ function TaskQuickCreate({ defaultStatus, onCreate, ownerOptions, defaultOwnerId
   const [ownerId, setOwnerId] = useState<string>(defaultOwnerId || "")
   const [saving, setSaving] = useState(false)
 
+  const channelListId = useId()
+  const formatListId = useId()
+
+  const channelSuggestions = useMemo(() => {
+    const base =
+      taxonomy?.channels && taxonomy.channels.length
+        ? taxonomy.channels
+        : DEFAULT_TWO_LEVEL_PRESETS.map((p) => p.channel)
+    const uniq = new Set<string>()
+    for (const v of base) {
+      const t = _normToken(v)
+      if (t) uniq.add(t)
+    }
+    return Array.from(uniq).sort((a, b) => a.localeCompare(b, "de"))
+  }, [taxonomy])
+
+  const allFormatSuggestions = useMemo(() => {
+    const uniq = new Set<string>()
+    const source = taxonomy?.formatsByChannel || {}
+    for (const list of Object.values(source)) {
+      for (const v of list) {
+        const t = _normToken(v)
+        if (t) uniq.add(t)
+      }
+    }
+    if (uniq.size === 0) {
+      for (const p of DEFAULT_TWO_LEVEL_PRESETS) for (const f of p.formats) uniq.add(f)
+    }
+    return Array.from(uniq).sort((a, b) => a.localeCompare(b, "de"))
+  }, [taxonomy])
+
+  const formatSuggestions = useMemo(() => {
+    const ch = _normToken(channel)
+    if (taxonomy && ch) {
+      const key = ch.toLowerCase()
+      const match = taxonomy.channels.find((c) => c.toLowerCase() === key)
+      if (match) {
+        const list = taxonomy.formatsByChannel[match] || []
+        if (list.length) return list
+      }
+    }
+    return allFormatSuggestions
+  }, [taxonomy, channel, allFormatSuggestions])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
     setSaving(true)
     try {
+      const ch = _normToken(channel) || "Website"
+      const fmt = _normToken(format) || undefined
       await onCreate({
         title: title.trim(),
-        channel,
-        format,
+        channel: ch,
+        format: fmt,
         status: defaultStatus,
         priority,
         notes: notes.trim() || undefined,
@@ -89,30 +226,70 @@ function TaskQuickCreate({ defaultStatus, onCreate, ownerOptions, defaultOwnerId
           className="text-sm"
         />
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div className="space-y-1">
-          <label className="text-xs text-slate-300">Channel</label>
-          <GlassSelect
+          <label className="text-xs text-slate-300">Bereich (Level 1)</label>
+          <Input
             value={channel}
-            onChange={(v) => setChannel(v)}
-            options={[
-              { value: "Website", label: "Website" },
-              { value: "Email", label: "Email" },
-              { value: "Social Media", label: "Social Media" },
-              { value: "Blog", label: "Blog" },
-            ]}
+            onChange={(e) => {
+              const v = e.target.value
+              setChannel(v)
+              if (!_normToken(format)) {
+                const key = _normToken(v).toLowerCase()
+                const match = taxonomy?.channels?.find((c) => c.toLowerCase() === key)
+                const next = match ? taxonomy?.formatsByChannel?.[match]?.[0] : undefined
+                if (next) setFormat(next)
+              }
+            }}
+            placeholder="z.B. Website, LinkedIn, Meta, PR…"
+            className="text-sm"
+            list={channelListId}
           />
+          <datalist id={channelListId}>
+            {channelSuggestions.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-slate-300">Format</label>
+          <label className="text-xs text-slate-300">Format (Level 2)</label>
           <Input
             value={format || ""}
             onChange={(e) => setFormat(e.target.value || undefined)}
-            placeholder="Landing Page, Newsletter..."
+            placeholder="z.B. Landing Page, Newsletter, Carousel…"
             className="text-sm"
+            list={formatListId}
           />
+          <datalist id={formatListId}>
+            {formatSuggestions.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
         </div>
       </div>
+      {taxonomy && taxonomy.quickCombos && taxonomy.quickCombos.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-[11px] text-slate-400">Schnellwahl</div>
+          <div className="flex flex-wrap gap-1.5">
+            {taxonomy.quickCombos.slice(0, 10).map((p) => (
+              <button
+                key={`${p.channel}||${p.format}`}
+                type="button"
+                className="inline-flex max-w-full items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-200 hover:bg-white/10"
+                onClick={() => {
+                  setChannel(p.channel)
+                  setFormat(p.format)
+                }}
+                title={`${p.channel} · ${p.format}`}
+              >
+                <span className="min-w-0 truncate">{p.channel}</span>
+                <span className="text-slate-500">/</span>
+                <span className="min-w-0 truncate">{p.format}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <label className="text-xs text-slate-300">Priorität</label>
@@ -168,12 +345,14 @@ function TaskQuickCreate({ defaultStatus, onCreate, ownerOptions, defaultOwnerId
 
 function TaskEditForm({
   task,
+  taxonomy,
   isAdmin,
   users,
   onSave,
   onDelete,
 }: {
   task: ContentTask
+  taxonomy?: TwoLevelTaxonomy
   isAdmin: boolean
   users: AdminUser[]
   onSave: (taskId: string, updates: Partial<ContentTask>) => Promise<void>
@@ -195,6 +374,50 @@ function TaskEditForm({
     return String(v)
   })
   const [saving, setSaving] = useState(false)
+
+  const channelListId = useId()
+  const formatListId = useId()
+
+  const channelSuggestions = useMemo(() => {
+    const base =
+      taxonomy?.channels && taxonomy.channels.length
+        ? taxonomy.channels
+        : DEFAULT_TWO_LEVEL_PRESETS.map((p) => p.channel)
+    const uniq = new Set<string>()
+    for (const v of base) {
+      const t = _normToken(v)
+      if (t) uniq.add(t)
+    }
+    return Array.from(uniq).sort((a, b) => a.localeCompare(b, "de"))
+  }, [taxonomy])
+
+  const allFormatSuggestions = useMemo(() => {
+    const uniq = new Set<string>()
+    const source = taxonomy?.formatsByChannel || {}
+    for (const list of Object.values(source)) {
+      for (const v of list) {
+        const t = _normToken(v)
+        if (t) uniq.add(t)
+      }
+    }
+    if (uniq.size === 0) {
+      for (const p of DEFAULT_TWO_LEVEL_PRESETS) for (const f of p.formats) uniq.add(f)
+    }
+    return Array.from(uniq).sort((a, b) => a.localeCompare(b, "de"))
+  }, [taxonomy])
+
+  const formatSuggestions = useMemo(() => {
+    const ch = _normToken(channel)
+    if (taxonomy && ch) {
+      const key = ch.toLowerCase()
+      const match = taxonomy.channels.find((c) => c.toLowerCase() === key)
+      if (match) {
+        const list = taxonomy.formatsByChannel[match] || []
+        if (list.length) return list
+      }
+    }
+    return allFormatSuggestions
+  }, [taxonomy, channel, allFormatSuggestions])
 
   const ownerOptions = useMemo(() => {
     if (!isAdmin) return []
@@ -233,12 +456,41 @@ function TaskEditForm({
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titel" />
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Channel</label>
-          <Input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="Website / Email / Social ..." />
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Bereich (Level 1)</label>
+          <Input
+            value={channel}
+            onChange={(e) => {
+              const v = e.target.value
+              setChannel(v)
+              if (!_normToken(format)) {
+                const key = _normToken(v).toLowerCase()
+                const match = taxonomy?.channels?.find((c) => c.toLowerCase() === key)
+                const next = match ? taxonomy?.formatsByChannel?.[match]?.[0] : undefined
+                if (next) setFormat(next)
+              }
+            }}
+            placeholder="z.B. Website, LinkedIn, Meta, PR…"
+            list={channelListId}
+          />
+          <datalist id={channelListId}>
+            {channelSuggestions.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Format</label>
-          <Input value={format} onChange={(e) => setFormat(e.target.value)} placeholder="Landing Page, Newsletter..." />
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Format (Level 2)</label>
+          <Input
+            value={format}
+            onChange={(e) => setFormat(e.target.value)}
+            placeholder="z.B. Landing Page, Newsletter, Carousel…"
+            list={formatListId}
+          />
+          <datalist id={formatListId}>
+            {formatSuggestions.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Status</label>
@@ -364,6 +616,7 @@ export default function ContentPage() {
       return p
     }, [taskQ, isAdmin, taskScope, ownerFilter, user?.id])
   )
+  const twoLevelTaxonomy = useMemo(() => buildTwoLevelTaxonomy(tasks), [tasks])
   const [view, setView] = useState<"grid" | "kanban">(() => {
     if (typeof window === "undefined") return "grid"
     return (localStorage.getItem("contentView") as "grid" | "kanban") || "grid"
@@ -558,6 +811,7 @@ export default function ContentPage() {
                   content: (
                     <TaskQuickCreate
                       defaultStatus={"TODO"}
+                      taxonomy={twoLevelTaxonomy}
                       ownerOptions={
                         isAdmin
                           ? [
@@ -826,12 +1080,12 @@ export default function ContentPage() {
               {tasksError && <span className="ml-2 text-amber-300">· {tasksError}</span>}
             </div>
           </div>
-          <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
             <Input
               value={taskQ}
               onChange={(e) => setTaskQ(e.target.value)}
               placeholder="Suche Tasks..."
-              className="sm:max-w-[320px] bg-white/10 dark:bg-slate-900/50 text-white placeholder:text-white/50 border border-white/20 dark:border-slate-700"
+              className="sm:max-w-[320px] min-w-0 bg-white/10 dark:bg-slate-900/50 text-white placeholder:text-white/50 border border-white/20 dark:border-slate-700"
             />
             {isAdmin && (
               <GlassSelect
@@ -841,7 +1095,7 @@ export default function ContentPage() {
                   { value: "mine", label: "Nur meine" },
                   { value: "all", label: "Alle" },
                 ]}
-                className="sm:w-40"
+                className="sm:w-40 min-w-0"
               />
             )}
             {isAdmin && taskScope === "all" && (
@@ -853,15 +1107,20 @@ export default function ContentPage() {
                   { value: "unassigned", label: "Unassigned" },
                   ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
                 ]}
-                className="sm:w-64"
+                className="sm:w-64 min-w-0"
               />
             )}
-            <Button variant="outline" size="sm" className="ml-auto glass-card" onClick={() => refetchTasks()}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="sm:ml-auto glass-card shrink-0 whitespace-nowrap"
+              onClick={() => refetchTasks()}
+            >
               Refresh
             </Button>
             <Button
               size="sm"
-              className="bg-white text-slate-900 hover:bg-white/90"
+              className="bg-white text-slate-900 hover:bg-white/90 shrink-0 whitespace-nowrap"
               onClick={() =>
                 openModal({
                   type: "custom",
@@ -869,6 +1128,7 @@ export default function ContentPage() {
                   content: (
                     <TaskQuickCreate
                       defaultStatus={"TODO"}
+                      taxonomy={twoLevelTaxonomy}
                       ownerOptions={
                         isAdmin
                           ? [
@@ -922,6 +1182,7 @@ export default function ContentPage() {
                 content: (
                   <TaskEditForm
                     task={task as any}
+                    taxonomy={twoLevelTaxonomy}
                     isAdmin={!!isAdmin}
                     users={adminUsers}
                     onSave={updateTask as any}
@@ -937,6 +1198,7 @@ export default function ContentPage() {
                 content: (
                   <TaskQuickCreate
                     defaultStatus={status}
+                    taxonomy={twoLevelTaxonomy}
                     ownerOptions={
                       isAdmin
                         ? [
