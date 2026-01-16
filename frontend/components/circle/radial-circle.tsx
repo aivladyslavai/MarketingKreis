@@ -25,6 +25,9 @@ export type Activity = {
   projectName?: string
 }
 
+export type RadialCircleLabelMode = "auto" | "all" | "smart" | "hover" | "none"
+export type RadialCircleConnectionMode = "auto" | "all" | "labeled" | "none"
+
 interface RadialCircleProps {
   activities: Activity[]
   size?: number
@@ -32,9 +35,20 @@ interface RadialCircleProps {
   onActivityClick?: (activity: Activity) => void
   categories?: Array<{ name: string; color: string }>
   onActivityUpdate?: (activityId: string, updates: Partial<Activity>) => void
+  labelMode?: RadialCircleLabelMode
+  connectionMode?: RadialCircleConnectionMode
 }
 
-export default function RadialCircle({ activities, size = 600, year = new Date().getFullYear(), onActivityClick, categories, onActivityUpdate }: RadialCircleProps) {
+export default function RadialCircle({
+  activities,
+  size = 600,
+  year = new Date().getFullYear(),
+  onActivityClick,
+  categories,
+  onActivityUpdate,
+  labelMode = "auto",
+  connectionMode = "auto",
+}: RadialCircleProps) {
   // Responsive render size (fits container; capped by provided size)
   const wrapRef = React.useRef<HTMLDivElement | null>(null)
   const svgRef = React.useRef<SVGSVGElement | null>(null)
@@ -130,6 +144,84 @@ export default function RadialCircle({ activities, size = 600, year = new Date()
   const [preview, setPreview] = React.useState<Record<string, { start?: Date; end?: Date }>>({})
   const draggingRef = React.useRef<null | { id: string; handle: 'start' | 'end' }>(null)
   const [popup, setPopup] = React.useState<null | { a: Activity; x: number; y: number; detailed?: boolean }>(null)
+
+  const resolvedLabelMode: RadialCircleLabelMode = React.useMemo(() => {
+    if (labelMode !== "auto") return labelMode
+    if (isTiny) return "hover"
+    // If we render many labels, it becomes unreadable very quickly.
+    if (activities.length <= (isSmall ? 8 : 12)) return "all"
+    if (activities.length <= (isSmall ? 14 : 18)) return "smart"
+    return "hover"
+  }, [labelMode, activities.length, isTiny, isSmall])
+
+  const truncateLabel = React.useCallback((value: string, max: number) => {
+    const s = String(value || "")
+    if (s.length <= max) return s
+    return s.slice(0, Math.max(0, max - 1)).trimEnd() + "…"
+  }, [])
+
+  const labeledIds = React.useMemo(() => {
+    const selectedId = popup?.a?.id
+
+    if (resolvedLabelMode === "none") return new Set<string>()
+    if (resolvedLabelMode === "all") return new Set<string>(activities.map((a) => a.id))
+    if (resolvedLabelMode === "hover") return selectedId ? new Set<string>([selectedId]) : new Set<string>()
+
+    // smart: show only the most important labels + currently selected one
+    const max = isSmall ? 6 : 10
+    const now = new Date()
+
+    const isOngoing = (a: Activity) => {
+      const s = a.start instanceof Date ? a.start : null
+      const e = a.end instanceof Date ? a.end : null
+      if (!s) return false
+      if (e) return s <= now && e >= now
+      // Single-date activities are treated as "ongoing" only near today
+      const deltaDays = Math.abs(now.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)
+      return deltaDays <= 7
+    }
+
+    const score = (a: Activity) => {
+      const budget = Number.isFinite(Number(a.budgetCHF)) ? Number(a.budgetCHF) : 0
+      const weight = Number.isFinite(Number(a.weight)) ? Number(a.weight) : 0
+      const durDays =
+        a.start instanceof Date && a.end instanceof Date
+          ? Math.max(0, (a.end.getTime() - a.start.getTime()) / (1000 * 60 * 60 * 24))
+          : 0
+      const statusBoost = a.status === "ACTIVE" ? 1000 : a.status === "PLANNED" ? 250 : 0
+      return statusBoost + Math.min(2000, budget / 10) + Math.min(300, weight * 5) + Math.min(120, durDays)
+    }
+
+    const ids = new Set<string>()
+    if (selectedId) ids.add(selectedId)
+
+    // Prefer currently ongoing items first
+    for (const a of activities) {
+      if (ids.size >= max) break
+      if (isOngoing(a)) ids.add(a.id)
+    }
+
+    // Then fill with high-scoring ones
+    const sorted = [...activities].sort((a, b) => score(b) - score(a))
+    for (const a of sorted) {
+      if (ids.size >= max) break
+      ids.add(a.id)
+    }
+    return ids
+  }, [activities, isSmall, popup?.a?.id, resolvedLabelMode])
+
+  const resolvedConnectionMode: RadialCircleConnectionMode = React.useMemo(() => {
+    if (connectionMode !== "auto") return connectionMode
+    if (activities.length <= 18) return "all"
+    // With many items, connection lines are too noisy; keep only for labeled/selected ones.
+    return "labeled"
+  }, [connectionMode, activities.length])
+
+  const connectionIds = React.useMemo(() => {
+    if (resolvedConnectionMode === "none") return new Set<string>()
+    if (resolvedConnectionMode === "all") return new Set<string>(activities.map((a) => a.id))
+    return labeledIds
+  }, [activities, labeledIds, resolvedConnectionMode])
 
   const getPointerAngle = (e: PointerEvent | MouseEvent): number => {
     const svg = svgRef.current
@@ -300,7 +392,7 @@ export default function RadialCircle({ activities, size = 600, year = new Date()
       })}
 
       {/* Connection lines from activities to circle edge */}
-      {activities.map((a) => {
+      {activities.filter((a) => connectionIds.has(a.id)).map((a) => {
         const angle = getAngle(a.start)
         const catKey = resolveRingKey(a.category)
         const r = ringRadiusByCategory[catKey] ?? radius * 0.7
@@ -333,6 +425,15 @@ export default function RadialCircle({ activities, size = 600, year = new Date()
         const x = center + Math.cos(startAngle) * r
         const y = center + Math.sin(startAngle) * r
         const color = ringColorByCategory[catKey] || "#64748b"
+
+        const showLabel = labeledIds.has(a.id)
+        const labelText = resolvedLabelMode === "all"
+          ? a.title
+          : truncateLabel(a.title, isSmall ? 18 : 26)
+        const labelR = 18 * scale
+        const lx = x + Math.cos(startAngle) * labelR
+        const ly = y + Math.sin(startAngle) * labelR
+        const anchor: "start" | "end" = Math.cos(startAngle) >= 0 ? "start" : "end"
         
         // If activity has end date, draw an arc segment to represent duration
         const endAngle = a.end ? getAngle(a.end) : null
@@ -351,6 +452,7 @@ export default function RadialCircle({ activities, size = 600, year = new Date()
             cursor="pointer"
             className="activity-dot"
           >
+            <title>{a.title}</title>
             {hasRange && (
               (() => {
                 // Build arc path from start -> end (always forward in time, may wrap year)
@@ -425,7 +527,25 @@ export default function RadialCircle({ activities, size = 600, year = new Date()
                 </g>
               )
             })()}
-            <text x={x + 12 * scale} y={y - 10 * scale} fontSize={fs(11)} fill="#e2e8f0" fontWeight="500" style={{ pointerEvents: 'none' }}>{a.title}</text>
+            {showLabel && (
+              <text
+                x={lx}
+                y={ly}
+                fontSize={fs(resolvedLabelMode === "all" ? 11 : 10)}
+                fill="#e2e8f0"
+                fontWeight="600"
+                textAnchor={anchor}
+                dominantBaseline="middle"
+                style={{
+                  pointerEvents: "none",
+                  paintOrder: "stroke",
+                  stroke: "rgba(2, 6, 23, 0.9)",
+                  strokeWidth: sw(4),
+                }}
+              >
+                {labelText}
+              </text>
+            )}
           </g>
         )
       })}
