@@ -2,7 +2,6 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import {
   LayoutDashboard,
@@ -46,6 +45,8 @@ interface SidebarProps {
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const pathname = usePathname()
   const { user } = useAuth()
+  const isAdmin = user?.role === "admin"
+  const visibleNavItems = isAdmin ? navItems : navItems.filter((i) => i.href !== "/admin")
 
   return (
     <aside 
@@ -97,7 +98,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             </h2>
           )}
           <nav className="space-y-1">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const isActive = pathname === item.href
               return (
                 <Link
