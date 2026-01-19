@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum, ForeignKey
+from sqlalchemy import JSON, Column, Integer, String, DateTime, Enum, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import enum
@@ -35,8 +35,17 @@ class ContentTask(Base):
     deadline = Column(DateTime(timezone=True), nullable=True)
     activity_id = Column(Integer, nullable=True)
 
+    # Optional link to a Content Item (campaign/material)
+    content_item_id = Column(Integer, ForeignKey("content_items.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Optional recurrence (simple RRULE-like JSON), used by templates/automation
+    # { freq: daily|weekly|monthly, interval?: int, count?: int }
+    recurrence = Column(JSON, nullable=True)
+
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     owner = relationship("User")
+
+    content_item = relationship("ContentItem", foreign_keys=[content_item_id])
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

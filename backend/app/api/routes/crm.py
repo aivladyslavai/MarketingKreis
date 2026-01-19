@@ -6,6 +6,7 @@ from app.db.session import get_db_session
 from app.models.company import Company
 from app.models.contact import Contact
 from app.models.deal import Deal
+from app.models.content_item import ContentAutomationRule, ContentItem, ContentItemStatus, ContentTemplate, Notification
 from app.models.user import User, UserRole
 from app.schemas.company import CompanyCreate, CompanyUpdate, CompanyOut
 from app.schemas.contact import ContactCreate, ContactUpdate, ContactOut
@@ -279,7 +280,130 @@ def create_deal(
     db.add(db_deal)
     db.commit()
     db.refresh(db_deal)
+
+    # Automation hook: if deal starts as WON, create content package(s)
+    try:
+        if (db_deal.stage or "").lower() == "won":
+            _run_deal_won_automation(db, db_deal, current_user)
+    except Exception:
+        db.rollback()
+
     return db_deal
+
+
+def _run_deal_won_automation(db: Session, deal: Deal, actor: User) -> None:
+    """
+    Execute active automation rules for trigger 'deal_won'.
+    Creates content items linked to the deal and applies templates.
+    """
+    rules = (
+        db.query(ContentAutomationRule)
+        .filter(ContentAutomationRule.trigger == "deal_won", ContentAutomationRule.is_active.is_(True))
+        .order_by(ContentAutomationRule.updated_at.desc())
+        .all()
+    )
+    if not rules:
+        return
+
+    for rule in rules:
+        tpl: ContentTemplate | None = None
+        if getattr(rule, "template_id", None):
+            tpl = db.query(ContentTemplate).filter(ContentTemplate.id == int(rule.template_id)).first()
+        if not tpl:
+            continue
+
+        title = f"{deal.title} — {tpl.name}"
+        existing = (
+            db.query(ContentItem)
+            .filter(ContentItem.project_id == deal.id, ContentItem.title == title, ContentItem.owner_id == actor.id)
+            .first()
+        )
+        if existing:
+            continue
+
+        item = ContentItem(
+            title=title,
+            channel=(tpl.channel or "Website"),
+            format=(tpl.format or None),
+            status=ContentItemStatus.DRAFT,
+            tags=(tpl.tags or ["auto:deal_won"]),
+            brief=(tpl.description or None),
+            company_id=getattr(deal, "company_id", None),
+            project_id=deal.id,
+            owner_id=actor.id,
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+
+        # Apply template (creates checklist + tasks)
+        try:
+            from app.api.routes.content_items import apply_template as _apply_template  # local import to avoid cycles
+
+            _apply_template(item.id, {"template_id": tpl.id}, db=db, current_user=actor)  # type: ignore
+        except Exception:
+            db.rollback()
+
+        # Notify owner
+        try:
+            db.add(
+                Notification(
+                    user_id=actor.id,
+                    type="info",
+                    title="Content Pack erstellt",
+                    body=f"Für Deal '{deal.title}' wurde '{tpl.name}' angelegt.",
+                    url=f"/content?item={item.id}",
+                    dedupe_key=f"deal_won:{deal.id}:rule:{rule.id}",
+                )
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+
+
+@router.put("/deals/{deal_id}", response_model=DealOut)
+def update_deal(
+    deal_id: int,
+    payload: DealUpdate,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    deal = db.get(Deal, deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    prev_stage = (deal.stage or "").lower()
+
+    data = payload.dict(exclude_unset=True)
+    for field, value in data.items():
+        if hasattr(deal, field):
+            setattr(deal, field, value)
+
+    db.add(deal)
+    db.commit()
+    db.refresh(deal)
+
+    next_stage = (deal.stage or "").lower()
+    if prev_stage != "won" and next_stage == "won":
+        try:
+            _run_deal_won_automation(db, deal, current_user)
+        except Exception:
+            db.rollback()
+
+    return deal
+
+
+@router.delete("/deals/{deal_id}")
+def delete_deal(
+    deal_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    deal = db.get(Deal, deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    db.delete(deal)
+    db.commit()
+    return {"ok": True, "id": deal_id}
 
 
 

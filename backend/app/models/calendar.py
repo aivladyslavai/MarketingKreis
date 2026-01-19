@@ -33,6 +33,8 @@ class CalendarEntry(Base):
     # Links into CRM / user domain
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
     project_id = Column(Integer, ForeignKey("deals.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Optional link into Content Hub (editorial calendar sync)
+    content_item_id = Column(Integer, ForeignKey("content_items.id", ondelete="SET NULL"), nullable=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -43,6 +45,7 @@ class CalendarEntry(Base):
     # Optional convenience relationships to CRM / user entities (no backrefs required)
     company = relationship("Company", foreign_keys=[company_id])
     project = relationship("Deal", foreign_keys=[project_id])
+    content_item = relationship("ContentItem", foreign_keys=[content_item_id])
     owner = relationship("User", foreign_keys=[owner_id])
 
 

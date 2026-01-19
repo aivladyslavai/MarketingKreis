@@ -24,6 +24,8 @@ class ContentTaskBase(BaseModel):
     notes: Optional[str] = Field(None, max_length=2000)
     deadline: Optional[datetime] = None
     activity_id: Optional[int] = None
+    content_item_id: Optional[int] = None
+    recurrence: Optional[dict] = None
 
 
 class ContentTaskCreate(ContentTaskBase):
@@ -40,6 +42,8 @@ class ContentTaskUpdate(BaseModel):
     notes: Optional[str] = Field(None, max_length=2000)
     deadline: Optional[datetime] = None
     activity_id: Optional[int] = None
+    content_item_id: Optional[int] = None
+    recurrence: Optional[dict] = None
     owner_id: Optional[int] = None
 
 

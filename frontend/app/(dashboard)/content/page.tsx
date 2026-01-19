@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect, useId } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { FileText, Plus, ArrowLeft, Filter, Download, Image, Video, Calendar as CalIcon, MoreHorizontal, User, File } from "lucide-react"
+import { FileText, Plus, ArrowLeft, Filter, Download, Image, Video, Calendar as CalIcon, MoreHorizontal, User, File, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { motion } from "framer-motion"
@@ -13,8 +13,14 @@ import { GlassSelect } from "@/components/ui/glass-select"
 import { Input } from "@/components/ui/input"
 import KanbanBoard, { type TaskStatus as KanbanStatus } from "@/components/kanban/kanban-board"
 import { useContentData, type ContentTask } from "@/hooks/use-content-data"
+import { useContentItems } from "@/hooks/use-content-items"
 import { useAuth } from "@/hooks/use-auth"
 import { adminAPI, type AdminUser } from "@/lib/api"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ContentItemEditor } from "@/components/content/ContentItemEditor"
+import { EditorialCalendar } from "@/components/content/EditorialCalendar"
+import { ContentTemplatesAdmin } from "@/components/content/ContentTemplatesAdmin"
+import { NotificationsPanel } from "@/components/content/NotificationsPanel"
 
 type ContentStatus = "idea" | "draft" | "review" | "approved" | "published"
 
@@ -570,7 +576,7 @@ function TaskEditForm({
 }
 
 export default function ContentPage() {
-  const { openModal } = useModal()
+  const { openModal, closeModal } = useModal()
   const { user } = useAuth()
   const isAdmin = user?.role === "admin" || user?.role === "editor"
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
@@ -617,6 +623,54 @@ export default function ContentPage() {
     }, [taskQ, isAdmin, taskScope, ownerFilter, user?.id])
   )
   const twoLevelTaxonomy = useMemo(() => buildTwoLevelTaxonomy(tasks), [tasks])
+
+  const [hubTab, setHubTab] = useState<"items" | "calendar" | "tasks" | "templates" | "notifications">(() => {
+    if (typeof window === "undefined") return "tasks"
+    return (localStorage.getItem("contentHubTab") as any) || "tasks"
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem("contentHubTab", hubTab)
+    } catch {}
+  }, [hubTab])
+
+  const [itemQ, setItemQ] = useState<string>("")
+  const [itemStatus, setItemStatus] = useState<string>("ALL")
+  const [itemScope, setItemScope] = useState<"mine" | "all">(() => {
+    if (typeof window === "undefined") return "mine"
+    const v = localStorage.getItem("content:itemScope")
+    return v === "all" || v === "mine" ? (v as any) : "mine"
+  })
+  const [itemOwnerFilter, setItemOwnerFilter] = useState<string>("all")
+  useEffect(() => {
+    try {
+      localStorage.setItem("content:itemScope", itemScope)
+    } catch {}
+  }, [itemScope])
+
+  const {
+    items: contentItems,
+    loading: itemsLoading,
+    error: itemsError,
+    refetch: refetchItems,
+    updateItem: updateContentItem,
+  } = useContentItems(
+    useMemo(() => {
+      const p: any = {}
+      const q = itemQ.trim()
+      if (q) p.q = q
+      if (itemStatus && itemStatus !== "ALL") p.status = itemStatus
+      if (isAdmin) {
+        if (itemScope === "mine") {
+          if (user?.id != null) p.owner_id = user.id
+        } else {
+          if (itemOwnerFilter === "unassigned") p.unassigned = true
+          else if (itemOwnerFilter !== "all") p.owner_id = Number(itemOwnerFilter)
+        }
+      }
+      return p
+    }, [itemQ, itemStatus, isAdmin, itemScope, itemOwnerFilter, user?.id])
+  )
   const [view, setView] = useState<"grid" | "kanban">(() => {
     if (typeof window === "undefined") return "grid"
     return (localStorage.getItem("contentView") as "grid" | "kanban") || "grid"
@@ -760,6 +814,14 @@ export default function ContentPage() {
   }
   const filteredContents = contents.filter(matchesFilters)
 
+  const openContentItem = (id?: number) => {
+    openModal({
+      type: "custom",
+      title: id ? `Content Item #${id}` : "Neues Content Item",
+      content: <ContentItemEditor itemId={id} onClose={closeModal} />,
+    })
+  }
+
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 md:p-8 pb-24 md:pb-8 min-h-screen">
       <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-4 sm:p-6 md:p-10 text-white shadow-2xl border border-white/10">
@@ -802,6 +864,16 @@ export default function ContentPage() {
               <span className="hidden sm:inline">Export</span>
             </Button>
             <Button
+              variant="ghost"
+              size="sm"
+              className="bg-white/10 text-white hover:bg-white/20 h-8 text-xs sm:text-sm"
+              onClick={() => openContentItem()}
+            >
+              <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Item</span>
+              <span className="sm:hidden">Item</span>
+            </Button>
+            <Button
               size="sm"
               className="bg-white text-slate-900 hover:bg-white/90 h-8 text-xs sm:text-sm ml-auto"
               onClick={() =>
@@ -840,11 +912,191 @@ export default function ContentPage() {
               }
             >
               <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              Neu
+              Task
             </Button>
           </div>
         </div>
       </div>
+
+      <Card className="glass-card">
+        <CardHeader className="px-4 sm:px-6 pt-4 pb-3 border-b border-white/10">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/20 border border-purple-400/40 text-xs">
+                  ✦
+                </span>
+                Content Items
+              </CardTitle>
+              <p className="text-xs text-slate-400 mt-1">Kampagnen/Materialien mit Workflow, Assets, Kalender & KI.</p>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              {itemsLoading ? "Lade…" : `${contentItems.length} Items`}
+              {itemsError && <span className="ml-2 text-amber-300">· {itemsError}</span>}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 sm:px-6 py-4 space-y-4">
+          <Tabs value={hubTab} onValueChange={(v) => setHubTab(v as any)} className="space-y-4">
+            <TabsList className="w-full bg-slate-900/40 border-white/10">
+              <TabsTrigger value="items" className="flex-1 text-xs sm:text-sm">
+                Items
+              </TabsTrigger>
+              <TabsTrigger value="calendar" className="flex-1 text-xs sm:text-sm">
+                Calendar
+              </TabsTrigger>
+              <TabsTrigger value="tasks" className="flex-1 text-xs sm:text-sm">
+                Tasks
+              </TabsTrigger>
+              <TabsTrigger value="templates" className="flex-1 text-xs sm:text-sm">
+                Templates
+              </TabsTrigger>
+              <TabsTrigger value="notifications" className="flex-1 text-xs sm:text-sm">
+                Notifications
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="items" className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                <Input
+                  value={itemQ}
+                  onChange={(e) => setItemQ(e.target.value)}
+                  placeholder="Suche Content Items…"
+                  className="sm:max-w-[320px] min-w-0 bg-white/10 dark:bg-slate-900/50 text-white placeholder:text-white/50 border border-white/20 dark:border-slate-700"
+                />
+                <GlassSelect
+                  value={itemStatus}
+                  onChange={(v) => setItemStatus(v)}
+                  options={[
+                    { value: "ALL", label: "Alle Status" },
+                    { value: "IDEA", label: "IDEA" },
+                    { value: "DRAFT", label: "DRAFT" },
+                    { value: "REVIEW", label: "REVIEW" },
+                    { value: "APPROVED", label: "APPROVED" },
+                    { value: "SCHEDULED", label: "SCHEDULED" },
+                    { value: "PUBLISHED", label: "PUBLISHED" },
+                    { value: "ARCHIVED", label: "ARCHIVED" },
+                    { value: "BLOCKED", label: "BLOCKED" },
+                  ]}
+                  className="sm:w-44 min-w-0"
+                />
+                {isAdmin && (
+                  <GlassSelect
+                    value={itemScope}
+                    onChange={(v) => setItemScope(v as any)}
+                    options={[
+                      { value: "mine", label: "Nur meine" },
+                      { value: "all", label: "Alle" },
+                    ]}
+                    className="sm:w-40 min-w-0"
+                  />
+                )}
+                {isAdmin && itemScope === "all" && (
+                  <GlassSelect
+                    value={itemOwnerFilter}
+                    onChange={(v) => setItemOwnerFilter(v)}
+                    options={[
+                      { value: "all", label: "Alle Owner" },
+                      { value: "unassigned", label: "Unassigned" },
+                      ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
+                    ]}
+                    className="sm:w-64 min-w-0"
+                  />
+                )}
+                <Button variant="outline" size="sm" className="sm:ml-auto glass-card shrink-0 whitespace-nowrap" onClick={() => refetchItems()}>
+                  Refresh
+                </Button>
+                <Button size="sm" className="bg-white text-slate-900 hover:bg-white/90 shrink-0 whitespace-nowrap" onClick={() => openContentItem()}>
+                  <Plus className="h-4 w-4 mr-2" /> New Item
+                </Button>
+              </div>
+
+              {itemsLoading ? (
+                <div className="py-8 flex items-center justify-center text-slate-300">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" /> Lade…
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {contentItems.length === 0 && (
+                    <div className="col-span-full text-center text-xs text-slate-400 py-10">
+                      Keine Content Items. Erstelle eins mit “New Item”.
+                    </div>
+                  )}
+                  {contentItems.map((it) => (
+                    <button
+                      key={it.id}
+                      type="button"
+                      className="rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-left hover:bg-white/5 transition overflow-hidden"
+                      onClick={() => openContentItem(it.id)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-100 truncate">{it.title}</div>
+                          <div className="mt-1 text-[11px] text-slate-400 truncate">
+                            {it.channel}
+                            {it.format ? ` · ${it.format}` : ""}
+                          </div>
+                        </div>
+                        <span className="text-[10px] px-2 py-1 rounded-full bg-white/5 border border-white/10 text-slate-200 whitespace-nowrap">
+                          {it.status}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {(it.tags || []).slice(0, 4).map((t, idx) => (
+                          <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-white/70 border border-white/10">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-500 flex flex-wrap gap-2">
+                        {it.dueAt && <span>Due: {it.dueAt.toISOString().slice(0, 10)}</span>}
+                        {it.scheduledAt && <span>Publish: {it.scheduledAt.toISOString().slice(0, 10)}</span>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="calendar" className="space-y-3">
+              <EditorialCalendar
+                items={contentItems}
+                onOpenItem={(id) => openContentItem(id)}
+                onReschedule={async (id, iso) => {
+                  await updateContentItem(id, { scheduled_at: iso, ...(iso ? { status: "SCHEDULED" } : {}) } as any)
+                  refetchItems()
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="tasks" className="space-y-2">
+              <div className="text-xs text-slate-300">Task Board находится ниже на странице.</div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const el = document.getElementById("mk-task-board")
+                  el?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }}
+              >
+                Перейти к Task Board
+              </Button>
+            </TabsContent>
+
+            <TabsContent value="templates" className="space-y-2">
+              {!isAdmin ? (
+                <div className="text-xs text-slate-400">Templates/Automation доступны только Admin/Editor.</div>
+              ) : (
+                <ContentTemplatesAdmin />
+              )}
+            </TabsContent>
+
+            <TabsContent value="notifications" className="space-y-2">
+              <NotificationsPanel />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
 
       {showPlanner && (
       <>
@@ -1061,7 +1313,7 @@ export default function ContentPage() {
       )}
 
       {/* Task Board – реальная двухуровневая система задач, сохраняется в Backend */}
-      <Card className="glass-card">
+      <Card className="glass-card" id="mk-task-board">
         <CardHeader className="px-4 sm:px-6 pt-4 pb-3 border-b border-white/10">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>

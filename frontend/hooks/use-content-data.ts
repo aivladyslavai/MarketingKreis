@@ -23,6 +23,8 @@ export interface ContentTask {
   status: TaskStatus
   priority: TaskPriority
   notes?: string
+  contentItemId?: string
+  recurrence?: any
   ownerId?: string | null
   owner?: {
     id: string
@@ -53,6 +55,8 @@ function mapDto(t: ContentTaskDTO): ContentTask {
     status: (t.status as TaskStatus) || "TODO",
     priority: (t.priority as TaskPriority) || "MEDIUM",
     notes: t.notes || undefined,
+    contentItemId: t.content_item_id != null ? String(t.content_item_id) : undefined,
+    recurrence: (t as any)?.recurrence ?? undefined,
     ownerId,
     owner: ownerEmail
       ? { id: ownerId || "", name: displayNameFromEmail(ownerEmail) }
@@ -110,6 +114,8 @@ export function useContentData(listParams?: ContentTasksListParams) {
       notes: newTask.notes ?? null,
       deadline: newTask.deadline ? newTask.deadline.toISOString() : null,
       activity_id: newTask.activityId ? Number(newTask.activityId) || null : null,
+      content_item_id: newTask.contentItemId ? Number(newTask.contentItemId) || null : null,
+      recurrence: newTask.recurrence ?? null,
     }
 
     // Admin can explicitly assign/unassign; for non-admin backend will ignore.
@@ -148,6 +154,8 @@ export function useContentData(listParams?: ContentTasksListParams) {
     if (updates.notes !== undefined) payload.notes = updates.notes ?? null
     if (updates.deadline !== undefined) payload.deadline = updates.deadline ? updates.deadline.toISOString() : null
     if (updates.activityId !== undefined) payload.activity_id = updates.activityId ? Number(updates.activityId) : null
+    if (updates.contentItemId !== undefined) payload.content_item_id = updates.contentItemId ? Number(updates.contentItemId) : null
+    if (updates.recurrence !== undefined) payload.recurrence = updates.recurrence ?? null
     if (updates.ownerId !== undefined) {
       if (updates.ownerId === "unassigned" || updates.ownerId === null) payload.owner_id = null
       else if (typeof updates.ownerId === "string" && updates.ownerId.trim()) payload.owner_id = Number(updates.ownerId)

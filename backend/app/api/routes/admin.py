@@ -284,6 +284,9 @@ def seed_status_admin(
     Краткий статус "инициализации" демо-данных.
     Удобно использовать в админ‑UI, чтобы показать, что уже засеяно.
     """
+    from app.models.content_task import ContentTask
+    from app.models.content_item import ContentAutomationRule, ContentItem, ContentTemplate, Notification
+
     return {
         "users": {
             "total": db.query(func.count(User.id)).scalar() or 0,
@@ -300,6 +303,13 @@ def seed_status_admin(
         },
         "performance": {
             "metrics": db.query(func.count(Performance.id)).scalar() or 0,
+        },
+        "content": {
+            "items": db.query(func.count(ContentItem.id)).scalar() or 0,
+            "tasks": db.query(func.count(ContentTask.id)).scalar() or 0,
+            "templates": db.query(func.count(ContentTemplate.id)).scalar() or 0,
+            "automationRules": db.query(func.count(ContentAutomationRule.id)).scalar() or 0,
+            "notifications": db.query(func.count(Notification.id)).scalar() or 0,
         },
     }
 

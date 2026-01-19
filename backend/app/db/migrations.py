@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260115_0004"
+    target_revision = "20260119_0005"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:
@@ -137,6 +137,227 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("alter table calendar_entries add column if not exists attendees jsonb;"))
         conn.execute(text("alter table calendar_entries add column if not exists recurrence jsonb;"))
         conn.execute(text("alter table calendar_entries add column if not exists recurrence_exceptions jsonb;"))
+        conn.execute(text("alter table calendar_entries add column if not exists content_item_id integer;"))
+        conn.execute(text("create index if not exists ix_calendar_entries_content_item_id on calendar_entries (content_item_id);"))
+
+        # Content tasks: link to content items + recurrence
+        conn.execute(text("alter table content_tasks add column if not exists content_item_id integer;"))
+        conn.execute(text("alter table content_tasks add column if not exists recurrence jsonb;"))
+        conn.execute(text("create index if not exists ix_content_tasks_content_item_id on content_tasks (content_item_id);"))
+
+        # Content Hub: enum types (idempotent)
+        conn.execute(
+            text(
+                "do $$\n"
+                "begin\n"
+                "  if not exists (select 1 from pg_type where typname = 'contentitemstatus') then\n"
+                "    create type contentitemstatus as enum ('IDEA','DRAFT','REVIEW','APPROVED','SCHEDULED','PUBLISHED','ARCHIVED','BLOCKED');\n"
+                "  end if;\n"
+                "end $$;"
+            )
+        )
+        conn.execute(
+            text(
+                "do $$\n"
+                "begin\n"
+                "  if not exists (select 1 from pg_type where typname = 'contentassetkind') then\n"
+                "    create type contentassetkind as enum ('LINK','UPLOAD');\n"
+                "  end if;\n"
+                "end $$;"
+            )
+        )
+
+        # Content Items (campaigns/materials)
+        conn.execute(
+            text(
+                "create table if not exists content_items (\n"
+                "  id serial primary key,\n"
+                "  title varchar(255) not null,\n"
+                "  channel varchar(100) not null default 'Website',\n"
+                "  format varchar(100),\n"
+                "  status contentitemstatus not null default 'DRAFT',\n"
+                "  tags jsonb,\n"
+                "  brief text,\n"
+                "  body text,\n"
+                "  tone varchar(50),\n"
+                "  language varchar(10) default 'de',\n"
+                "  due_at timestamptz,\n"
+                "  scheduled_at timestamptz,\n"
+                "  published_at timestamptz,\n"
+                "  company_id integer,\n"
+                "  project_id integer,\n"
+                "  activity_id integer,\n"
+                "  owner_id integer,\n"
+                "  blocked_reason varchar(255),\n"
+                "  blocked_by jsonb,\n"
+                "  created_at timestamptz not null default now(),\n"
+                "  updated_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_content_items_owner_id on content_items (owner_id);"))
+        conn.execute(text("create index if not exists ix_content_items_company_id on content_items (company_id);"))
+        conn.execute(text("create index if not exists ix_content_items_project_id on content_items (project_id);"))
+        conn.execute(text("create index if not exists ix_content_items_activity_id on content_items (activity_id);"))
+
+        # Reviewer assignments
+        conn.execute(
+            text(
+                "create table if not exists content_item_reviewers (\n"
+                "  id serial primary key,\n"
+                "  item_id integer not null,\n"
+                "  reviewer_id integer,\n"
+                "  role varchar(50),\n"
+                "  created_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_content_item_reviewers_item_id on content_item_reviewers (item_id);"))
+        conn.execute(text("create index if not exists ix_content_item_reviewers_reviewer_id on content_item_reviewers (reviewer_id);"))
+
+        # Comments
+        conn.execute(
+            text(
+                "create table if not exists content_item_comments (\n"
+                "  id serial primary key,\n"
+                "  item_id integer not null,\n"
+                "  author_id integer,\n"
+                "  body text not null,\n"
+                "  created_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_content_item_comments_item_id on content_item_comments (item_id);"))
+        conn.execute(text("create index if not exists ix_content_item_comments_author_id on content_item_comments (author_id);"))
+
+        # Checklist
+        conn.execute(
+            text(
+                "create table if not exists content_item_checklist (\n"
+                "  id serial primary key,\n"
+                "  item_id integer not null,\n"
+                "  title varchar(255) not null,\n"
+                "  is_done boolean not null default false,\n"
+                "  position integer not null default 0,\n"
+                "  created_at timestamptz not null default now(),\n"
+                "  updated_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_content_item_checklist_item_id on content_item_checklist (item_id);"))
+
+        # Assets (links/uploads)
+        conn.execute(
+            text(
+                "create table if not exists content_item_assets (\n"
+                "  id serial primary key,\n"
+                "  item_id integer not null,\n"
+                "  kind contentassetkind not null default 'LINK',\n"
+                "  name varchar(255),\n"
+                "  url varchar(2048),\n"
+                "  upload_id integer,\n"
+                "  source varchar(50),\n"
+                "  mime_type varchar(100),\n"
+                "  size_bytes integer,\n"
+                "  version integer not null default 1,\n"
+                "  created_by integer,\n"
+                "  created_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_content_item_assets_item_id on content_item_assets (item_id);"))
+        conn.execute(text("create index if not exists ix_content_item_assets_upload_id on content_item_assets (upload_id);"))
+
+        # Versions
+        conn.execute(
+            text(
+                "create table if not exists content_item_versions (\n"
+                "  id serial primary key,\n"
+                "  item_id integer not null,\n"
+                "  version integer not null,\n"
+                "  title varchar(255),\n"
+                "  brief text,\n"
+                "  body text,\n"
+                "  meta jsonb,\n"
+                "  created_by integer,\n"
+                "  created_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_content_item_versions_item_id on content_item_versions (item_id);"))
+
+        # Audit log
+        conn.execute(
+            text(
+                "create table if not exists content_item_audit_log (\n"
+                "  id serial primary key,\n"
+                "  item_id integer not null,\n"
+                "  actor_id integer,\n"
+                "  action varchar(100) not null,\n"
+                "  data jsonb,\n"
+                "  created_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_content_item_audit_log_item_id on content_item_audit_log (item_id);"))
+        conn.execute(text("create index if not exists ix_content_item_audit_log_actor_id on content_item_audit_log (actor_id);"))
+
+        # Templates + automation rules
+        conn.execute(
+            text(
+                "create table if not exists content_templates (\n"
+                "  id serial primary key,\n"
+                "  name varchar(120) not null,\n"
+                "  description varchar(1024),\n"
+                "  channel varchar(100),\n"
+                "  format varchar(100),\n"
+                "  tags jsonb,\n"
+                "  checklist jsonb,\n"
+                "  tasks jsonb,\n"
+                "  reviewers jsonb,\n"
+                "  created_by integer,\n"
+                "  created_at timestamptz not null default now(),\n"
+                "  updated_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_content_templates_created_by on content_templates (created_by);"))
+
+        conn.execute(
+            text(
+                "create table if not exists content_automation_rules (\n"
+                "  id serial primary key,\n"
+                "  name varchar(120) not null,\n"
+                "  is_active boolean not null default true,\n"
+                "  trigger varchar(60) not null,\n"
+                "  template_id integer,\n"
+                "  config jsonb,\n"
+                "  created_by integer,\n"
+                "  created_at timestamptz not null default now(),\n"
+                "  updated_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_content_automation_rules_template_id on content_automation_rules (template_id);"))
+        conn.execute(text("create index if not exists ix_content_automation_rules_created_by on content_automation_rules (created_by);"))
+
+        # Notifications
+        conn.execute(
+            text(
+                "create table if not exists notifications (\n"
+                "  id serial primary key,\n"
+                "  user_id integer not null,\n"
+                "  type varchar(60) not null default 'info',\n"
+                "  title varchar(255) not null,\n"
+                "  body varchar(2000),\n"
+                "  url varchar(2048),\n"
+                "  dedupe_key varchar(255) unique,\n"
+                "  read_at timestamptz,\n"
+                "  created_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_notifications_user_id on notifications (user_id);"))
 
         # Ensure version table has exactly one row with target head.
         conn.execute(text("delete from alembic_version;"))

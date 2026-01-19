@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.db.session import get_db_session
 from app.models.calendar import CalendarEntry
+from app.models.content_item import ContentItem, ContentItemStatus
 from app.models.user import User
 from app.api.deps import get_current_user, require_writable_user
 
@@ -47,6 +48,7 @@ class CalendarEventFrontend(BaseModel):
     recurrence_exceptions: Optional[List[str]] = None
     company_id: Optional[int] = None
     project_id: Optional[int] = None
+    content_item_id: Optional[int] = None
     owner_id: Optional[int] = None
     owner: Optional[OwnerOut] = None
     created_at: Optional[str] = None
@@ -155,6 +157,7 @@ def list_calendar_events(
                     recurrence_exceptions=getattr(event, "recurrence_exceptions", None),
                     company_id=getattr(event, "company_id", None),
                     project_id=getattr(event, "project_id", None),
+                    content_item_id=getattr(event, "content_item_id", None),
                     owner_id=getattr(event, "owner_id", None),
                     owner=event.owner if getattr(event, "owner", None) is not None else None,
                     created_at=event.created_at.isoformat() if event.created_at else None,
@@ -208,11 +211,25 @@ def create_calendar_event(
             recurrence_exceptions=exceptions,
             company_id=_to_int(event_data.get("company_id")),
             project_id=_to_int(event_data.get("project_id")),
+            content_item_id=_to_int(event_data.get("content_item_id")),
             owner_id=current_user.id,
         )
         db.add(event)
         db.commit()
         db.refresh(event)
+
+        # If linked to ContentItem, sync scheduled_at
+        try:
+            if getattr(event, "content_item_id", None):
+                item = db.query(ContentItem).filter(ContentItem.id == int(event.content_item_id)).first()
+                if item and item.owner_id in (None, current_user.id):
+                    item.scheduled_at = event.start_time
+                    if item.status in {ContentItemStatus.IDEA, ContentItemStatus.DRAFT, ContentItemStatus.REVIEW, ContentItemStatus.APPROVED}:
+                        item.status = ContentItemStatus.SCHEDULED
+                    db.add(item)
+                    db.commit()
+        except Exception:
+            db.rollback()
         
         return CalendarEventFrontend(
             id=str(event.id),
@@ -231,6 +248,7 @@ def create_calendar_event(
             recurrence_exceptions=event.recurrence_exceptions,
             company_id=event.company_id,
             project_id=event.project_id,
+            content_item_id=getattr(event, "content_item_id", None),
             owner_id=event.owner_id,
             owner=event.owner if getattr(event, "owner", None) is not None else None,
             created_at=event.created_at.isoformat() if event.created_at else None,
@@ -311,10 +329,25 @@ def update_calendar_event(
             event.company_id = _to_int(event_data.get("company_id"))
         if "project_id" in event_data:
             event.project_id = _to_int(event_data.get("project_id"))
+        if "content_item_id" in event_data:
+            event.content_item_id = _to_int(event_data.get("content_item_id"))
         # Never allow changing owner via API – it must always be the current user
 
         db.commit()
         db.refresh(event)
+
+        # If linked to ContentItem, sync scheduled_at
+        try:
+            if getattr(event, "content_item_id", None):
+                item = db.query(ContentItem).filter(ContentItem.id == int(event.content_item_id)).first()
+                if item and item.owner_id in (None, current_user.id):
+                    item.scheduled_at = event.start_time
+                    if item.status in {ContentItemStatus.IDEA, ContentItemStatus.DRAFT, ContentItemStatus.REVIEW, ContentItemStatus.APPROVED}:
+                        item.status = ContentItemStatus.SCHEDULED
+                    db.add(item)
+                    db.commit()
+        except Exception:
+            db.rollback()
 
         return CalendarEventFrontend(
             id=str(event.id),
@@ -333,6 +366,7 @@ def update_calendar_event(
             recurrence_exceptions=event.recurrence_exceptions,
             company_id=event.company_id,
             project_id=event.project_id,
+            content_item_id=getattr(event, "content_item_id", None),
             owner_id=event.owner_id,
             owner=event.owner if getattr(event, "owner", None) is not None else None,
             created_at=event.created_at.isoformat() if event.created_at else None,

@@ -12,8 +12,22 @@ from app.models.calendar import CalendarEntry
 from app.models.company import Company
 from app.models.contact import Contact
 from app.models.content_task import ContentTask, ContentTaskPriority, ContentTaskStatus
+from app.models.content_item import (
+    ContentAssetKind,
+    ContentAutomationRule,
+    ContentItem,
+    ContentItemAsset,
+    ContentItemChecklistItem,
+    ContentItemComment,
+    ContentItemReviewer,
+    ContentItemStatus,
+    ContentItemVersion,
+    ContentTemplate,
+    Notification,
+)
 from app.models.deal import Deal
 from app.models.performance import Performance
+from app.models.upload import Upload
 from app.models.user import User, UserRole
 from app.models.user_category import UserCategory
 
@@ -83,6 +97,15 @@ def seed_demo_agency(
         "user_categories": 0,
         "activities": 0,
         "calendar_entries": 0,
+        "content_items": 0,
+        "content_item_assets": 0,
+        "content_item_checklist": 0,
+        "content_item_versions": 0,
+        "content_item_comments": 0,
+        "content_item_reviewers": 0,
+        "content_templates": 0,
+        "content_automation_rules": 0,
+        "notifications": 0,
         "content_tasks": 0,
         "performance_rows": 0,
     }
@@ -97,6 +120,10 @@ def seed_demo_agency(
             db.query(CalendarEntry).filter(CalendarEntry.owner_id == existing_demo.id).delete()
             db.query(Activity).filter(Activity.owner_id == existing_demo.id).delete()
             db.query(ContentTask).filter(ContentTask.owner_id == existing_demo.id).delete()
+            db.query(ContentItem).filter(ContentItem.owner_id == existing_demo.id).delete()
+            db.query(Notification).filter(Notification.user_id == existing_demo.id).delete()
+            db.query(ContentAutomationRule).filter(ContentAutomationRule.created_by == existing_demo.id).delete()
+            db.query(ContentTemplate).filter(ContentTemplate.created_by == existing_demo.id).delete()
 
         # Demo-tagged CRM rows
         demo_companies = db.query(Company).filter(Company.lead_source == DEMO_SEED_SOURCE).all()
@@ -590,6 +617,381 @@ def seed_demo_agency(
             updated["calendar_entries"] += 1
     db.commit()
 
+    # --- Content templates + automation rules (Content Items module) ---
+    deal_pack_template_payload = {
+        "name": "Deal Won — Content Pack",
+        "description": "DEMO Template: automatisch erstellter Content‑Pack bei Deal=won.",
+        "channel": "Website",
+        "format": "Pack",
+        "tags": ["automation", "deal_won", "demo"],
+        "checklist": ["Brief", "Copy Draft", "Design", "QA", "Freigabe", "Publish"],
+        "tasks": [
+            {"title": "Kickoff & Brief", "status": "TODO", "priority": "MEDIUM", "offset_days": 0},
+            {"title": "Copy Draft", "status": "TODO", "priority": "HIGH", "offset_days": 2},
+            {"title": "Design Review", "status": "TODO", "priority": "MEDIUM", "offset_days": 4},
+            {"title": "Final QA + Publish", "status": "TODO", "priority": "HIGH", "offset_days": 6},
+        ],
+        "reviewers": [demo_user.id],
+        "created_by": demo_user.id,
+    }
+    tpl_pack, was_created = _upsert_one(
+        db,
+        ContentTemplate,
+        where=[ContentTemplate.created_by == demo_user.id, ContentTemplate.name == deal_pack_template_payload["name"]],
+        create=deal_pack_template_payload,
+        update=deal_pack_template_payload,
+    )
+    if was_created:
+        created["content_templates"] += 1
+    else:
+        updated["content_templates"] += 1
+
+    rule_payload = {
+        "name": "Deal won → Content Pack (DEMO)",
+        "is_active": True,
+        "trigger": "deal_won",
+        "template_id": tpl_pack.id,
+        "config": {"source": "demo_seed"},
+        "created_by": demo_user.id,
+    }
+    rule, was_created = _upsert_one(
+        db,
+        ContentAutomationRule,
+        where=[ContentAutomationRule.created_by == demo_user.id, ContentAutomationRule.name == rule_payload["name"]],
+        create=rule_payload,
+        update=rule_payload,
+    )
+    if was_created:
+        created["content_automation_rules"] += 1
+    else:
+        updated["content_automation_rules"] += 1
+    db.commit()
+
+    # A welcome notification for demo user (shows notifications UI)
+    n_payload = {
+        "user_id": demo_user.id,
+        "type": "info",
+        "title": "Willkommen im Demo‑Account",
+        "body": "Diese Daten sind read‑only. Du kannst Content Items ansehen, Kalender planen und Reports prüfen.",
+        "url": "/content",
+        "dedupe_key": f"demo:welcome:{demo_user.id}",
+    }
+    n, was_created = _upsert_one(
+        db,
+        Notification,
+        where=[Notification.dedupe_key == n_payload["dedupe_key"]],
+        create=n_payload,
+        update=n_payload,
+    )
+    if was_created:
+        created["notifications"] += 1
+    else:
+        updated["notifications"] += 1
+    db.commit()
+
+    # --- Content Items (campaigns/materials) ---
+    default_checklist = ["Brief finalisieren", "Copy schreiben", "Design prüfen", "QA (CTA/Links)", "Freigabe"]
+    content_items_specs = [
+        {
+            "title": "LinkedIn Carousel: ABM Pilot Teaser",
+            "channel": "LinkedIn",
+            "format": "Carousel",
+            "status": ContentItemStatus.REVIEW,
+            "tags": ["abm", "pilot", "teaser"],
+            "company": "Helvetia FinTech GmbH",
+            "project": "ABM Pilot Q1",
+            "due_days": 7,
+            "schedule_days": 10,
+            "assets": [
+                {"kind": ContentAssetKind.LINK, "name": "Figma — Carousel", "url": "https://www.figma.com/file/demo-carousel", "source": "figma"},
+                {"kind": ContentAssetKind.LINK, "name": "Google Doc — Copy", "url": "https://docs.google.com/document/d/demo-carousel-copy", "source": "docs"},
+            ],
+        },
+        {
+            "title": "Newsletter: QBR Einladung",
+            "channel": "Email",
+            "format": "Newsletter",
+            "status": ContentItemStatus.DRAFT,
+            "tags": ["qbr", "newsletter"],
+            "company": "Helvetia FinTech GmbH",
+            "project": "Thought Leadership Content Engine",
+            "due_days": 21,
+            "schedule_days": 24,
+            "assets": [
+                {"kind": ContentAssetKind.LINK, "name": "Google Doc — Newsletter", "url": "https://docs.google.com/document/d/demo-newsletter", "source": "docs"},
+            ],
+        },
+        {
+            "title": "Case Study Draft (MediCare)",
+            "channel": "Website",
+            "format": "Case Study",
+            "status": ContentItemStatus.DRAFT,
+            "tags": ["case-study", "medicare"],
+            "company": "MediCare Zürich Praxisgruppe",
+            "project": "Employer Branding Careers Funnel",
+            "due_days": 18,
+            "schedule_days": None,
+            "assets": [
+                {"kind": ContentAssetKind.LINK, "name": "Interview Notes", "url": "https://docs.google.com/document/d/demo-case-study-notes", "source": "docs"},
+            ],
+        },
+        {
+            "title": "Landingpage Copy Review",
+            "channel": "Website",
+            "format": "Landing Page",
+            "status": ContentItemStatus.APPROVED,
+            "tags": ["landingpage", "copy"],
+            "company": "Bergblick Outdoor AG",
+            "project": "Sommer Kampagne 2026",
+            "due_days": 5,
+            "schedule_days": 12,
+            "assets": [
+                {"kind": ContentAssetKind.LINK, "name": "Figma — Landing", "url": "https://www.figma.com/file/demo-landing", "source": "figma"},
+            ],
+        },
+        {
+            "title": "Employer Branding Post: Team Spotlight",
+            "channel": "LinkedIn",
+            "format": "Post",
+            "status": ContentItemStatus.DRAFT,
+            "tags": ["employer-branding", "team"],
+            "company": "MediCare Zürich Praxisgruppe",
+            "project": "Employer Branding Careers Funnel",
+            "due_days": 12,
+            "schedule_days": 15,
+        },
+        {
+            "title": "PR Outreach List (DACH)",
+            "channel": "PR",
+            "format": "List",
+            "status": ContentItemStatus.DRAFT,
+            "tags": ["pr", "dach"],
+            "company": "Helvetia FinTech GmbH",
+            "project": "ABM Pilot Q1",
+            "due_days": 9,
+            "schedule_days": None,
+        },
+    ]
+
+    content_item_ids: Dict[str, int] = {}
+    for spec in content_items_specs:
+        company_id = companies.get(spec.get("company")).id if spec.get("company") in companies else None
+        project_id = deals.get(spec.get("project")).id if spec.get("project") in deals else None
+        due_at = (now + timedelta(days=int(spec.get("due_days") or 0))).replace(hour=12, minute=0, second=0, microsecond=0)
+        scheduled_at = None
+        if spec.get("schedule_days") is not None:
+            scheduled_at = (now + timedelta(days=int(spec.get("schedule_days")))).replace(hour=9, minute=0, second=0, microsecond=0)
+
+        create = {
+            "title": spec["title"],
+            "channel": spec.get("channel") or "Website",
+            "format": spec.get("format"),
+            "status": spec.get("status") or ContentItemStatus.DRAFT,
+            "tags": spec.get("tags") or [],
+            "brief": "DEMO Brief: Ziel, Zielgruppe, CTA, Outline.",
+            "body": None,
+            "tone": "friendly",
+            "language": "de",
+            "due_at": due_at,
+            "scheduled_at": scheduled_at,
+            "published_at": None,
+            "company_id": company_id,
+            "project_id": project_id,
+            "activity_id": None,
+            "owner_id": demo_user.id,
+            "blocked_reason": None,
+            "blocked_by": [],
+        }
+        obj, was_created = _upsert_one(
+            db,
+            ContentItem,
+            where=[ContentItem.owner_id == demo_user.id, ContentItem.title == spec["title"]],
+            create=create,
+            update=create,
+        )
+        content_item_ids[spec["title"]] = obj.id
+        if was_created:
+            created["content_items"] += 1
+        else:
+            updated["content_items"] += 1
+
+        # Editorial calendar sync demo: create/update linked calendar entry
+        if scheduled_at is not None:
+            ev_create = {
+                "title": f"Content: {obj.title}",
+                "description": obj.brief,
+                "start_time": scheduled_at,
+                "end_time": scheduled_at + timedelta(minutes=30),
+                "event_type": "content",
+                "status": "PLANNED",
+                "color": "#a78bfa",
+                "category": obj.channel,
+                "priority": "medium",
+                "attendees": [demo_email],
+                "location": "—",
+                "recurrence": None,
+                "recurrence_exceptions": [],
+                "company_id": company_id,
+                "project_id": project_id,
+                "content_item_id": obj.id,
+                "owner_id": demo_user.id,
+            }
+            ev, was_created = _upsert_one(
+                db,
+                CalendarEntry,
+                where=[CalendarEntry.owner_id == demo_user.id, CalendarEntry.content_item_id == obj.id],
+                create=ev_create,
+                update=ev_create,
+            )
+            if was_created:
+                created["calendar_entries"] += 1
+            else:
+                updated["calendar_entries"] += 1
+
+        # Checklist defaults
+        for idx, t in enumerate(spec.get("checklist") or default_checklist):
+            title = str(t or "").strip()
+            if not title:
+                continue
+            row, was_created = _upsert_one(
+                db,
+                ContentItemChecklistItem,
+                where=[ContentItemChecklistItem.item_id == obj.id, ContentItemChecklistItem.title == title],
+                create={"item_id": obj.id, "title": title, "is_done": False, "position": idx},
+                update={"title": title, "position": idx},
+            )
+            if was_created:
+                created["content_item_checklist"] += 1
+            else:
+                updated["content_item_checklist"] += 1
+
+        # Reviewer (self)
+        row, was_created = _upsert_one(
+            db,
+            ContentItemReviewer,
+            where=[ContentItemReviewer.item_id == obj.id, ContentItemReviewer.reviewer_id == demo_user.id],
+            create={"item_id": obj.id, "reviewer_id": demo_user.id, "role": "reviewer"},
+            update={"role": "reviewer"},
+        )
+        if was_created:
+            created["content_item_reviewers"] += 1
+        else:
+            updated["content_item_reviewers"] += 1
+
+        # Assets (links)
+        for a in spec.get("assets") or []:
+            url = str(a.get("url") or "").strip()
+            if not url:
+                continue
+            create_asset = {
+                "item_id": obj.id,
+                "kind": a.get("kind") or ContentAssetKind.LINK,
+                "name": a.get("name"),
+                "url": url,
+                "upload_id": None,
+                "source": a.get("source"),
+                "mime_type": None,
+                "size_bytes": None,
+                "version": 1,
+                "created_by": demo_user.id,
+            }
+            asset, was_created = _upsert_one(
+                db,
+                ContentItemAsset,
+                where=[ContentItemAsset.item_id == obj.id, ContentItemAsset.url == url],
+                create=create_asset,
+                update=create_asset,
+            )
+            if was_created:
+                created["content_item_assets"] += 1
+            else:
+                updated["content_item_assets"] += 1
+
+        # One initial version
+        v_payload = {
+            "item_id": obj.id,
+            "version": 1,
+            "title": obj.title,
+            "brief": obj.brief,
+            "body": obj.body,
+            "meta": {"source": "demo_seed"},
+            "created_by": demo_user.id,
+        }
+        v, was_created = _upsert_one(
+            db,
+            ContentItemVersion,
+            where=[ContentItemVersion.item_id == obj.id, ContentItemVersion.version == 1],
+            create=v_payload,
+            update=v_payload,
+        )
+        if was_created:
+            created["content_item_versions"] += 1
+        else:
+            updated["content_item_versions"] += 1
+
+        # A single comment
+        c_body = "DEMO: Bitte Feedback bis Freitag, damit wir publishen können."
+        c_payload = {"item_id": obj.id, "author_id": demo_user.id, "body": c_body}
+        c, was_created = _upsert_one(
+            db,
+            ContentItemComment,
+            where=[ContentItemComment.item_id == obj.id, ContentItemComment.body == c_body],
+            create=c_payload,
+            update=c_payload,
+        )
+        if was_created:
+            created["content_item_comments"] += 1
+        else:
+            updated["content_item_comments"] += 1
+
+        # Optional: attach one tiny file as Upload asset for the first item
+        if spec["title"] == "LinkedIn Carousel: ABM Pilot Teaser":
+            try:
+                import hashlib
+
+                payload_bytes = b"DEMO asset file: carousel copy notes\n"
+                sha = hashlib.sha256(payload_bytes).hexdigest()
+                up = db.query(Upload).filter(Upload.sha256 == sha).first()
+                if not up:
+                    up = Upload(
+                        original_name="demo-carousel-notes.txt",
+                        file_type="text/plain",
+                        file_size=len(payload_bytes),
+                        content=payload_bytes,
+                        sha256=sha,
+                        stored_in_db=True,
+                    )
+                    db.add(up)
+                    db.commit()
+                    db.refresh(up)
+                asset_payload = {
+                    "item_id": obj.id,
+                    "kind": ContentAssetKind.UPLOAD,
+                    "name": up.original_name,
+                    "url": None,
+                    "upload_id": up.id,
+                    "source": "upload",
+                    "mime_type": up.file_type,
+                    "size_bytes": int(up.file_size or 0),
+                    "version": 1,
+                    "created_by": demo_user.id,
+                }
+                a2, was_created = _upsert_one(
+                    db,
+                    ContentItemAsset,
+                    where=[ContentItemAsset.item_id == obj.id, ContentItemAsset.upload_id == up.id],
+                    create=asset_payload,
+                    update=asset_payload,
+                )
+                if was_created:
+                    created["content_item_assets"] += 1
+                else:
+                    updated["content_item_assets"] += 1
+            except Exception:
+                db.rollback()
+
+    db.commit()
+
     # --- Content tasks (optional, but makes Content Hub look "alive") ---
     content_tasks_specs = [
         ("Blogpost: Winter Sale Learnings", "Website", "Blog", ContentTaskStatus.REVIEW, ContentTaskPriority.MEDIUM, 14),
@@ -600,6 +1002,7 @@ def seed_demo_agency(
         ("Landingpage Copy Review", "Website", "Landing Page", ContentTaskStatus.APPROVED, ContentTaskPriority.MEDIUM, 5),
         ("Employer Branding Post: Team Spotlight", "LinkedIn", "Post", ContentTaskStatus.TODO, ContentTaskPriority.MEDIUM, 12),
         ("PR Outreach List (DACH)", "PR", "List", ContentTaskStatus.IN_PROGRESS, ContentTaskPriority.MEDIUM, 9),
+        ("Weekly Content Ops Check", "Website", "Ops", ContentTaskStatus.TODO, ContentTaskPriority.LOW, 3),
     ]
 
     for title, channel, fmt, status, prio, dl_days in content_tasks_specs:
@@ -613,6 +1016,8 @@ def seed_demo_agency(
             "notes": "DEMO: realistisch verknüpft mit CRM/Performance.",
             "deadline": deadline,
             "activity_id": None,
+            "content_item_id": content_item_ids.get(title),
+            "recurrence": {"freq": "weekly", "interval": 1, "count": 8} if title == "Weekly Content Ops Check" else None,
             "owner_id": demo_user.id,
         }
         obj, was_created = _upsert_one(
