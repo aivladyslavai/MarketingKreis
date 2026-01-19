@@ -16,7 +16,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { message, history, forceTool } = await req.json().catch(() => ({ message: null, history: [], forceTool: null }))
+    const { message, history, forceTool, context } = await req
+      .json()
+      .catch(() => ({ message: null, history: [], forceTool: null, context: null }))
     
     // Allow forceTool without message (for confirmation)
     if (!forceTool && (!message || typeof message !== 'string')) {
@@ -29,19 +31,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'OPENAI_API_KEY is not configured' }, { status: 500 })
     }
 
-    const systemPrompt = `You are a focused, intelligent assistant for a marketing CRM platform. You help users manage contacts, deals, activities, and calendar events.
+    const detectLang = (text: string): 'de' | 'ru' | 'en' => {
+      const t = String(text || '')
+      if (/[а-яА-ЯёЁ]{3,}/.test(t)) return 'ru'
+      if (/(und|der|die|das|ist|mit|für|auf|zu|ein|eine|bitte|heute|morgen)/i.test(t)) return 'de'
+      return 'en'
+    }
+
+    const lang: 'de' | 'ru' | 'en' = detectLang(
+      [
+        typeof message === 'string' ? message : '',
+        Array.isArray(history) ? JSON.stringify(history.slice(-8)) : '',
+        String(context?.lang || ''),
+        String(context?.pathname || ''),
+      ].join(' ')
+    )
+
+    const t = (ru: string, de: string, en: string) => (lang === 'ru' ? ru : lang === 'de' ? de : en)
+
+    const systemPrompt = `You are a focused, intelligent assistant for a marketing CRM + Content Hub platform. You help users manage CRM (companies, contacts, deals), activities, calendar events, and content production (content items, tasks, templates, approvals, assets).
+
+UI CONTEXT (from the app):
+- page: ${String(context?.pathname || '')}
+- timezone: ${String(context?.tz || '')}
+
+Always use the UI context to interpret the request (e.g. on /content focus on content items/tasks; on /calendar focus on scheduling).
 
 CORE PRINCIPLES:
-- Stay strictly on topic: CRM data, scheduling, activity management.
+- Stay strictly on topic: CRM data, content hub, scheduling, task/activity management.
 - CAREFULLY READ the conversation history. Extract all details (date, time, title, description) from previous messages.
 - Be concise, warm, and actionable. Max 80 words unless the user asks for detail.
 - Always respond in the user's language (RU/DE/EN).
 
 ACTION RULES:
 1. Data requests → IMMEDIATELY call the tool. Do NOT narrate.
-2. Create/update/delete requests:
+2. Create/update/delete requests (calendar, activities, content items, content tasks):
    a. FIRST: Scan conversation history for all details (title, date, time, location, participants).
-   b. If you have title + date/time from history → IMMEDIATELY call create_calendar_event or create_activity with ALL collected info. IMPORTANT: Set confirm=false in the tool call. The system will show a confirmation UI to the user. DO NOT SAY ANYTHING. DO NOT write "Event created" or any text - JUST CALL THE TOOL SILENTLY with confirm=false.
+   b. If you have enough details from history → IMMEDIATELY call the correct create/update/delete tool with ALL collected info. IMPORTANT: Set confirm=false in the tool call. The system will show a confirmation UI to the user. DO NOT SAY ANYTHING. DO NOT write "created" or any text - JUST CALL THE TOOL SILENTLY with confirm=false.
    c. If critical info is truly missing (no date OR no title anywhere in history) → Ask ONCE in a single short question: "Welches Datum und Uhrzeit?" or "Какие дата и время?"
    d. After user provides missing info → IMMEDIATELY call the tool WITHOUT any text response, with confirm=false.
 
@@ -73,7 +99,11 @@ NEVER:
 
     const cookie = req.headers.get('cookie') || ''
     const api = async (path: string, init: RequestInit = {}) => {
-      const base = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+      const base =
+        req.nextUrl?.origin ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        'http://localhost:3000'
       const url = path.startsWith('http') ? path : `${base}/api${path.startsWith('/') ? path : '/' + path}`
       const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init.headers as any || {}) }
       if (cookie) headers['cookie'] = cookie
@@ -90,6 +120,22 @@ NEVER:
       { type: 'function', function: { name: 'list_companies', description: 'List companies (optional fuzzy query q)', parameters: { type: 'object', properties: { q: { type: 'string' } }, additionalProperties: false } } },
       { type: 'function', function: { name: 'list_contacts', description: 'List contacts', parameters: { type: 'object', properties: {}, additionalProperties: false } } },
       { type: 'function', function: { name: 'list_deals', description: 'List deals', parameters: { type: 'object', properties: {}, additionalProperties: false } } },
+      { type: 'function', function: { name: 'list_content_items', description: 'List content items (Content Hub)', parameters: { type: 'object', properties: { q: { type: 'string' }, status: { type: 'string' }, limit: { type: 'number' }, scheduled_from: { type: 'string' }, scheduled_to: { type: 'string' } }, additionalProperties: false } } },
+      { type: 'function', function: { name: 'get_content_item', description: 'Get content item by id', parameters: { type: 'object', properties: { id: { type: 'number' } }, required: ['id'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'create_content_item', description: 'Create content item (requires confirm:true)', parameters: { type: 'object', properties: { title: { type: 'string' }, channel: { type: 'string' }, format: { type: 'string', nullable: true }, status: { type: 'string', nullable: true }, tags: { type: 'array', items: { type: 'string' }, nullable: true }, brief: { type: 'string', nullable: true }, body: { type: 'string', nullable: true }, due_at: { type: 'string', nullable: true }, scheduled_at: { type: 'string', nullable: true }, company_id: { type: 'number', nullable: true }, project_id: { type: 'number', nullable: true }, activity_id: { type: 'number', nullable: true }, blocked_reason: { type: 'string', nullable: true }, confirm: { type: 'boolean' } }, required: ['title'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'update_content_item', description: 'Update content item (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'number' }, title: { type: 'string' }, channel: { type: 'string' }, format: { type: 'string', nullable: true }, status: { type: 'string', nullable: true }, tags: { type: 'array', items: { type: 'string' }, nullable: true }, brief: { type: 'string', nullable: true }, body: { type: 'string', nullable: true }, due_at: { type: 'string', nullable: true }, scheduled_at: { type: 'string', nullable: true }, company_id: { type: 'number', nullable: true }, project_id: { type: 'number', nullable: true }, activity_id: { type: 'number', nullable: true }, blocked_reason: { type: 'string', nullable: true }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'delete_content_item', description: 'Delete content item (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'number' }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'list_content_tasks', description: 'List content tasks', parameters: { type: 'object', properties: { q: { type: 'string' }, status: { type: 'string' }, content_item_id: { type: 'number' }, limit: { type: 'number' } }, additionalProperties: false } } },
+      { type: 'function', function: { name: 'create_content_task', description: 'Create content task (requires confirm:true)', parameters: { type: 'object', properties: { title: { type: 'string' }, channel: { type: 'string' }, format: { type: 'string', nullable: true }, status: { type: 'string', nullable: true }, priority: { type: 'string', nullable: true }, deadline: { type: 'string', nullable: true }, notes: { type: 'string', nullable: true }, content_item_id: { type: 'number', nullable: true }, recurrence: { type: 'object', nullable: true }, confirm: { type: 'boolean' } }, required: ['title'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'update_content_task', description: 'Update content task (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'number' }, title: { type: 'string' }, channel: { type: 'string' }, format: { type: 'string', nullable: true }, status: { type: 'string', nullable: true }, priority: { type: 'string', nullable: true }, deadline: { type: 'string', nullable: true }, notes: { type: 'string', nullable: true }, content_item_id: { type: 'number', nullable: true }, recurrence: { type: 'object', nullable: true }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'delete_content_task', description: 'Delete content task (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'number' }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'complete_content_task', description: 'Complete recurring task (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'number' }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'list_content_templates', description: 'List content templates', parameters: { type: 'object', properties: {}, additionalProperties: false } } },
+      { type: 'function', function: { name: 'list_automation_rules', description: 'List automation rules', parameters: { type: 'object', properties: {}, additionalProperties: false } } },
+      { type: 'function', function: { name: 'apply_content_template', description: 'Apply template to content item (requires confirm:true)', parameters: { type: 'object', properties: { item_id: { type: 'number' }, template_id: { type: 'number' }, confirm: { type: 'boolean' } }, required: ['item_id','template_id'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'generate_content_from_deal', description: 'Generate content item from deal (requires confirm:true)', parameters: { type: 'object', properties: { deal_id: { type: 'number' }, template_id: { type: 'number', nullable: true }, confirm: { type: 'boolean' } }, required: ['deal_id'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'list_notifications', description: 'List notifications', parameters: { type: 'object', properties: { unread_only: { type: 'boolean' }, limit: { type: 'number' } }, additionalProperties: false } } },
+      { type: 'function', function: { name: 'run_content_reminders', description: 'Create deadline reminders (requires confirm:true)', parameters: { type: 'object', properties: { confirm: { type: 'boolean' } }, additionalProperties: false } } },
       { type: 'function', function: { name: 'list_activities', description: 'List activities with filters', parameters: { type: 'object', properties: { status: { type: 'string' }, category: { type: 'string' }, year: { type: 'number' }, from: { type: 'string' }, to: { type: 'string' }, limit: { type: 'number' } }, additionalProperties: false } } },
       { type: 'function', function: { name: 'create_activity', description: 'Create activity (requires confirm:true)', parameters: { type: 'object', properties: { title: { type: 'string' }, category: { type: 'string' }, start: { type: 'string' }, end: { type: 'string', nullable: true }, status: { type: 'string' }, notes: { type: 'string', nullable: true }, budgetCHF: { type: 'number', nullable: true }, confirm: { type: 'boolean' } }, required: ['title','category','start','status'], additionalProperties: false } } },
       { type: 'function', function: { name: 'update_activity', description: 'Update activity (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, category: { type: 'string' }, start: { type: 'string' }, end: { type: 'string', nullable: true }, status: { type: 'string' }, notes: { type: 'string', nullable: true }, budgetCHF: { type: 'number', nullable: true }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
@@ -115,7 +161,7 @@ NEVER:
     if (forceTool && typeof forceTool.name === 'string') {
       const allowWrite = process.env.ASSISTANT_ALLOW_WRITE === 'true'
       if (!allowWrite) {
-        return NextResponse.json({ reply: 'Запись отключена политикой сервера (ASSISTANT_ALLOW_WRITE=false).' })
+        return NextResponse.json({ reply: t('Запись отключена политикой сервера (ASSISTANT_ALLOW_WRITE=false).', 'Schreiben ist serverseitig deaktiviert (ASSISTANT_ALLOW_WRITE=false).', 'Writes are disabled by server policy (ASSISTANT_ALLOW_WRITE=false).') })
       }
       const args = { ...(forceTool.args || {}), confirm: true }
       try {
@@ -126,10 +172,25 @@ NEVER:
         else if (forceTool.name === 'create_calendar_event') out = await api('/calendar', { method: 'POST', body: JSON.stringify(args) })
         else if (forceTool.name === 'update_calendar_event') out = await api(`/calendar/${args.id}`, { method: 'PUT', body: JSON.stringify(args) })
         else if (forceTool.name === 'delete_calendar_event') out = await api(`/calendar/${args.id}`, { method: 'DELETE' })
+        else if (forceTool.name === 'create_content_item') out = await api('/content/items', { method: 'POST', body: JSON.stringify(args) })
+        else if (forceTool.name === 'update_content_item') out = await api(`/content/items/${args.id}`, { method: 'PATCH', body: JSON.stringify(args) })
+        else if (forceTool.name === 'delete_content_item') out = await api(`/content/items/${args.id}`, { method: 'DELETE' })
+        else if (forceTool.name === 'create_content_task') out = await api('/content/tasks', { method: 'POST', body: JSON.stringify(args) })
+        else if (forceTool.name === 'update_content_task') out = await api(`/content/tasks/${args.id}`, { method: 'PATCH', body: JSON.stringify(args) })
+        else if (forceTool.name === 'delete_content_task') out = await api(`/content/tasks/${args.id}`, { method: 'DELETE' })
+        else if (forceTool.name === 'complete_content_task') out = await api(`/content/tasks/${args.id}/complete`, { method: 'POST', body: JSON.stringify(args) })
+        else if (forceTool.name === 'apply_content_template') out = await api(`/content/items/${args.item_id}/apply-template`, { method: 'POST', body: JSON.stringify({ template_id: args.template_id }) })
+        else if (forceTool.name === 'generate_content_from_deal') out = await api(`/content/generate/from-deal/${args.deal_id}`, { method: 'POST', body: JSON.stringify({ template_id: args.template_id ?? null }) })
+        else if (forceTool.name === 'run_content_reminders') out = await api('/content/reminders/run', { method: 'POST', body: JSON.stringify(args) })
         else return NextResponse.json({ reply: 'Неизвестное действие' }, { status: 400 })
-        return NextResponse.json({ reply: 'Geschafft ✅', result: out })
+        return NextResponse.json({ reply: t('Готово ✅', 'Geschafft ✅', 'Done ✅'), result: out })
       } catch (err: any) {
-        return NextResponse.json({ reply: `Ошибка: ${err?.message || String(err)}` })
+        const msg = String(err?.message || err || '')
+        const isDemo = /demo|read-only|readonly|forbidden|403/i.test(msg)
+        if (isDemo) {
+          return NextResponse.json({ reply: t('Этот аккаунт в DEMO режиме (read‑only) — запись запрещена.', 'Dieser Account ist im DEMO‑Modus (read‑only) — Schreiben ist gesperrt.', 'This account is in DEMO (read-only) mode — writes are blocked.') })
+        }
+        return NextResponse.json({ reply: t(`Ошибка: ${msg}`, `Fehler: ${msg}`, `Error: ${msg}`) })
       }
     }
     async function call(modelName: string, bodyOverride?: any) {
@@ -176,7 +237,7 @@ NEVER:
       enrichedMessage += ` [System hint: User means date=${normalizeDate(target)}, time=${timeMatch[0]}]`
     }
     // Detect write intent (create/update/delete)
-    if (/(erstelle|создай|create|добавь|add|plan|запланируй|schedule)/i.test(message)) {
+    if (/(erstelle|erstellen|создай|создать|create|add|добавь|plan|plane|запланируй|schedule|update|измен|перенес|verschieb|delete|удал|löschen|apply|шаблон|template|reminder|напоминан)/i.test(message)) {
       isWriteIntent = true
     }
 
@@ -210,9 +271,60 @@ NEVER:
             let result: any = null
             console.log('[AssistantTool]', name, args)
             if (name === 'get_crm_stats') result = await api('/crm/stats')
-            else if (name === 'list_companies') result = await api('/crm/companies')
+            else if (name === 'list_companies') {
+              const all = await api('/crm/companies')
+              let items = Array.isArray(all) ? all : (all?.items ?? [])
+              const qv = String(args.q || '').trim().toLowerCase()
+              if (qv) {
+                items = items.filter((c: any) => {
+                  const name = String(c?.name || '').toLowerCase()
+                  const industry = String(c?.industry || '').toLowerCase()
+                  const tags = String(c?.tags || '').toLowerCase()
+                  return name.includes(qv) || industry.includes(qv) || tags.includes(qv)
+                })
+              }
+              result = items
+            }
             else if (name === 'list_contacts') result = await api('/crm/contacts')
             else if (name === 'list_deals') result = await api('/crm/deals')
+            else if (name === 'list_content_items') {
+              const sp = new URLSearchParams()
+              if (args.q) sp.set('q', String(args.q))
+              if (args.status) sp.set('status', String(args.status))
+              const qs = sp.toString()
+              const all = await api(`/content/items${qs ? `?${qs}` : ''}`)
+              let items = Array.isArray(all) ? all : (all?.items ?? [])
+              const from = args.scheduled_from ? new Date(args.scheduled_from) : null
+              const to = args.scheduled_to ? new Date(args.scheduled_to) : null
+              if (from) items = items.filter((it: any) => it?.scheduled_at ? new Date(it.scheduled_at) >= from : false)
+              if (to) items = items.filter((it: any) => it?.scheduled_at ? new Date(it.scheduled_at) <= to : false)
+              if (args.limit) items = items.slice(0, Number(args.limit))
+              result = items
+            }
+            else if (name === 'get_content_item') {
+              const id = Number(args.id)
+              result = await api(`/content/items/${id}`)
+            }
+            else if (name === 'list_content_tasks') {
+              const sp = new URLSearchParams()
+              if (args.q) sp.set('q', String(args.q))
+              if (args.status) sp.set('status', String(args.status))
+              if (args.content_item_id != null) sp.set('content_item_id', String(args.content_item_id))
+              const qs = sp.toString()
+              const all = await api(`/content/tasks${qs ? `?${qs}` : ''}`)
+              let items = Array.isArray(all) ? all : (all?.items ?? [])
+              if (args.limit) items = items.slice(0, Number(args.limit))
+              result = items
+            }
+            else if (name === 'list_content_templates') result = await api('/content/templates')
+            else if (name === 'list_automation_rules') result = await api('/content/automation-rules')
+            else if (name === 'list_notifications') {
+              const sp = new URLSearchParams()
+              if (args.unread_only) sp.set('unread_only', 'true')
+              if (args.limit) sp.set('limit', String(args.limit))
+              const qs = sp.toString()
+              result = await api(`/content/notifications${qs ? `?${qs}` : ''}`)
+            }
             else if (name === 'list_activities') {
               const list = await api('/activities')
               const items = Array.isArray(list) ? list : (list?.items ?? [])
@@ -228,7 +340,24 @@ NEVER:
               if (args.limit) filtered = filtered.slice(0, Number(args.limit))
               result = filtered
             }
-            else if (name === 'create_activity' || name === 'update_activity' || name === 'delete_activity' || name?.startsWith('create_calendar') || name?.startsWith('update_calendar') || name?.startsWith('delete_calendar')) {
+            else if (
+              name === 'create_activity' ||
+              name === 'update_activity' ||
+              name === 'delete_activity' ||
+              name?.startsWith('create_calendar') ||
+              name?.startsWith('update_calendar') ||
+              name?.startsWith('delete_calendar') ||
+              name === 'create_content_item' ||
+              name === 'update_content_item' ||
+              name === 'delete_content_item' ||
+              name === 'create_content_task' ||
+              name === 'update_content_task' ||
+              name === 'delete_content_task' ||
+              name === 'complete_content_task' ||
+              name === 'apply_content_template' ||
+              name === 'generate_content_from_deal' ||
+              name === 'run_content_reminders'
+            ) {
               if (!allowWrite) {
                 result = { error: 'Writes are disabled by server policy (ASSISTANT_ALLOW_WRITE=false)' }
               } else if (!args.confirm) {
@@ -241,6 +370,16 @@ NEVER:
                 else if (name === 'create_calendar_event') result = await api('/calendar', { method: 'POST', body: JSON.stringify(args) })
                 else if (name === 'update_calendar_event') result = await api(`/calendar/${args.id}`, { method: 'PUT', body: JSON.stringify(args) })
                 else if (name === 'delete_calendar_event') result = await api(`/calendar/${args.id}`, { method: 'DELETE' })
+                else if (name === 'create_content_item') result = await api('/content/items', { method: 'POST', body: JSON.stringify(args) })
+                else if (name === 'update_content_item') result = await api(`/content/items/${args.id}`, { method: 'PATCH', body: JSON.stringify(args) })
+                else if (name === 'delete_content_item') result = await api(`/content/items/${args.id}`, { method: 'DELETE' })
+                else if (name === 'create_content_task') result = await api('/content/tasks', { method: 'POST', body: JSON.stringify(args) })
+                else if (name === 'update_content_task') result = await api(`/content/tasks/${args.id}`, { method: 'PATCH', body: JSON.stringify(args) })
+                else if (name === 'delete_content_task') result = await api(`/content/tasks/${args.id}`, { method: 'DELETE' })
+                else if (name === 'complete_content_task') result = await api(`/content/tasks/${args.id}/complete`, { method: 'POST', body: JSON.stringify(args) })
+                else if (name === 'apply_content_template') result = await api(`/content/items/${args.item_id}/apply-template`, { method: 'POST', body: JSON.stringify({ template_id: args.template_id }) })
+                else if (name === 'generate_content_from_deal') result = await api(`/content/generate/from-deal/${args.deal_id}`, { method: 'POST', body: JSON.stringify({ template_id: args.template_id ?? null }) })
+                else if (name === 'run_content_reminders') result = await api(`/content/reminders/run`, { method: 'POST', body: JSON.stringify(args) })
               }
             }
             toolResults.push({ role: 'tool', tool_call_id: tc.id, name, content: JSON.stringify(result ?? {}) })
@@ -251,31 +390,77 @@ NEVER:
         if (pendingConfirm) {
           // Validate required details for creation; if missing, ask clarifying question instead of confirm
           const args = pendingConfirm.args || {}
-          const name = String(args.title || '').trim().toLowerCase()
-          const genericNames = ['neues event','new event','termin','meeting','событие','event']
-          const missingTitle = !args.title || genericNames.includes(name)
+          const titleNorm = String(args.title || '').trim().toLowerCase()
+          const genericNames = ['neues event','new event','termin','meeting','событие','event','content item','item','task','задача']
+          const missingTitle = !args.title || genericNames.includes(titleNorm)
+          const locale = lang === 'ru' ? 'ru-RU' : lang === 'de' ? 'de-DE' : 'en-US'
+          const fmtDT = (v: any) => {
+            try { return new Date(String(v)).toLocaleString(locale) } catch { return String(v || '') }
+          }
+          const fmtTime = (v: any) => {
+            try { return new Date(String(v)).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) } catch { return String(v || '') }
+          }
+
+          // calendar/activity: title + explicit time required
           const startStr: string = String(args.start || '')
           const hasExplicitTime = /T\d{2}:\d{2}/.test(startStr) && !/T00:00/.test(startStr)
           const missingTime = !startStr || !hasExplicitTime
           if ((pendingConfirm.name === 'create_calendar_event' || pendingConfirm.name === 'create_activity') && (missingTitle || missingTime)) {
             const q = missingTitle && missingTime
-              ? 'Wie soll der Termin heißen und um wie viel Uhr? (z.B. 15:00). Optional: kurze Beschreibung.'
+              ? t('Как назовём и на какое время? (напр. 15:00). Можно добавить описание.', 'Wie soll der Termin heißen und um wie viel Uhr? (z.B. 15:00). Optional: kurze Beschreibung.', 'What should it be called and at what time? (e.g. 15:00). Optional: short description.')
               : missingTitle
-                ? 'Wie soll der Termin heißen? Optional: kurze Beschreibung.'
-                : 'Bitte geben Sie die Uhrzeit an (z.B. 15:00). Optional: kurze Beschreibung.'
+                ? t('Как назовём? Можно добавить описание.', 'Wie soll der Termin heißen? Optional: kurze Beschreibung.', 'What should it be called? Optional: short description.')
+                : t('Укажи время (например 15:00). Можно добавить описание.', 'Bitte geben Sie die Uhrzeit an (z.B. 15:00). Optional: kurze Beschreibung.', 'Please provide the time (e.g. 15:00). Optional: short description.')
             return NextResponse.json({ reply: q })
+          }
+          if (pendingConfirm.name === 'create_content_item' && missingTitle) {
+            return NextResponse.json({ reply: t('Как назвать Content Item?', 'Wie soll das Content Item heißen?', 'What should the content item be called?') })
+          }
+          if (pendingConfirm.name === 'create_content_task' && missingTitle) {
+            return NextResponse.json({ reply: t('Как назвать задачу?', 'Wie soll die Aufgabe heißen?', 'What should the task be called?') })
           }
 
           // Format a nice preview message based on the tool arguments
           let preview = ''
           if (pendingConfirm.name === 'create_calendar_event' || pendingConfirm.name === 'create_activity') {
-            preview = `📅 **${args.title || 'Neues Event'}**\n\n`
-            if (args.start) preview += `🕒 ${new Date(args.start).toLocaleString('de-DE')}`
-            if (args.end) preview += ` bis ${new Date(args.end).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`
+            preview = `📅 **${args.title || t('Новое событие', 'Neues Event', 'New event')}**\n\n`
+            if (args.start) preview += `🕒 ${fmtDT(args.start)}`
+            if (args.end) preview += ` ${t('до', 'bis', 'to')} ${fmtTime(args.end)}`
+            if (args.category) preview += `\n🏷️ ${args.category}`
             if (args.description) preview += `\n\n📝 ${args.description}`
-            preview += `\n\nMöchten Sie dieses Event erstellen?`
+            preview += `\n\n${t('Создать?', 'Erstellen?', 'Create?')}`
+          } else if (pendingConfirm.name === 'create_content_item' || pendingConfirm.name === 'update_content_item') {
+            preview = `🧩 **${args.title || t('Content Item', 'Content Item', 'Content item')}**\n\n`
+            preview += `🏷️ ${String(args.channel || 'Website')}${args.format ? ` · ${args.format}` : ''}\n`
+            if (args.status) preview += `📌 ${args.status}\n`
+            if (args.due_at) preview += `⏳ ${t('Дедлайн', 'Deadline', 'Due')}: ${fmtDT(args.due_at)}\n`
+            if (args.scheduled_at) preview += `🗓️ ${t('Публикация', 'Publikation', 'Publish')}: ${fmtDT(args.scheduled_at)}\n`
+            if (Array.isArray(args.tags) && args.tags.length) preview += `# ${args.tags.slice(0, 8).join(', ')}\n`
+            if (args.brief) preview += `\n📝 ${String(args.brief).slice(0, 220)}${String(args.brief).length > 220 ? '…' : ''}`
+            preview += `\n\n${t('Подтвердить изменения?', 'Änderungen bestätigen?', 'Confirm changes?')}`
+          } else if (pendingConfirm.name === 'delete_content_item') {
+            preview = `🗑️ ${t('Удалить Content Item', 'Content Item löschen', 'Delete content item')} #${args.id}?\n\n${t('Это действие необратимо.', 'Diese Aktion ist nicht rückgängig zu machen.', 'This action cannot be undone.')}`
+          } else if (pendingConfirm.name === 'create_content_task' || pendingConfirm.name === 'update_content_task') {
+            preview = `✅ **${args.title || t('Задача', 'Aufgabe', 'Task')}**\n\n`
+            preview += `🏷️ ${String(args.channel || 'Website')}${args.format ? ` · ${args.format}` : ''}\n`
+            if (args.status) preview += `📌 ${args.status}\n`
+            if (args.priority) preview += `⚡ ${args.priority}\n`
+            if (args.deadline) preview += `⏳ ${t('Дедлайн', 'Deadline', 'Due')}: ${fmtDT(args.deadline)}\n`
+            if (args.content_item_id != null) preview += `🔗 Content Item: #${args.content_item_id}\n`
+            preview += `\n${t('Подтвердить?', 'Bestätigen?', 'Confirm?')}`
+          } else if (pendingConfirm.name === 'delete_content_task') {
+            preview = `🗑️ ${t('Удалить задачу', 'Aufgabe löschen', 'Delete task')} #${args.id}?\n\n${t('Это действие необратимо.', 'Diese Aktion ist nicht rückgängig zu machen.', 'This action cannot be undone.')}`
+          } else if (pendingConfirm.name === 'complete_content_task') {
+            preview = `✅ ${t('Завершить задачу', 'Aufgabe abschließen', 'Complete task')} #${args.id}?\n\n${t('Если задача повторяющаяся, будет создан следующий цикл.', 'Wenn die Aufgabe wiederkehrend ist, wird die nächste erstellt.', 'If recurring, the next occurrence will be created.')}`
+          } else if (pendingConfirm.name === 'apply_content_template') {
+            preview = `🧩 ${t('Применить шаблон', 'Template anwenden', 'Apply template')} #${args.template_id} ${t('к Content Item', 'auf Content Item', 'to content item')} #${args.item_id}?`
+          } else if (pendingConfirm.name === 'generate_content_from_deal') {
+            preview = `✨ ${t('Создать Content Item из Deal', 'Content Item aus Deal erzeugen', 'Generate content item from deal')} #${args.deal_id}${args.template_id ? ` (${t('шаблон', 'Template', 'template')} #${args.template_id})` : ''}?`
+          } else if (pendingConfirm.name === 'run_content_reminders') {
+            preview = `🔔 ${t('Запустить напоминания по дедлайнам (24ч).', 'Deadline‑Reminders ausführen (24h).', 'Run deadline reminders (24h).')}`
           }
-          return NextResponse.json({ reply: preview || 'Требуется подтверждение выполнения действия.', confirm: pendingConfirm })
+
+          return NextResponse.json({ reply: preview || t('Требуется подтверждение выполнения действия.', 'Bestätigung erforderlich.', 'Confirmation required.'), confirm: pendingConfirm })
         }
         messagesChain = [ 
           { role: 'system', content: systemPrompt + '\n\nNow synthesize a clear, final answer based on the tool results. Do not say you will fetch data again - the data is already provided above.' }, 
@@ -292,7 +477,7 @@ NEVER:
         if (/(созда[юл]|планиру|запис|теперь.*созда|сейчас.*созда|create|schedule|erstelle|now.*creat)/i.test(lowerReply) && !currentToolCalls && safety < 4) {
           console.log('[Assistant] Model said it would create but did not call tool. Forcing tool call.')
           messagesChain = [
-            { role: 'system', content: systemPrompt + '\n\nCRITICAL: You said you would create/schedule something, but you did NOT call any tool. You MUST call create_calendar_event or create_activity NOW with all details from the conversation history. Use the information provided: title, date, time, description. DO NOT reply with text - ONLY make the tool call.' },
+            { role: 'system', content: systemPrompt + '\n\nCRITICAL: You said you would create/schedule something, but you did NOT call any tool. You MUST call the correct tool NOW (create_calendar_event / create_activity / create_content_item / create_content_task / update_* / delete_*). Use ALL details from the conversation history (title, date, time, description, channel, status, deadline). DO NOT reply with text - ONLY make the tool call.' },
             ...messagesChain.slice(1),
             { role: 'assistant', content: reply },
             { role: 'user', content: '[System: Execute the tool call immediately with all available information from history.]' }

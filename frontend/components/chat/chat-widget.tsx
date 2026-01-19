@@ -1,9 +1,8 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { MessageCircle, Send, X, Sparkles } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Send, X, Sparkles, Trash2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { crmAPI } from "@/lib/api"
 import { sync } from "@/lib/sync"
 
 type ChatMessage = { id: string; role: "user" | "assistant"; content: string; confirmTool?: { name: string; args: any } }
@@ -15,52 +14,158 @@ const detectLanguage = (messages: ChatMessage[]): 'de' | 'ru' | 'en' => {
   return 'en'
 }
 
+const detectBrowserLanguage = (): 'de' | 'ru' | 'en' => {
+  if (typeof navigator === 'undefined') return 'en'
+  const lang = (navigator.language || '').toLowerCase()
+  if (lang.startsWith('ru') || lang.includes('ru')) return 'ru'
+  if (lang.startsWith('de') || lang.includes('de')) return 'de'
+  return 'en'
+}
+
+const defaultHello = (lang: 'de' | 'ru' | 'en') => {
+  if (lang === 'ru') {
+    return "Привет! Я твой KI‑ассистент. Спроси про CRM‑цифры, контент‑план, дедлайны, календарь или попроси создать/запланировать."
+  }
+  if (lang === 'de') {
+    return "Hallo! Ich bin dein KI‑Assistent. Frag mich nach CRM‑Zahlen, Content‑Plan, Deadlines, Kalender – oder lass mich etwas erstellen/planen."
+  }
+  return "Hi! I’m your AI assistant. Ask about CRM KPIs, content plan, deadlines, calendar – or let me create/schedule something."
+}
+
+const placeholderByLang = (lang: 'de' | 'ru' | 'en') => {
+  if (lang === 'ru') return 'Задай вопрос…'
+  if (lang === 'de') return 'Stell mir eine Frage…'
+  return 'Ask a question…'
+}
+
+type Suggestion = { label: string; message: string }
+
+function buildSuggestions(pathname: string, lang: 'de' | 'ru' | 'en'): Suggestion[] {
+  const p = (pathname || '').toLowerCase()
+  const isContent = p.startsWith('/content')
+  const isCrm = p.startsWith('/crm')
+  const isCalendar = p.startsWith('/calendar')
+
+  const t = (ru: string, de: string, en: string) => (lang === 'ru' ? ru : lang === 'de' ? de : en)
+
+  const common: Suggestion[] = [
+    { label: t('CRM: KPI', 'CRM: KPI', 'CRM: KPIs'), message: t('Покажи CRM KPI: pipeline, won, deals.', 'Zeig CRM KPIs: Pipeline, Won, Deals.', 'Show CRM KPIs: pipeline, won, deals.') },
+    { label: t('Сегодня в календаре', 'Heute im Kalender', "Today's calendar"), message: t('Что у меня сегодня в календаре? Коротко списком.', 'Was habe ich heute im Kalender? Kurz als Liste.', "What's on my calendar today? Short list.") },
+  ]
+
+  if (isContent) {
+    return [
+      ...common,
+      { label: t('Дедлайны 7 дней', 'Deadlines 7 Tage', 'Deadlines 7 days'), message: t('Покажи Content Items и Tasks с дедлайном в ближайшие 7 дней.', 'Zeig Content Items und Tasks mit Deadline in den nächsten 7 Tagen.', 'Show content items and tasks due in the next 7 days.') },
+      { label: t('План на неделю', 'Plan (Woche)', 'Plan (week)'), message: t('Составь контент‑план на неделю: 5 постов (LinkedIn) + 1 newsletter + 1 blog. Дай даты и short brief.', 'Erstelle einen Content‑Plan für 1 Woche: 5 LinkedIn Posts + 1 Newsletter + 1 Blog. Mit Datum + kurzem Brief.', 'Create a 1-week content plan: 5 LinkedIn posts + 1 newsletter + 1 blog. Include dates + short briefs.') },
+      { label: t('Создать item', 'Item erstellen', 'Create item'), message: t('Создай Content Item: "LinkedIn Carousel: ABM Teaser", запланируй на пятницу 10:00, теги: abm, teaser.', 'Erstelle ein Content Item: "LinkedIn Carousel: ABM Teaser", plane es für Freitag 10:00, Tags: abm, teaser.', 'Create a content item: "LinkedIn Carousel: ABM Teaser", schedule Friday 10:00, tags: abm, teaser.') },
+    ]
+  }
+  if (isCrm) {
+    return [
+      ...common,
+      { label: t('Pipeline список', 'Pipeline Liste', 'Pipeline list'), message: t('Покажи топ‑10 сделок в pipeline (название + стадия + value).', 'Zeig Top‑10 Deals im Pipeline (Titel + Stage + Value).', 'Show top 10 pipeline deals (title + stage + value).') },
+      { label: t('Авто‑контент из сделки', 'Content aus Deal', 'Content from deal'), message: t('Для Deal #1 создай пакет контента по шаблону (deal_won).', 'Für Deal #1 erstelle ein Content‑Pack aus dem Template (deal_won).', 'For Deal #1 create a content pack from template (deal_won).') },
+    ]
+  }
+  if (isCalendar) {
+    return [
+      ...common,
+      { label: t('Создать встречу', 'Termin erstellen', 'Create meeting'), message: t('Создай встречу завтра 15:00–15:30: "Клиентский созвон (Helvetia)" + описание/agenda.', 'Erstelle morgen 15:00–15:30: "Kunden‑Call (Helvetia)" + Agenda.', 'Create tomorrow 15:00–15:30: "Client call (Helvetia)" + agenda.') },
+      { label: t('События недели', 'Woche Termine', 'This week'), message: t('Покажи события в календаре на эту неделю.', 'Zeig Termine für diese Woche.', 'Show calendar events for this week.') },
+    ]
+  }
+  return [
+    ...common,
+    { label: t('Контент дедлайны', 'Content Deadlines', 'Content deadlines'), message: t('Покажи ближайшие дедлайны по контенту (items + tasks) на 7 дней.', 'Zeig die nächsten Content‑Deadlines (Items + Tasks) für 7 Tage.', 'Show upcoming content deadlines (items + tasks) for 7 days.') },
+  ]
+}
+
+function renderSafeText(content: string) {
+  const lines = String(content || '').split('\n')
+  return (
+    <div className="space-y-1">
+      {lines.map((line, idx) => (
+        <div key={idx} className="leading-relaxed">
+          {line.split(/\*\*(.+?)\*\*/g).map((part, i) =>
+            i % 2 === 1 ? (
+              <strong key={i} className="font-semibold text-white">{part}</strong>
+            ) : (
+              <span key={i}>{part}</span>
+            )
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function ChatWidget() {
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState<ChatMessage[]>([{
-    id: "hello",
-    role: "assistant",
-    content: "Hallo! 👋 Ich bin dein KI-Assistent. Frag mich nach CRM-Zahlen, Budget, Aktivitäten oder wie ich dir helfen kann."
-  }])
+  const initialLang = useMemo(() => detectBrowserLanguage(), [])
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const raw = localStorage.getItem('mk_assistant_messages')
+      if (raw) {
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr) && arr.length) {
+          return arr
+            .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+            .slice(-50)
+            .map((m: any, i: number) => ({ id: String(m.id || `m-${i}`), role: m.role, content: m.content }))
+        }
+      }
+    } catch {}
+    return [{
+      id: "hello",
+      role: "assistant",
+      content: defaultHello(initialLang)
+    }]
+  })
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const [pathname, setPathname] = useState<string>(() => {
+    if (typeof window === 'undefined') return '/'
+    return window.location?.pathname || '/'
+  })
+  useEffect(() => {
+    if (!open) return
+    try {
+      setPathname(window.location?.pathname || '/')
+    } catch {}
+  }, [open])
+
+  const lang = useMemo(() => detectLanguage(messages) || initialLang, [messages, initialLang])
+  const suggestions = useMemo(() => buildSuggestions(pathname, lang), [pathname, lang])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, open])
 
-  async function askBackend(query: string): Promise<string | null> {
+  useEffect(() => {
+    // Persist last messages (no confirmTool) to localStorage
     try {
-      if (/umsatz|revenue|won/i.test(query) || /pipeline|deals|сделк/i.test(query)) {
-        const s = await crmAPI.getStats()
-        return `📊 Pipeline: CHF ${Math.round(s.pipelineValue || 0).toLocaleString()}\n💰 Won: CHF ${Math.round(s.wonValue || 0).toLocaleString()}\n🤝 Deals: ${s.totalDeals ?? 0}`
-      }
-      // Activities / Calendar quick answers (DE/EN/RU)
-      if (/(aktivität|activity|активност)/i.test(query)) {
-        const resp = await fetch('/api/activities', { credentials: 'include' })
-        const arr = await resp.json().catch(() => [])
-        const count = Array.isArray(arr) ? arr.length : (arr?.items?.length ?? 0)
-        return `📅 Активностей: ${count}`
-      }
-      if (/(calendar|kalender|календар)/i.test(query)) {
-        const resp = await fetch('/api/calendar', { credentials: 'include' }).catch(()=>null)
-        const arr = await (resp ? resp.json().catch(() => []) : [])
-        const count = Array.isArray(arr) ? arr.length : (arr?.items?.length ?? 0)
-        return `🗓️ Событий в календаре: ${count}`
-      }
-      return null
-    } catch (e: any) {
-      return `⚠️ Fehler beim Abrufen der Daten: ${e.message || e}`
-    }
-  }
+      const compact = messages.slice(-50).map(m => ({ id: m.id, role: m.role, content: m.content }))
+      localStorage.setItem('mk_assistant_messages', JSON.stringify(compact))
+    } catch {}
+  }, [messages])
 
   async function askAssistant(query: string): Promise<string> {
     try {
       const res = await fetch('/api/assistant/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: query, history: messages.map(m => ({ role: m.role, content: m.content })) })
+        body: JSON.stringify({
+          message: query,
+          history: messages.map(m => ({ role: m.role, content: m.content })),
+          context: {
+            pathname,
+            title: typeof document !== 'undefined' ? document.title : undefined,
+            tz: typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined,
+            lang: typeof navigator !== 'undefined' ? navigator.language : undefined,
+          }
+        })
       })
       const data = await res.json().catch(() => ({}))
       // If server asks for confirmation, render the preview + CTA bubble
@@ -93,9 +198,9 @@ export default function ChatWidget() {
           body: JSON.stringify({ message: 'confirm', history: messages.map(m => ({ role: m.role, content: m.content })), forceTool: lastConfirm.confirmTool })
         })
         const doData = await doRes.json().catch(()=>({}))
-        setMessages(prev => [...prev, { id: String(Date.now()+3), role: 'assistant', content: doData?.reply || 'Erstellt ✅' }])
+        setMessages(prev => [...prev, { id: String(Date.now()+3), role: 'assistant', content: doData?.reply || (lang === 'ru' ? 'Готово ✅' : lang === 'de' ? 'Geschafft ✅' : 'Done ✅') }])
       } else if (lastConfirm && isNo) {
-        setMessages(prev => [...prev, { id: String(Date.now()+4), role: 'assistant', content: 'Операция отменена.' }])
+        setMessages(prev => [...prev, { id: String(Date.now()+4), role: 'assistant', content: lang === 'ru' ? 'Операция отменена.' : lang === 'de' ? 'Abgebrochen.' : 'Cancelled.' }])
       } else {
         // Smart context assembly: if user provides date/time after title in previous messages, combine them
         const recentMsgs = [...messages, userMsg].slice(-6).filter(m => m.role === 'user').map(m => m.content)
@@ -116,6 +221,31 @@ export default function ChatWidget() {
             setMessages(prev => [...prev, bot])
           }
         }
+      }
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const clearChat = () => {
+    const hello: ChatMessage = { id: "hello", role: "assistant", content: defaultHello(initialLang) }
+    setMessages([hello])
+    setInput("")
+    try { localStorage.removeItem('mk_assistant_messages') } catch {}
+  }
+
+  const sendSuggestion = async (msg: string) => {
+    if (!msg.trim() || sending) return
+    setInput(msg)
+    // allow input state to update, then send
+    setTimeout(() => { try { setInput(""); } catch {} }, 0)
+    const userMsg: ChatMessage = { id: String(Date.now()), role: "user", content: msg }
+    setMessages(prev => [...prev, userMsg])
+    try {
+      setSending(true)
+      const reply = await askAssistant(msg)
+      if (reply && reply.trim()) {
+        setMessages(prev => [...prev, { id: String(Date.now() + 1), role: "assistant", content: reply }])
       }
     } finally {
       setSending(false)
@@ -174,17 +304,43 @@ export default function ChatWidget() {
                         <p className="text-xs text-slate-400">Immer für dich da</p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => setOpen(false)}
-                      className="h-8 w-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
-                    >
-                      <X className="h-4 w-4 text-slate-400" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={clearChat}
+                        className="h-8 w-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+                        title={lang === 'ru' ? 'Очистить' : lang === 'de' ? 'Leeren' : 'Clear'}
+                      >
+                        <Trash2 className="h-4 w-4 text-slate-400" />
+                      </button>
+                      <button
+                        onClick={() => setOpen(false)}
+                        className="h-8 w-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+                        title={lang === 'ru' ? 'Закрыть' : lang === 'de' ? 'Schließen' : 'Close'}
+                      >
+                        <X className="h-4 w-4 text-slate-400" />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 {/* Messages */}
                 <div className="h-[400px] overflow-y-auto px-6 py-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                  {messages.length <= 1 && (
+                    <div className="flex flex-wrap gap-2">
+                      {suggestions.slice(0, 6).map((s) => (
+                        <button
+                          key={s.label}
+                          type="button"
+                          className="text-xs px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 transition"
+                          onClick={() => sendSuggestion(s.message)}
+                          disabled={sending}
+                          title={s.message}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {messages.map((m, idx) => (
                     <motion.div
                       key={m.id}
@@ -207,7 +363,7 @@ export default function ChatWidget() {
                           }
                         `}
                       >
-                        <div dangerouslySetInnerHTML={{ __html: m.content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }} />
+                        {renderSafeText(m.content)}
                         {m.confirmTool && (
                           <div className="mt-3 flex gap-2">
                             <button
@@ -219,18 +375,18 @@ export default function ChatWidget() {
                                     body: JSON.stringify({ message: 'confirm', history: messages.map(mm => ({ role: mm.role, content: mm.content })), forceTool: m.confirmTool })
                                   })
                                   const doData = await doRes.json().catch(()=>({}))
-                                  setMessages(prev => [...prev, { id: String(Date.now()+3), role: 'assistant', content: doData?.reply || 'Erstellt ✅' }])
+                                  setMessages(prev => [...prev, { id: String(Date.now()+3), role: 'assistant', content: doData?.reply || (lang === 'ru' ? 'Готово ✅' : lang === 'de' ? 'Geschafft ✅' : 'Done ✅') }])
                                   try { sync.refreshAll() } catch {}
                                 } catch (err:any) {
                                   setMessages(prev => [...prev, { id: String(Date.now()+4), role: 'assistant', content: `Ошибка: ${err?.message || String(err)}` }])
                                 } finally { setSending(false) }
                               }}
                               className="px-3 py-1.5 rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white text-xs shadow hover:opacity-90"
-                            >Bestätigen</button>
+                            >{lang === 'ru' ? 'Подтвердить' : lang === 'de' ? 'Bestätigen' : 'Confirm'}</button>
                             <button
-                              onClick={()=> setMessages(prev => [...prev, { id: String(Date.now()+5), role: 'assistant', content: 'Abgebrochen.' }])}
+                              onClick={()=> setMessages(prev => [...prev, { id: String(Date.now()+5), role: 'assistant', content: lang === 'ru' ? 'Операция отменена.' : lang === 'de' ? 'Abgebrochen.' : 'Cancelled.' }])}
                               className="px-3 py-1.5 rounded-lg bg-white/10 text-slate-200 border border-white/10 text-xs hover:bg-white/15"
-                            >Abbrechen</button>
+                            >{lang === 'ru' ? 'Отмена' : lang === 'de' ? 'Abbrechen' : 'Cancel'}</button>
                           </div>
                         )}
                       </div>
@@ -282,7 +438,7 @@ export default function ChatWidget() {
                     <div className="flex items-center gap-2 rounded-2xl bg-slate-900/90 backdrop-blur-xl px-4 py-2">
                       <input
                         type="text"
-                        placeholder="Stell mir eine Frage..."
+                        placeholder={placeholderByLang(lang)}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey ? sendMessage() : undefined}
