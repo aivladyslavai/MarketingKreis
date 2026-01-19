@@ -32,18 +32,37 @@ export async function POST(req: NextRequest) {
     const detectLang = (text: string): 'de' | 'ru' | 'en' => {
       const t = String(text || '')
       if (/[а-яА-ЯёЁ]{3,}/.test(t)) return 'ru'
+      // German umlauts or common stopwords
+      if (/[äöüßÄÖÜ]/.test(t)) return 'de'
       if (/(und|der|die|das|ist|mit|für|auf|zu|ein|eine|bitte|heute|morgen)/i.test(t)) return 'de'
       return 'en'
     }
 
-    const lang: 'de' | 'ru' | 'en' = detectLang(
-      [
-        typeof message === 'string' ? message : '',
-        Array.isArray(history) ? JSON.stringify(history.slice(-8)) : '',
-        String(context?.lang || ''),
-        String(context?.pathname || ''),
-      ].join(' ')
-    )
+    const normalizeLocaleToLang = (val: string): 'de' | 'ru' | 'en' | null => {
+      const v = String(val || '').toLowerCase()
+      if (!v) return null
+      if (v.startsWith('ru') || v.includes('ru')) return 'ru'
+      if (v.startsWith('de') || v.includes('de')) return 'de'
+      if (v.startsWith('en') || v.includes('en')) return 'en'
+      return null
+    }
+
+    // IMPORTANT: Always prefer the language of the CURRENT user message.
+    // History can contain other languages (or prior assistant replies), and should not override explicit user input.
+    const messageText = typeof message === 'string' ? message : ''
+    const msgHasSignal = /[а-яА-ЯёЁ]{3,}|[äöüßÄÖÜ]|[a-zA-Z]{3,}/.test(messageText)
+    const msgLang = detectLang(messageText)
+
+    let lang: 'de' | 'ru' | 'en' = msgLang
+    if (!msgHasSignal) {
+      // If message is "10:00"/"ok"/"yes" etc., keep conversation language from last user message if possible.
+      const historyArr: any[] = Array.isArray(history) ? history : []
+      const hasSignal = (s: string) => /[а-яА-ЯёЁ]{3,}|[äöüßÄÖÜ]|[a-zA-Z]{3,}/.test(String(s || ''))
+      const lastUser = [...historyArr].reverse().find((m: any) => m?.role === 'user' && typeof m?.content === 'string' && hasSignal(m.content))
+      const histLang = lastUser ? detectLang(String(lastUser.content)) : null
+      const ctxLang = normalizeLocaleToLang(String((context as any)?.lang || ''))
+      lang = (histLang || ctxLang || msgLang) as any
+    }
 
     const t = (ru: string, de: string, en: string) => (lang === 'ru' ? ru : lang === 'de' ? de : en)
 
