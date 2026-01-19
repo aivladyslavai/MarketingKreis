@@ -9,6 +9,7 @@ function ensureAuthenticated(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  let fallbackAnswerFn: null | ((reason?: string) => Promise<string>) = null
   try {
     try {
       ensureAuthenticated(req)
@@ -23,12 +24,6 @@ export async function POST(req: NextRequest) {
     // Allow forceTool without message (for confirmation)
     if (!forceTool && (!message || typeof message !== 'string')) {
       return NextResponse.json({ error: 'Invalid message' }, { status: 400 })
-    }
-
-    const apiKey = process.env.OPENAI_API_KEY
-    const model = process.env.NEXT_PUBLIC_ASSISTANT_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini'
-    if (!apiKey) {
-      return NextResponse.json({ error: 'OPENAI_API_KEY is not configured' }, { status: 500 })
     }
 
     const detectLang = (text: string): 'de' | 'ru' | 'en' => {
@@ -48,6 +43,165 @@ export async function POST(req: NextRequest) {
     )
 
     const t = (ru: string, de: string, en: string) => (lang === 'ru' ? ru : lang === 'de' ? de : en)
+
+    const cookie = req.headers.get('cookie') || ''
+    const api = async (path: string, init: RequestInit = {}) => {
+      const base =
+        req.nextUrl?.origin ||
+        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        'http://localhost:3000'
+      const url = path.startsWith('http') ? path : `${base}/api${path.startsWith('/') ? path : '/' + path}`
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init.headers as any || {}) }
+      if (cookie) headers['cookie'] = cookie
+      const controller = new AbortController()
+      const timeoutMs = init.method && ['POST','PUT','PATCH','DELETE'].includes(String(init.method).toUpperCase()) ? 20_000 : 12_000
+      const to = setTimeout(() => controller.abort(), timeoutMs)
+      const res = await fetch(url, { ...init, headers, cache: 'no-store', signal: controller.signal })
+      clearTimeout(to)
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText)
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      try { return await res.json() } catch { return null }
+    }
+
+    const formatCHF = (v: any) => {
+      const n = Number(v || 0)
+      try {
+        return Math.round(n).toLocaleString(lang === 'ru' ? 'ru-RU' : lang === 'de' ? 'de-CH' : 'en-US')
+      } catch {
+        return String(Math.round(n))
+      }
+    }
+
+    const fallbackAnswer = async (reason?: string): Promise<string> => {
+      const q = String(message || '')
+      const lower = q.toLowerCase()
+      const wantsKpi = /(kpi|pipeline|won|umsatz|revenue|deal|deals|crm|кпи|сделк)/i.test(q)
+      const wantsCalendar = /(calendar|kalender|календар|termin|meeting|встреч|today|heute|сегодня|morgen|завтра|tomorrow|week|woche|недел)/i.test(q)
+      const wantsContent = /(content|контент|deadline|дедлайн|task|aufgabe|items|publication|publish|публикац)/i.test(q)
+
+      const reasonLine = reason ? `\n\n${t(`ℹ️ Причина: ${reason}`, `ℹ️ Grund: ${reason}`, `ℹ️ Reason: ${reason}`)}` : ''
+
+      if (wantsKpi) {
+        try {
+          const s = await api('/crm/stats')
+          const pipeline = formatCHF(s?.pipelineValue || 0)
+          const won = formatCHF(s?.wonValue || 0)
+          const deals = s?.totalDeals ?? 0
+          const companies = s?.totalCompanies ?? 0
+          const contacts = s?.totalContacts ?? 0
+          const conv = typeof s?.conversionRate === 'number' ? (Math.round(s.conversionRate * 10) / 10) : null
+          const convLine = conv != null ? `\n📈 ${t('Конверсия', 'Conversion', 'Conversion')}: ${conv}%` : ''
+          return (
+            `📊 ${t('Pipeline', 'Pipeline', 'Pipeline')}: CHF ${pipeline}\n` +
+            `💰 ${t('Won', 'Won', 'Won')}: CHF ${won}\n` +
+            `🤝 ${t('Сделки', 'Deals', 'Deals')}: ${deals}\n` +
+            `🏢 ${t('Компании', 'Companies', 'Companies')}: ${companies}\n` +
+            `👥 ${t('Контакты', 'Contacts', 'Contacts')}: ${contacts}` +
+            convLine +
+            reasonLine
+          )
+        } catch (e: any) {
+          const msg = String(e?.message || e || '')
+          return t(`Не удалось получить CRM KPI: ${msg}`, `Konnte CRM KPIs nicht abrufen: ${msg}`, `Could not fetch CRM KPIs: ${msg}`) + reasonLine
+        }
+      }
+
+      if (wantsContent) {
+        try {
+          const [items, tasks] = await Promise.all([
+            api('/content/items').catch(() => []),
+            api('/content/tasks').catch(() => []),
+          ])
+          const itArr = Array.isArray(items) ? items : (items?.items ?? [])
+          const tArr = Array.isArray(tasks) ? tasks : (tasks?.items ?? [])
+          const topItems = itArr
+            .filter((it: any) => it?.due_at || it?.scheduled_at)
+            .slice(0, 5)
+            .map((it: any) => `- ${it.title}${it.scheduled_at ? ` · ${t('publish', 'publish', 'publish')}: ${String(it.scheduled_at).slice(0, 10)}` : ''}${it.due_at ? ` · ${t('due', 'due', 'due')}: ${String(it.due_at).slice(0, 10)}` : ''}`)
+          const topTasks = tArr
+            .filter((x: any) => x?.deadline)
+            .slice(0, 6)
+            .map((x: any) => `- ${x.title} · ${String(x.deadline).slice(0, 10)}${x.priority ? ` · ${x.priority}` : ''}`)
+          const head = t('Ближайшие дедлайны по контенту:', 'Nächste Content‑Deadlines:', 'Upcoming content deadlines:')
+          return `${head}\n\n${t('Items', 'Items', 'Items')}:\n${topItems.join('\n') || '- —'}\n\n${t('Tasks', 'Tasks', 'Tasks')}:\n${topTasks.join('\n') || '- —'}${reasonLine}`
+        } catch (e: any) {
+          const msg = String(e?.message || e || '')
+          return t(`Не удалось получить данные по контенту: ${msg}`, `Konnte Content‑Daten nicht abrufen: ${msg}`, `Could not fetch content data: ${msg}`) + reasonLine
+        }
+      }
+
+      if (wantsCalendar) {
+        try {
+          const ev = await api('/calendar').catch(() => [])
+          const arr = Array.isArray(ev) ? ev : (ev?.items ?? [])
+          const list = arr.slice(0, 8).map((e: any) => `- ${String(e?.start || '').slice(0, 16).replace('T',' ')} · ${e?.title || 'Event'}`)
+          return `${t('Ближайшие события:', 'Nächste Termine:', 'Upcoming events:')}\n${list.join('\n') || '- —'}${reasonLine}`
+        } catch (e: any) {
+          const msg = String(e?.message || e || '')
+          return t(`Не удалось получить календарь: ${msg}`, `Konnte Kalender nicht abrufen: ${msg}`, `Could not fetch calendar: ${msg}`) + reasonLine
+        }
+      }
+
+      const base = t(
+        'AI‑часть сейчас не настроена, но я могу показывать данные (KPI, календарь, контент).',
+        'Die AI‑Funktion ist gerade nicht konfiguriert, aber ich kann Daten anzeigen (KPIs, Kalender, Content).',
+        'AI is not configured right now, but I can still show data (KPIs, calendar, content).'
+      )
+      const hint = t(
+        '\n\nПопробуй: “CRM KPI”, “дедлайны контента”, “что в календаре”.',
+        '\n\nTry: “CRM KPI”, “Content Deadlines”, “Heute im Kalender”.',
+        '\n\nTry: “CRM KPI”, “content deadlines”, “today in calendar”.'
+      )
+      return base + hint + reasonLine
+    }
+    fallbackAnswerFn = fallbackAnswer
+
+    // Optional direct execution from client confirmation (must work even without OpenAI)
+    if (forceTool && typeof forceTool.name === 'string') {
+      const allowWrite = process.env.ASSISTANT_ALLOW_WRITE === 'true'
+      if (!allowWrite) {
+        return NextResponse.json({ reply: t('Запись отключена политикой сервера (ASSISTANT_ALLOW_WRITE=false).', 'Schreiben ist serverseitig deaktiviert (ASSISTANT_ALLOW_WRITE=false).', 'Writes are disabled by server policy (ASSISTANT_ALLOW_WRITE=false).') })
+      }
+      const args = { ...(forceTool.args || {}), confirm: true }
+      try {
+        let out: any = null
+        if (forceTool.name === 'create_activity') out = await api('/activities', { method: 'POST', body: JSON.stringify(args) })
+        else if (forceTool.name === 'update_activity') out = await api(`/activities/${args.id}`, { method: 'PUT', body: JSON.stringify(args) })
+        else if (forceTool.name === 'delete_activity') out = await api(`/activities/${args.id}`, { method: 'DELETE' })
+        else if (forceTool.name === 'create_calendar_event') out = await api('/calendar', { method: 'POST', body: JSON.stringify(args) })
+        else if (forceTool.name === 'update_calendar_event') out = await api(`/calendar/${args.id}`, { method: 'PUT', body: JSON.stringify(args) })
+        else if (forceTool.name === 'delete_calendar_event') out = await api(`/calendar/${args.id}`, { method: 'DELETE' })
+        else if (forceTool.name === 'create_content_item') out = await api('/content/items', { method: 'POST', body: JSON.stringify(args) })
+        else if (forceTool.name === 'update_content_item') out = await api(`/content/items/${args.id}`, { method: 'PATCH', body: JSON.stringify(args) })
+        else if (forceTool.name === 'delete_content_item') out = await api(`/content/items/${args.id}`, { method: 'DELETE' })
+        else if (forceTool.name === 'create_content_task') out = await api('/content/tasks', { method: 'POST', body: JSON.stringify(args) })
+        else if (forceTool.name === 'update_content_task') out = await api(`/content/tasks/${args.id}`, { method: 'PATCH', body: JSON.stringify(args) })
+        else if (forceTool.name === 'delete_content_task') out = await api(`/content/tasks/${args.id}`, { method: 'DELETE' })
+        else if (forceTool.name === 'complete_content_task') out = await api(`/content/tasks/${args.id}/complete`, { method: 'POST', body: JSON.stringify(args) })
+        else if (forceTool.name === 'apply_content_template') out = await api(`/content/items/${args.item_id}/apply-template`, { method: 'POST', body: JSON.stringify({ template_id: args.template_id }) })
+        else if (forceTool.name === 'generate_content_from_deal') out = await api(`/content/generate/from-deal/${args.deal_id}`, { method: 'POST', body: JSON.stringify({ template_id: args.template_id ?? null }) })
+        else if (forceTool.name === 'run_content_reminders') out = await api('/content/reminders/run', { method: 'POST', body: JSON.stringify(args) })
+        else return NextResponse.json({ reply: t('Неизвестное действие', 'Unbekannte Aktion', 'Unknown action') }, { status: 400 })
+        return NextResponse.json({ reply: t('Готово ✅', 'Geschafft ✅', 'Done ✅'), result: out })
+      } catch (err: any) {
+        const msg = String(err?.message || err || '')
+        const isDemo = /demo|read-only|readonly|forbidden|403/i.test(msg)
+        if (isDemo) {
+          return NextResponse.json({ reply: t('Этот аккаунт в DEMO режиме (read‑only) — запись запрещена.', 'Dieser Account ist im DEMO‑Modus (read‑only) — Schreiben ist gesperrt.', 'This account is in DEMO (read-only) mode — writes are blocked.') })
+        }
+        return NextResponse.json({ reply: t(`Ошибка: ${msg}`, `Fehler: ${msg}`, `Error: ${msg}`) })
+      }
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY
+    const model = process.env.NEXT_PUBLIC_ASSISTANT_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini'
+    if (!apiKey) {
+      const reply = await fallbackAnswer('OPENAI_API_KEY is not configured')
+      return NextResponse.json({ reply, provider: 'fallback' })
+    }
 
     const systemPrompt = `You are a focused, intelligent assistant for a marketing CRM + Content Hub platform. You help users manage CRM (companies, contacts, deals), activities, calendar events, and content production (content items, tasks, templates, approvals, assets).
 
@@ -97,24 +251,6 @@ NEVER:
 - Ask multiple questions in a row.
 - Give advice unless explicitly asked.`
 
-    const cookie = req.headers.get('cookie') || ''
-    const api = async (path: string, init: RequestInit = {}) => {
-      const base =
-        req.nextUrl?.origin ||
-        (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        'http://localhost:3000'
-      const url = path.startsWith('http') ? path : `${base}/api${path.startsWith('/') ? path : '/' + path}`
-      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init.headers as any || {}) }
-      if (cookie) headers['cookie'] = cookie
-      const res = await fetch(url, { ...init, headers, cache: 'no-store' })
-      if (!res.ok) {
-        const text = await res.text().catch(() => res.statusText)
-        throw new Error(text || `HTTP ${res.status}`)
-      }
-      try { return await res.json() } catch { return null }
-    }
-
     const tools = [
       { type: 'function', function: { name: 'get_crm_stats', description: 'Get CRM KPIs', parameters: { type: 'object', properties: {}, additionalProperties: false } } },
       { type: 'function', function: { name: 'list_companies', description: 'List companies (optional fuzzy query q)', parameters: { type: 'object', properties: { q: { type: 'string' } }, additionalProperties: false } } },
@@ -155,43 +291,6 @@ NEVER:
       ],
       tools,
       tool_choice: 'auto', // Will be overridden to 'required' for write intents
-    }
-
-    // Optional direct execution from client confirmation
-    if (forceTool && typeof forceTool.name === 'string') {
-      const allowWrite = process.env.ASSISTANT_ALLOW_WRITE === 'true'
-      if (!allowWrite) {
-        return NextResponse.json({ reply: t('Запись отключена политикой сервера (ASSISTANT_ALLOW_WRITE=false).', 'Schreiben ist serverseitig deaktiviert (ASSISTANT_ALLOW_WRITE=false).', 'Writes are disabled by server policy (ASSISTANT_ALLOW_WRITE=false).') })
-      }
-      const args = { ...(forceTool.args || {}), confirm: true }
-      try {
-        let out: any = null
-        if (forceTool.name === 'create_activity') out = await api('/activities', { method: 'POST', body: JSON.stringify(args) })
-        else if (forceTool.name === 'update_activity') out = await api(`/activities/${args.id}`, { method: 'PUT', body: JSON.stringify(args) })
-        else if (forceTool.name === 'delete_activity') out = await api(`/activities/${args.id}`, { method: 'DELETE' })
-        else if (forceTool.name === 'create_calendar_event') out = await api('/calendar', { method: 'POST', body: JSON.stringify(args) })
-        else if (forceTool.name === 'update_calendar_event') out = await api(`/calendar/${args.id}`, { method: 'PUT', body: JSON.stringify(args) })
-        else if (forceTool.name === 'delete_calendar_event') out = await api(`/calendar/${args.id}`, { method: 'DELETE' })
-        else if (forceTool.name === 'create_content_item') out = await api('/content/items', { method: 'POST', body: JSON.stringify(args) })
-        else if (forceTool.name === 'update_content_item') out = await api(`/content/items/${args.id}`, { method: 'PATCH', body: JSON.stringify(args) })
-        else if (forceTool.name === 'delete_content_item') out = await api(`/content/items/${args.id}`, { method: 'DELETE' })
-        else if (forceTool.name === 'create_content_task') out = await api('/content/tasks', { method: 'POST', body: JSON.stringify(args) })
-        else if (forceTool.name === 'update_content_task') out = await api(`/content/tasks/${args.id}`, { method: 'PATCH', body: JSON.stringify(args) })
-        else if (forceTool.name === 'delete_content_task') out = await api(`/content/tasks/${args.id}`, { method: 'DELETE' })
-        else if (forceTool.name === 'complete_content_task') out = await api(`/content/tasks/${args.id}/complete`, { method: 'POST', body: JSON.stringify(args) })
-        else if (forceTool.name === 'apply_content_template') out = await api(`/content/items/${args.item_id}/apply-template`, { method: 'POST', body: JSON.stringify({ template_id: args.template_id }) })
-        else if (forceTool.name === 'generate_content_from_deal') out = await api(`/content/generate/from-deal/${args.deal_id}`, { method: 'POST', body: JSON.stringify({ template_id: args.template_id ?? null }) })
-        else if (forceTool.name === 'run_content_reminders') out = await api('/content/reminders/run', { method: 'POST', body: JSON.stringify(args) })
-        else return NextResponse.json({ reply: 'Неизвестное действие' }, { status: 400 })
-        return NextResponse.json({ reply: t('Готово ✅', 'Geschafft ✅', 'Done ✅'), result: out })
-      } catch (err: any) {
-        const msg = String(err?.message || err || '')
-        const isDemo = /demo|read-only|readonly|forbidden|403/i.test(msg)
-        if (isDemo) {
-          return NextResponse.json({ reply: t('Этот аккаунт в DEMO режиме (read‑only) — запись запрещена.', 'Dieser Account ist im DEMO‑Modus (read‑only) — Schreiben ist gesperrt.', 'This account is in DEMO (read-only) mode — writes are blocked.') })
-        }
-        return NextResponse.json({ reply: t(`Ошибка: ${msg}`, `Fehler: ${msg}`, `Error: ${msg}`) })
-      }
     }
     async function call(modelName: string, bodyOverride?: any) {
       return fetch('https://api.openai.com/v1/chat/completions', {
@@ -254,8 +353,9 @@ NEVER:
       }
       const resp = await call(model, currentPayload)
       if (!resp.ok) {
-        const text = await resp.text()
-        return NextResponse.json({ error: text }, { status: resp.status })
+        const text = await resp.text().catch(() => resp.statusText)
+        const reply = await fallbackAnswer(`OpenAI error (${resp.status})`)
+        return NextResponse.json({ reply, provider: 'fallback', error: String(text).slice(0, 800) })
       }
       const j = await resp.json()
       const m = j?.choices?.[0]?.message
@@ -488,30 +588,18 @@ NEVER:
       }
     }
     if (!reply || !String(reply).trim()) {
-      // Final attempt: ask model without tools, forcing a concise answer
-      const fallbackBody = {
-        model,
-        input: [
-          { role: 'system', content: systemPrompt + ' Always produce a final answer. Never return an empty message.' },
-          { role: 'user', content: message },
-        ],
-        tool_choice: 'none' as const,
-      }
-      const resp2 = await call(model, fallbackBody)
-      if (resp2.ok) {
-        const j2 = await resp2.json()
-        const m2 = j2?.output?.[0] ?? j2?.choices?.[0]?.message
-        const txt = extractText(m2)
-        if (txt && String(txt).trim()) {
-          return NextResponse.json({ reply: String(txt) })
-        }
-      }
-      const raw = await resp2.text().catch(()=>null)
-      return NextResponse.json({ error: 'Empty response from model', raw }, { status: 502 })
+      const reply2 = await fallbackAnswer('Empty response from model')
+      return NextResponse.json({ reply: reply2, provider: 'fallback' })
     }
     return NextResponse.json({ reply: String(reply) })
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Unexpected error' }, { status: 500 })
+    const msg = String(e?.message || 'Unexpected error')
+    try {
+      const reply = fallbackAnswerFn ? await fallbackAnswerFn(msg) : msg
+      return NextResponse.json({ reply, provider: 'fallback', error: msg })
+    } catch {
+      return NextResponse.json({ error: msg }, { status: 500 })
+    }
   }
 }
 

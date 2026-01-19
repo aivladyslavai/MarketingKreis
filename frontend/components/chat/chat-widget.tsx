@@ -168,6 +168,17 @@ export default function ChatWidget() {
         })
       })
       const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const msg = data?.detail || data?.error || res.statusText || 'Request failed'
+        if (res.status === 401) {
+          return lang === 'ru'
+            ? '⚠️ Сессия истекла. Пожалуйста, войдите снова.'
+            : lang === 'de'
+              ? '⚠️ Session abgelaufen. Bitte erneut einloggen.'
+              : '⚠️ Session expired. Please sign in again.'
+        }
+        return lang === 'ru' ? `⚠️ Ошибка: ${msg}` : lang === 'de' ? `⚠️ Fehler: ${msg}` : `⚠️ Error: ${msg}`
+      }
       // If server asks for confirmation, render the preview + CTA bubble
       if (data?.confirm) {
         const tool = data.confirm
@@ -175,9 +186,19 @@ export default function ChatWidget() {
         setMessages(prev => [...prev, { id: String(Date.now()+2), role: 'assistant', content: preview, confirmTool: tool }])
         return ''
       }
-      return data?.reply || 'Ich konnte keine Antwort generieren.'
+      if (data?.reply && String(data.reply).trim()) return String(data.reply)
+      if (data?.error) {
+        const msg = String(data.error)
+        return lang === 'ru' ? `⚠️ Ошибка: ${msg}` : lang === 'de' ? `⚠️ Fehler: ${msg}` : `⚠️ Error: ${msg}`
+      }
+      return lang === 'ru'
+        ? 'Я не смог сформировать ответ.'
+        : lang === 'de'
+          ? 'Ich konnte keine Antwort generieren.'
+          : "I couldn't generate an answer."
     } catch (e: any) {
-      return `⚠️ Assistant-Fehler: ${e?.message || e}`
+      const msg = e?.message || e
+      return lang === 'ru' ? `⚠️ Ошибка ассистента: ${msg}` : lang === 'de' ? `⚠️ Assistant-Fehler: ${msg}` : `⚠️ Assistant error: ${msg}`
     }
   }
 
