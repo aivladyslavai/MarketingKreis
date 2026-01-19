@@ -89,15 +89,27 @@ export function useActivities() {
         const cats = loadCategoryMap()
         const stages = loadStageMap()
         const cls = loadChecklists()
-        return list.map((a) => ({
-            ...a,
-            category: cats[String(a.id)] || a.category,
-            // attach local workflow metadata
-            // @ts-ignore
-            stage: (stages[String(a.id)] as any) || (a as any).stage || 'DRAFT',
-            // @ts-ignore
-            checklist: (cls[String(a.id)] as any) || (a as any).checklist || [],
-        })) as any
+        const parseDate = (v: any): Date | undefined => {
+            if (v == null || v === "") return undefined
+            if (v instanceof Date) return Number.isNaN(v.getTime()) ? undefined : v
+            const d = new Date(v)
+            return Number.isNaN(d.getTime()) ? undefined : d
+        }
+        return list.map((a) => {
+            const id = String((a as any)?.id ?? "")
+            return {
+                ...a,
+                // Normalize dates for components like RadialCircle (expects Date objects)
+                start: parseDate((a as any).start),
+                end: parseDate((a as any).end),
+                category: cats[id] || (a as any).category,
+                // attach local workflow metadata
+                // @ts-ignore
+                stage: (stages[id] as any) || (a as any).stage || 'DRAFT',
+                // @ts-ignore
+                checklist: (cls[id] as any) || (a as any).checklist || [],
+            }
+        }) as any
     })()
 
     const addActivity = React.useCallback(async (activity: Omit<Activity, "id">) => {
@@ -146,10 +158,11 @@ export function useActivities() {
         return updateActivity(activityId, { start: newDate })
     }, [updateActivity])
 
-    if (typeof window !== 'undefined') {
-        sync.on('global:refresh', () => mutate())
-        sync.on('activities:changed', () => mutate())
-    }
+    React.useEffect(() => {
+        const u1 = sync.on('global:refresh', () => mutate())
+        const u2 = sync.on('activities:changed', () => mutate())
+        return () => { u1(); u2() }
+    }, [mutate])
 
     return {
       activities,
@@ -160,6 +173,7 @@ export function useActivities() {
       updateActivity,
       deleteActivity,
       moveActivity,
+      refresh: async () => { await mutate(); sync.emit('activities:changed') },
       refetch: async () => { await mutate(); sync.emit('activities:changed') },
     }
 }

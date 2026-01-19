@@ -75,6 +75,16 @@ export function useUploadsApi() {
       }
       await mutate()
       sync.emit('uploads:changed')
+      // CSV/XLS(X) uploads import activities on the backend. Notify other pages (Activities/Reports/etc.)
+      // so the Marketing Circle updates immediately without a hard reload.
+      try {
+        const name = String(file?.name || '').toLowerCase()
+        const isTabular = name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xls')
+        if (isTabular) {
+          sync.emit('activities:changed')
+          sync.emit('performance:changed')
+        }
+      } catch {}
     },
     refresh: async () => { await mutate(); sync.emit('uploads:changed') },
   }

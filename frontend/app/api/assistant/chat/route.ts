@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
 function ensureAuthenticated(req: NextRequest) {
   const cookie = req.headers.get("cookie") || ""
   // We rely on backend-issued JWT cookie; if none present, deny.
@@ -77,7 +80,6 @@ export async function POST(req: NextRequest) {
 
     const fallbackAnswer = async (reason?: string): Promise<string> => {
       const q = String(message || '')
-      const lower = q.toLowerCase()
       const wantsKpi = /(kpi|pipeline|won|umsatz|revenue|deal|deals|crm|кпи|сделк)/i.test(q)
       const wantsCalendar = /(calendar|kalender|календар|termin|meeting|встреч|today|heute|сегодня|morgen|завтра|tomorrow|week|woche|недел)/i.test(q)
       const wantsContent = /(content|контент|deadline|дедлайн|task|aufgabe|items|publication|publish|публикац)/i.test(q)
@@ -232,10 +234,14 @@ PARSING EXAMPLES:
 - "завтра с 15:00 по 17:00" → start: tomorrow 15:00, end: tomorrow 17:00
 - "morgen um 15:00 Uhr" → start: tomorrow 15:00
 - "tomorrow at 3pm" → start: tomorrow 15:00
+- "every Monday 10:00-11:00" → start: next Monday 10:00, end: 11:00, recurrence: {"freq":"weekly","interval":1}
 - "встреча инвесторов" → title: "Встреча инвесторов"
 - "Investorenmeeting" → title: "Investorenmeeting"
 - User said title in message 3, date in message 5 → Combine both and create event.
 - If user says "morgen" or "завтра" or "tomorrow" → Use tomorrow's date.
+
+RECURRENCE (calendar):
+- Use recurrence JSON in calendar tools: {"freq":"daily|weekly|monthly","interval":1,"count"?:N,"until"?: "YYYY-MM-DD"}
 
 CRITICAL RULES FOR WRITE OPERATIONS:
 - When creating/updating/deleting, you MUST NOT reply with text.
@@ -277,8 +283,8 @@ NEVER:
       { type: 'function', function: { name: 'update_activity', description: 'Update activity (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, category: { type: 'string' }, start: { type: 'string' }, end: { type: 'string', nullable: true }, status: { type: 'string' }, notes: { type: 'string', nullable: true }, budgetCHF: { type: 'number', nullable: true }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
       { type: 'function', function: { name: 'delete_activity', description: 'Delete activity (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'string' }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
       { type: 'function', function: { name: 'list_calendar_events', description: 'List calendar events with optional range', parameters: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } }, additionalProperties: false } } },
-      { type: 'function', function: { name: 'create_calendar_event', description: 'Create calendar event (requires confirm:true)', parameters: { type: 'object', properties: { title: { type: 'string' }, start: { type: 'string' }, end: { type: 'string', nullable: true }, description: { type: 'string', nullable: true }, color: { type: 'string', nullable: true }, category: { type: 'string', nullable: true }, confirm: { type: 'boolean' } }, required: ['title','start'], additionalProperties: false } } },
-      { type: 'function', function: { name: 'update_calendar_event', description: 'Update calendar event (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, start: { type: 'string' }, end: { type: 'string', nullable: true }, description: { type: 'string', nullable: true }, color: { type: 'string', nullable: true }, category: { type: 'string', nullable: true }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'create_calendar_event', description: 'Create calendar event (requires confirm:true)', parameters: { type: 'object', properties: { title: { type: 'string' }, start: { type: 'string' }, end: { type: 'string', nullable: true }, description: { type: 'string', nullable: true }, color: { type: 'string', nullable: true }, category: { type: 'string', nullable: true }, recurrence: { type: 'object', nullable: true }, recurrence_exceptions: { type: 'array', items: { type: 'string' }, nullable: true }, confirm: { type: 'boolean' } }, required: ['title','start'], additionalProperties: false } } },
+      { type: 'function', function: { name: 'update_calendar_event', description: 'Update calendar event (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, start: { type: 'string' }, end: { type: 'string', nullable: true }, description: { type: 'string', nullable: true }, color: { type: 'string', nullable: true }, category: { type: 'string', nullable: true }, recurrence: { type: 'object', nullable: true }, recurrence_exceptions: { type: 'array', items: { type: 'string' }, nullable: true }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
       { type: 'function', function: { name: 'delete_calendar_event', description: 'Delete calendar event (requires confirm:true)', parameters: { type: 'object', properties: { id: { type: 'string' }, confirm: { type: 'boolean' } }, required: ['id'], additionalProperties: false } } },
     ] as any
 
@@ -318,25 +324,141 @@ NEVER:
       return ''
     }
 
-    // Server-side natural language date parsing hint (heute/morgen/übermorgen)
+    // Server-side natural language date/time/recurrence hints
+    // (helps the model avoid looping questions for "today", "every Monday", etc.)
     let enrichedMessage = message
     let isWriteIntent = false
-    const base = new Date()
-    const addDays = (d: number) => { const x = new Date(base); x.setDate(base.getDate() + d); return x }
-    const normalizeDate = (d: Date) => d.toISOString().split('T')[0]
-    const timeMatch = message.match(/(\d{1,2}):(\d{2})/)
-    if (/(übermorgen|uebermorgen|послезавтра|day after tomorrow)/i.test(message)) {
-      const target = addDays(2)
-      enrichedMessage += ` [System hint: User means date=${normalizeDate(target)}${timeMatch ? `, time=${timeMatch[0]}` : ''}]`
-    } else if (/(morgen|завтра|tomorrow)/i.test(message)) {
-      const target = addDays(1)
-      enrichedMessage += ` [System hint: User means date=${normalizeDate(target)}${timeMatch ? `, time=${timeMatch[0]}` : ''}]`
-    } else if (/(heute|сегодня|today)/i.test(message) && timeMatch) {
-      const target = addDays(0)
-      enrichedMessage += ` [System hint: User means date=${normalizeDate(target)}, time=${timeMatch[0]}]`
+
+    const safeTimeZone = (() => {
+      const raw = String((context as any)?.tz || (context as any)?.timezone || '').trim()
+      if (!raw) return 'UTC'
+      try {
+        Intl.DateTimeFormat('en-CA', { timeZone: raw }).format(new Date())
+        return raw
+      } catch {
+        return 'UTC'
+      }
+    })()
+
+    const ymdInTz = (d: Date) => {
+      try {
+        const parts = new Intl.DateTimeFormat('en-CA', { timeZone: safeTimeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d)
+        const get = (k: string) => parts.find(p => p.type === k)?.value
+        const y = get('year') || ''
+        const m = get('month') || ''
+        const day = get('day') || ''
+        if (y && m && day) return `${y}-${m}-${day}`
+      } catch {}
+      return d.toISOString().slice(0, 10)
+    }
+
+    const userHistoryText =
+      Array.isArray(history)
+        ? history.filter((m: any) => m?.role === 'user').slice(-8).map((m: any) => String(m?.content || '')).join('\n')
+        : ''
+    const combinedUserText = `${String(message || '')}\n${userHistoryText}`
+
+    const parseTimes = (text: string): { start?: string; end?: string } => {
+      const s = String(text || '')
+      const range = s.match(/(\d{1,2}:\d{2})\s*(?:-|–|to|bis)\s*(\d{1,2}:\d{2})/i)
+      if (range) return { start: range[1], end: range[2] }
+      const one = s.match(/(\d{1,2}:\d{2})/)
+      if (one) return { start: one[1] }
+      return {}
+    }
+    const padTime = (t: string) => {
+      const m = String(t || '').match(/^(\d{1,2}):(\d{2})$/)
+      if (!m) return String(t || '')
+      return `${String(m[1]).padStart(2, '0')}:${m[2]}`
+    }
+
+    // Date arithmetic based on local Y-M-D in user's timezone (avoid DST issues by operating in UTC with Y-M-D)
+    const todayYmd = ymdInTz(new Date())
+    const baseUtc = (() => {
+      const [yy, mm, dd] = String(todayYmd).split('-').map((x) => Number(x))
+      if (Number.isFinite(yy) && Number.isFinite(mm) && Number.isFinite(dd)) {
+        return new Date(Date.UTC(yy, mm - 1, dd, 12, 0, 0))
+      }
+      const now = new Date()
+      return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0))
+    })()
+    const addDaysUtc = (days: number) => {
+      const d = new Date(baseUtc.getTime())
+      d.setUTCDate(d.getUTCDate() + days)
+      return d
+    }
+    const ymdFromUtc = (d: Date) => d.toISOString().slice(0, 10)
+    const nextWeekday = (weekday: number) => {
+      // weekday: 0=Sun..6=Sat
+      const cur = baseUtc.getUTCDay()
+      const delta = (weekday - cur + 7) % 7
+      return ymdFromUtc(addDaysUtc(delta))
+    }
+
+    const has = (re: RegExp) => re.test(combinedUserText)
+    const times = parseTimes(combinedUserText)
+
+    let dateHint: string | null = null
+    if (has(/(übermorgen|uebermorgen|послезавтра|day after tomorrow)/i)) dateHint = ymdFromUtc(addDaysUtc(2))
+    else if (has(/(morgen|завтра|tomorrow)/i)) dateHint = ymdFromUtc(addDaysUtc(1))
+    else if (has(/(heute|сегодня|today)/i)) dateHint = ymdFromUtc(addDaysUtc(0))
+    else {
+      // weekday mentioned → use the next occurrence as the first appointment date
+      const weekdayMap: Array<{ idx: number; re: RegExp }> = [
+        { idx: 1, re: /(monday|montag|понедельник)/i },
+        { idx: 2, re: /(tuesday|dienstag|вторник)/i },
+        { idx: 3, re: /(wednesday|mittwoch|среда)/i },
+        { idx: 4, re: /(thursday|donnerstag|четверг)/i },
+        { idx: 5, re: /(friday|freitag|пятниц)/i },
+        { idx: 6, re: /(saturday|samstag|суббот)/i },
+        { idx: 0, re: /(sunday|sonntag|воскрес)/i },
+      ]
+      const hit = weekdayMap.find((x) => x.re.test(combinedUserText))
+      if (hit) dateHint = nextWeekday(hit.idx)
+    }
+
+    // Recurrence hint (backend expects {freq, interval, count?, until?})
+    let recurrenceHint: any = null
+    if (has(/(every|each|jeden|jede|wöchentlich|woechentlich|еженедельно)/i)) {
+      if (has(/(day|daily|täglich|taeglich|каждый день|ежедневно)/i)) recurrenceHint = { freq: 'daily', interval: 1 }
+      else if (has(/(month|monthly|monatlich|ежемесячно)/i)) recurrenceHint = { freq: 'monthly', interval: 1 }
+      else recurrenceHint = { freq: 'weekly', interval: 1 }
+    }
+    // "every Monday" etc without the word "every" still implies weekly recurrence
+    if (!recurrenceHint && has(/(monday|montag|понедельник|tuesday|dienstag|вторник|wednesday|mittwoch|среда|thursday|donnerstag|четверг|friday|freitag|пятниц|saturday|samstag|суббот|sunday|sonntag|воскрес)/i)) {
+      recurrenceHint = { freq: 'weekly', interval: 1 }
+    }
+
+    const hints: string[] = []
+    if (dateHint) {
+      if (times.start) {
+        const st = padTime(times.start)
+        hints.push(`start=${dateHint}T${st}:00`)
+        if (times.end) {
+          const et = padTime(times.end)
+          hints.push(`end=${dateHint}T${et}:00`)
+        }
+      } else {
+        hints.push(`date=${dateHint}`)
+      }
+    }
+    if (!dateHint && times.start) {
+      hints.push(`time=${padTime(times.start)}${times.end ? `-${padTime(times.end)}` : ''}`)
+    }
+    if (recurrenceHint) {
+      hints.push(`recurrence=${JSON.stringify(recurrenceHint)}`)
+    }
+    if (hints.length) {
+      enrichedMessage += ` [System hint: ${hints.join(', ')}]`
     }
     // Detect write intent (create/update/delete)
     if (/(erstelle|erstellen|создай|создать|create|add|добавь|plan|plane|запланируй|schedule|update|измен|перенес|verschieb|delete|удал|löschen|apply|шаблон|template|reminder|напоминан)/i.test(message)) {
+      isWriteIntent = true
+    } else if (
+      // On calendar page, users often only type time/title; treat it as scheduling intent.
+      String(context?.pathname || '').includes('/calendar') &&
+      /(meeting|termin|event|встреч|событ|календ|calendar|today|heute|сегодня|\d{1,2}:\d{2})/i.test(message)
+    ) {
       isWriteIntent = true
     }
 
@@ -363,6 +485,7 @@ NEVER:
         currentToolCalls = m.tool_calls
         const toolResults: any[] = []
         const allowWrite = process.env.ASSISTANT_ALLOW_WRITE === 'true'
+        let blockedWriteName: string | null = null
         let pendingConfirm: null | { name: string; args: any } = null
         for (const tc of m.tool_calls) {
           const name = tc.function?.name
@@ -459,6 +582,7 @@ NEVER:
               name === 'run_content_reminders'
             ) {
               if (!allowWrite) {
+                blockedWriteName = name || 'write'
                 result = { error: 'Writes are disabled by server policy (ASSISTANT_ALLOW_WRITE=false)' }
               } else if (!args.confirm) {
                 result = { requires_confirmation: true, hint: 'Add "confirm": true in tool call to proceed.' }
@@ -486,6 +610,14 @@ NEVER:
           } catch (err: any) {
             toolResults.push({ role: 'tool', tool_call_id: tc.id, name, content: JSON.stringify({ error: err?.message || String(err) }) })
           }
+        }
+        if (blockedWriteName) {
+          const msg = t(
+            'Ассистент сейчас не может создавать/изменять данные, потому что write‑действия отключены на сервере (ASSISTANT_ALLOW_WRITE=false). Включи на Vercel: Project → Settings → Environment Variables → `ASSISTANT_ALLOW_WRITE=true` (Production + Preview) и сделай Redeploy. Если это DEMO‑аккаунт — запись всегда запрещена.',
+            'Der Assistent kann gerade nichts erstellen/ändern, weil Schreib‑Aktionen serverseitig deaktiviert sind (ASSISTANT_ALLOW_WRITE=false). Aktiviere es in Vercel: Project → Settings → Environment Variables → `ASSISTANT_ALLOW_WRITE=true` (Production + Preview) und redeployen. Wenn es ein DEMO‑Account ist, sind Writes immer gesperrt.',
+            'The assistant can’t create/update data right now because writes are disabled on the server (ASSISTANT_ALLOW_WRITE=false). Enable it in Vercel: Project → Settings → Environment Variables → set `ASSISTANT_ALLOW_WRITE=true` (Production + Preview) and redeploy. If this is a DEMO account, writes are always blocked.'
+          )
+          return NextResponse.json({ reply: msg })
         }
         if (pendingConfirm) {
           // Validate required details for creation; if missing, ask clarifying question instead of confirm
@@ -526,6 +658,22 @@ NEVER:
             preview = `📅 **${args.title || t('Новое событие', 'Neues Event', 'New event')}**\n\n`
             if (args.start) preview += `🕒 ${fmtDT(args.start)}`
             if (args.end) preview += ` ${t('до', 'bis', 'to')} ${fmtTime(args.end)}`
+            if (args.recurrence && typeof args.recurrence === 'object') {
+              const freq = String((args.recurrence as any).freq || '').toLowerCase()
+              const interval = Number((args.recurrence as any).interval || 1)
+              const untilRaw = (args.recurrence as any).until
+              const countRaw = (args.recurrence as any).count
+              const until = typeof untilRaw === 'string' && untilRaw ? String(untilRaw).slice(0, 10) : ''
+              const count = Number.isFinite(Number(countRaw)) ? Number(countRaw) : null
+              if (freq) {
+                const freqLabel =
+                  freq === 'daily' ? t('ежедневно', 'täglich', 'daily') :
+                  freq === 'weekly' ? t('еженедельно', 'wöchentlich', 'weekly') :
+                  freq === 'monthly' ? t('ежемесячно', 'monatlich', 'monthly') :
+                  freq
+                preview += `\n🔁 ${t('Повтор', 'Wiederholung', 'Repeats')}: ${freqLabel}${interval && interval !== 1 ? ` · ${t('интервал', 'Intervall', 'interval')} ${interval}` : ''}${until ? ` · ${t('до', 'bis', 'until')} ${until}` : ''}${count ? ` · ${t('раз', 'Anzahl', 'count')} ${count}` : ''}`
+              }
+            }
             if (args.category) preview += `\n🏷️ ${args.category}`
             if (args.description) preview += `\n\n📝 ${args.description}`
             preview += `\n\n${t('Создать?', 'Erstellen?', 'Create?')}`
