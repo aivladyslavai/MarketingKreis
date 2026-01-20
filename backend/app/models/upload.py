@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Numeric, LargeBinary, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Numeric, LargeBinary, Boolean, ForeignKey
 from sqlalchemy.sql import func
 
 from app.db.base import Base
@@ -8,6 +8,7 @@ class Upload(Base):
     __tablename__ = "uploads"
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     original_name = Column(String(255), nullable=False)
     file_type = Column(String(100), nullable=True)
     file_size = Column(Numeric(14, 0), nullable=True)

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from app.api.deps import get_current_user, require_writable_user
+from app.api.deps import get_current_user, get_org_id, require_writable_user
 from app.db.session import get_db_session
 from app.models.user import User
 from app.models.user_category import UserCategory
@@ -21,9 +21,13 @@ def list_user_categories(
     """
     Вернуть категории для текущего пользователя.
     """
+    org = get_org_id(user)
     cats = (
         db.query(UserCategory)
-        .filter((UserCategory.user_id == user.id) | (UserCategory.user_id.is_(None)))
+        .filter(
+            (UserCategory.user_id == user.id) | (UserCategory.user_id.is_(None)),
+            UserCategory.organization_id == org,
+        )
         .order_by(UserCategory.position.asc(), UserCategory.id.asc())
         .all()
     )
@@ -44,7 +48,8 @@ def save_user_categories(
     Полная замена пользовательских категорий для текущего пользователя.
     """
     # Удаляем старые категории пользователя
-    db.query(UserCategory).filter(UserCategory.user_id == user.id).delete()
+    org = get_org_id(user)
+    db.query(UserCategory).filter(UserCategory.user_id == user.id, UserCategory.organization_id == org).delete()
 
     items: List[UserCategory] = []
     for idx, c in enumerate(payload.categories[:5]):
@@ -53,6 +58,7 @@ def save_user_categories(
             name=c.name.strip(),
             color=c.color.strip(),
             position=idx,
+            organization_id=org,
         )
         db.add(item)
         items.append(item)

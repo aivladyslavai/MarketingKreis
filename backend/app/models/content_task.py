@@ -26,6 +26,7 @@ class ContentTask(Base):
     __tablename__ = "content_tasks"
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     title = Column(String(255), nullable=False)
     channel = Column(String(100), nullable=False, default="Website")
     format = Column(String(100), nullable=True)

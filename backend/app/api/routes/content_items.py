@@ -8,9 +8,11 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db_session, is_demo_user, require_writable_user
+from app.api.deps import get_current_user, get_db_session, get_org_id, is_demo_user, require_writable_user
 from app.core.config import get_settings
+from app.models.activity import Activity
 from app.models.calendar import CalendarEntry
+from app.models.company import Company
 from app.models.content_item import (
     ContentAssetKind,
     ContentAutomationRule,
@@ -87,7 +89,8 @@ def _can_manage_all(user: User) -> bool:
 
 
 def _require_item_access(db: Session, *, item_id: int, user: User) -> ContentItem:
-    q = db.query(ContentItem).filter(ContentItem.id == item_id)
+    org = get_org_id(user)
+    q = db.query(ContentItem).filter(ContentItem.id == item_id, ContentItem.organization_id == org)
     if is_demo_user(user):
         q = q.filter(ContentItem.owner_id == user.id)
     elif not _can_manage_all(user):
@@ -115,12 +118,32 @@ def _sync_calendar_for_item(db: Session, *, item: ContentItem, actor: User) -> N
     - If scheduled_at is cleared: delete existing linked calendar entry (best-effort)
     """
     try:
+        org = int(getattr(item, "organization_id", None) or get_org_id(actor))
         owner_id = item.owner_id or actor.id
         existing = (
             db.query(CalendarEntry)
-            .filter(CalendarEntry.content_item_id == item.id, CalendarEntry.owner_id == owner_id)
+            .filter(
+                CalendarEntry.content_item_id == item.id,
+                CalendarEntry.owner_id == owner_id,
+                CalendarEntry.organization_id == org,
+            )
             .first()
         )
+        if not existing:
+            # Backward-compat: older rows may have organization_id null before backfill.
+            existing = (
+                db.query(CalendarEntry)
+                .filter(
+                    CalendarEntry.content_item_id == item.id,
+                    CalendarEntry.owner_id == owner_id,
+                    CalendarEntry.organization_id.is_(None),
+                )
+                .first()
+            )
+            if existing:
+                existing.organization_id = org
+                db.add(existing)
+                db.commit()
         if not item.scheduled_at:
             if existing:
                 db.delete(existing)
@@ -148,6 +171,7 @@ def _sync_calendar_for_item(db: Session, *, item: ContentItem, actor: User) -> N
                 activity_id=item.activity_id,
                 content_item_id=item.id,
                 owner_id=owner_id,
+                organization_id=org,
             )
             db.add(ev)
             db.commit()
@@ -195,8 +219,9 @@ def list_content_items(
 ):
     can_manage_all = _can_manage_all(current_user)
     demo_mode = is_demo_user(current_user)
+    org = get_org_id(current_user)
 
-    query = db.query(ContentItem)
+    query = db.query(ContentItem).filter(ContentItem.organization_id == org)
     if demo_mode:
         query = query.filter(ContentItem.owner_id == current_user.id)
     elif can_manage_all:
@@ -229,13 +254,44 @@ def create_content_item(
     current_user: User = Depends(require_writable_user),
 ):
     can_manage_all = _can_manage_all(current_user)
+    org = get_org_id(current_user)
     desired_owner_id: Optional[int] = current_user.id
     if can_manage_all and hasattr(payload, "model_fields_set") and "owner_id" in payload.model_fields_set:
         desired_owner_id = payload.owner_id
         if desired_owner_id is not None:
-            exists = db.query(User).filter(User.id == int(desired_owner_id)).first()
+            exists = (
+                db.query(User)
+                .filter(User.id == int(desired_owner_id), User.organization_id == org)
+                .first()
+            )
             if not exists:
                 raise HTTPException(status_code=400, detail="Owner user not found")
+
+    # Validate FK links belong to the same organization (avoid cross-tenant linking).
+    if payload.company_id is not None:
+        company = (
+            db.query(Company)
+            .filter(Company.id == int(payload.company_id), Company.organization_id == org)
+            .first()
+        )
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+    if payload.project_id is not None:
+        project = (
+            db.query(Deal)
+            .filter(Deal.id == int(payload.project_id), Deal.organization_id == org)
+            .first()
+        )
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+    if payload.activity_id is not None:
+        act = (
+            db.query(Activity)
+            .filter(Activity.id == int(payload.activity_id), Activity.organization_id == org)
+            .first()
+        )
+        if not act:
+            raise HTTPException(status_code=404, detail="Activity not found")
 
     item = ContentItem(
         title=payload.title.strip(),
@@ -256,6 +312,7 @@ def create_content_item(
         owner_id=desired_owner_id,
         blocked_reason=payload.blocked_reason,
         blocked_by=payload.blocked_by,
+        organization_id=org,
     )
     db.add(item)
     db.commit()
@@ -285,6 +342,7 @@ def update_content_item(
 ):
     item = _require_item_access(db, item_id=item_id, user=current_user)
     can_manage_all = _can_manage_all(current_user)
+    org = get_org_id(current_user)
 
     data = payload.model_dump(exclude_unset=True)
     create_version = bool(data.pop("create_version", False))
@@ -322,11 +380,32 @@ def update_content_item(
     if "published_at" in data:
         item.published_at = data.get("published_at")
     if "company_id" in data:
-        item.company_id = data.get("company_id")
+        cid = data.get("company_id")
+        if cid is None:
+            item.company_id = None
+        else:
+            company = db.query(Company).filter(Company.id == int(cid), Company.organization_id == org).first()
+            if not company:
+                raise HTTPException(status_code=404, detail="Company not found")
+            item.company_id = int(cid)
     if "project_id" in data:
-        item.project_id = data.get("project_id")
+        pid = data.get("project_id")
+        if pid is None:
+            item.project_id = None
+        else:
+            project = db.query(Deal).filter(Deal.id == int(pid), Deal.organization_id == org).first()
+            if not project:
+                raise HTTPException(status_code=404, detail="Project not found")
+            item.project_id = int(pid)
     if "activity_id" in data:
-        item.activity_id = data.get("activity_id")
+        aid = data.get("activity_id")
+        if aid is None:
+            item.activity_id = None
+        else:
+            act = db.query(Activity).filter(Activity.id == int(aid), Activity.organization_id == org).first()
+            if not act:
+                raise HTTPException(status_code=404, detail="Activity not found")
+            item.activity_id = int(aid)
     if "blocked_reason" in data:
         item.blocked_reason = data.get("blocked_reason")
     if "blocked_by" in data:
@@ -337,7 +416,11 @@ def update_content_item(
         else:
             desired_owner_id = data.get("owner_id")
             if desired_owner_id is not None:
-                exists = db.query(User).filter(User.id == int(desired_owner_id)).first()
+                exists = (
+                    db.query(User)
+                    .filter(User.id == int(desired_owner_id), User.organization_id == org)
+                    .first()
+                )
                 if not exists:
                     raise HTTPException(status_code=400, detail="Owner user not found")
             item.owner_id = desired_owner_id
@@ -425,7 +508,8 @@ def add_reviewer(
     item = _require_item_access(db, item_id=item_id, user=current_user)
     if not _can_manage_all(current_user):
         raise HTTPException(status_code=403, detail="Only admins/editors can manage reviewers")
-    exists = db.query(User).filter(User.id == int(payload.reviewer_id)).first()
+    org = get_org_id(current_user)
+    exists = db.query(User).filter(User.id == int(payload.reviewer_id), User.organization_id == org).first()
     if not exists:
         raise HTTPException(status_code=400, detail="Reviewer user not found")
 
@@ -448,6 +532,7 @@ def remove_reviewer(
     row = db.query(ContentItemReviewer).filter(ContentItemReviewer.id == reviewer_row_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Reviewer assignment not found")
+    _require_item_access(db, item_id=row.item_id, user=current_user)
     item_id = row.item_id
     db.delete(row)
     db.commit()
@@ -606,6 +691,7 @@ def create_asset(
     current_user: User = Depends(require_writable_user),
 ):
     item = _require_item_access(db, item_id=item_id, user=current_user)
+    org = get_org_id(current_user)
     kind = payload.kind or ContentAssetKind.LINK
     if kind == ContentAssetKind.UPLOAD and not payload.upload_id:
         raise HTTPException(status_code=400, detail="upload_id is required for UPLOAD assets")
@@ -614,7 +700,11 @@ def create_asset(
 
     upload: Optional[Upload] = None
     if payload.upload_id is not None:
-        upload = db.query(Upload).filter(Upload.id == int(payload.upload_id)).first()
+        upload = (
+            db.query(Upload)
+            .filter(Upload.id == int(payload.upload_id), Upload.organization_id == org)
+            .first()
+        )
         if not upload:
             raise HTTPException(status_code=400, detail="Upload not found")
 
@@ -645,6 +735,7 @@ def upload_asset(
 ):
     item = _require_item_access(db, item_id=item_id, user=current_user)
     settings = get_settings()
+    org = get_org_id(current_user)
 
     content = file.file.read() or b""
     if len(content) > settings.upload_max_bytes:
@@ -658,6 +749,7 @@ def upload_asset(
     # Always store bytes for Content Hub assets (needed for preview)
     upload.content = content
     upload.stored_in_db = True
+    upload.organization_id = org
     db.add(upload)
     db.commit()
     db.refresh(upload)
@@ -734,6 +826,7 @@ def download_asset(
     if not a:
         raise HTTPException(status_code=404, detail="Asset not found")
     _require_item_access(db, item_id=a.item_id, user=current_user)
+    org = get_org_id(current_user)
 
     if a.kind == ContentAssetKind.LINK:
         url = (a.url or "").strip()
@@ -743,7 +836,7 @@ def download_asset(
 
     if not a.upload_id:
         raise HTTPException(status_code=404, detail="No upload linked")
-    upload = db.query(Upload).filter(Upload.id == int(a.upload_id)).first()
+    upload = db.query(Upload).filter(Upload.id == int(a.upload_id), Upload.organization_id == org).first()
     if not upload or not getattr(upload, "content", None):
         raise HTTPException(status_code=404, detail="Upload content not found")
 
@@ -835,7 +928,14 @@ def list_templates(
     current_user: User = Depends(get_current_user),
 ):
     # For now, templates are visible to everyone.
-    return db.query(ContentTemplate).order_by(ContentTemplate.updated_at.desc()).limit(200).all()
+    org = get_org_id(current_user)
+    return (
+        db.query(ContentTemplate)
+        .filter(ContentTemplate.organization_id == org)
+        .order_by(ContentTemplate.updated_at.desc())
+        .limit(200)
+        .all()
+    )
 
 
 @router.post("/templates", response_model=ContentTemplateOut)
@@ -844,6 +944,7 @@ def create_template(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(require_writable_user),
 ):
+    org = get_org_id(current_user)
     tpl = ContentTemplate(
         name=payload.name.strip(),
         description=payload.description.strip() if payload.description else None,
@@ -854,6 +955,7 @@ def create_template(
         tasks=payload.tasks or None,
         reviewers=payload.reviewers or None,
         created_by=current_user.id,
+        organization_id=org,
     )
     db.add(tpl)
     db.commit()
@@ -868,7 +970,12 @@ def update_template(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(require_writable_user),
 ):
-    tpl = db.query(ContentTemplate).filter(ContentTemplate.id == template_id).first()
+    org = get_org_id(current_user)
+    tpl = (
+        db.query(ContentTemplate)
+        .filter(ContentTemplate.id == template_id, ContentTemplate.organization_id == org)
+        .first()
+    )
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
     data = payload.model_dump(exclude_unset=True)
@@ -903,7 +1010,12 @@ def delete_template(
 ):
     if not _can_manage_all(current_user):
         raise HTTPException(status_code=403, detail="Only admins/editors can delete templates")
-    tpl = db.query(ContentTemplate).filter(ContentTemplate.id == template_id).first()
+    org = get_org_id(current_user)
+    tpl = (
+        db.query(ContentTemplate)
+        .filter(ContentTemplate.id == template_id, ContentTemplate.organization_id == org)
+        .first()
+    )
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
     db.delete(tpl)
@@ -919,10 +1031,15 @@ def apply_template(
     current_user: User = Depends(require_writable_user),
 ):
     item = _require_item_access(db, item_id=item_id, user=current_user)
+    org = get_org_id(current_user)
     template_id = payload.get("template_id")
     if template_id is None:
         raise HTTPException(status_code=400, detail="template_id is required")
-    tpl = db.query(ContentTemplate).filter(ContentTemplate.id == int(template_id)).first()
+    tpl = (
+        db.query(ContentTemplate)
+        .filter(ContentTemplate.id == int(template_id), ContentTemplate.organization_id == org)
+        .first()
+    )
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
 
@@ -954,7 +1071,7 @@ def apply_template(
                 rid = int(uid)
             except Exception:
                 continue
-            exists = db.query(User).filter(User.id == rid).first()
+            exists = db.query(User).filter(User.id == rid, User.organization_id == org).first()
             if not exists:
                 continue
             db.add(ContentItemReviewer(item_id=item.id, reviewer_id=rid, role="reviewer"))
@@ -990,6 +1107,7 @@ def apply_template(
                 content_item_id=item.id,
                 recurrence=recurrence,
                 owner_id=item.owner_id,
+                organization_id=org,
             )
         )
         created["tasks"] += 1
@@ -1009,7 +1127,14 @@ def list_automation_rules(
 ):
     if not _can_manage_all(current_user):
         return []
-    return db.query(ContentAutomationRule).order_by(ContentAutomationRule.updated_at.desc()).limit(200).all()
+    org = get_org_id(current_user)
+    return (
+        db.query(ContentAutomationRule)
+        .filter(ContentAutomationRule.organization_id == org)
+        .order_by(ContentAutomationRule.updated_at.desc())
+        .limit(200)
+        .all()
+    )
 
 
 @router.post("/automation-rules", response_model=ContentAutomationRuleOut)
@@ -1020,6 +1145,11 @@ def create_automation_rule(
 ):
     if not _can_manage_all(current_user):
         raise HTTPException(status_code=403, detail="Only admins/editors can manage automation rules")
+    org = get_org_id(current_user)
+    if payload.template_id is not None:
+        tpl = db.query(ContentTemplate).filter(ContentTemplate.id == int(payload.template_id), ContentTemplate.organization_id == org).first()
+        if not tpl:
+            raise HTTPException(status_code=400, detail="Template not found")
     rule = ContentAutomationRule(
         name=payload.name.strip(),
         is_active=bool(payload.is_active),
@@ -1027,6 +1157,7 @@ def create_automation_rule(
         template_id=payload.template_id,
         config=payload.config or None,
         created_by=current_user.id,
+        organization_id=org,
     )
     db.add(rule)
     db.commit()
@@ -1043,7 +1174,12 @@ def update_automation_rule(
 ):
     if not _can_manage_all(current_user):
         raise HTTPException(status_code=403, detail="Only admins/editors can manage automation rules")
-    rule = db.query(ContentAutomationRule).filter(ContentAutomationRule.id == rule_id).first()
+    org = get_org_id(current_user)
+    rule = (
+        db.query(ContentAutomationRule)
+        .filter(ContentAutomationRule.id == rule_id, ContentAutomationRule.organization_id == org)
+        .first()
+    )
     if not rule:
         raise HTTPException(status_code=404, detail="Automation rule not found")
     data = payload.model_dump(exclude_unset=True)
@@ -1054,7 +1190,14 @@ def update_automation_rule(
     if "trigger" in data and data["trigger"]:
         rule.trigger = data["trigger"].strip()
     if "template_id" in data:
-        rule.template_id = data.get("template_id")
+        tid = data.get("template_id")
+        if tid is None:
+            rule.template_id = None
+        else:
+            tpl = db.query(ContentTemplate).filter(ContentTemplate.id == int(tid), ContentTemplate.organization_id == org).first()
+            if not tpl:
+                raise HTTPException(status_code=400, detail="Template not found")
+            rule.template_id = int(tid)
     if "config" in data:
         rule.config = data.get("config") or None
     rule.updated_at = datetime.utcnow()
@@ -1072,7 +1215,12 @@ def delete_automation_rule(
 ):
     if not _can_manage_all(current_user):
         raise HTTPException(status_code=403, detail="Only admins/editors can manage automation rules")
-    rule = db.query(ContentAutomationRule).filter(ContentAutomationRule.id == rule_id).first()
+    org = get_org_id(current_user)
+    rule = (
+        db.query(ContentAutomationRule)
+        .filter(ContentAutomationRule.id == rule_id, ContentAutomationRule.organization_id == org)
+        .first()
+    )
     if not rule:
         raise HTTPException(status_code=404, detail="Automation rule not found")
     db.delete(rule)
@@ -1094,17 +1242,27 @@ def generate_from_deal(
     Create a content item + tasks/checklist based on a template, linked to a deal.
     Intended for "deal won → create content package".
     """
+    org = get_org_id(current_user)
     template_id = payload.get("template_id")
     tpl: Optional[ContentTemplate] = None
     if template_id is not None:
-        tpl = db.query(ContentTemplate).filter(ContentTemplate.id == int(template_id)).first()
+        tpl = (
+            db.query(ContentTemplate)
+            .filter(ContentTemplate.id == int(template_id), ContentTemplate.organization_id == org)
+            .first()
+        )
         if not tpl:
             raise HTTPException(status_code=404, detail="Template not found")
     else:
         # fallback: first template (if any)
-        tpl = db.query(ContentTemplate).order_by(ContentTemplate.updated_at.desc()).first()
+        tpl = (
+            db.query(ContentTemplate)
+            .filter(ContentTemplate.organization_id == org)
+            .order_by(ContentTemplate.updated_at.desc())
+            .first()
+        )
 
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    deal = db.query(Deal).filter(Deal.id == deal_id, Deal.organization_id == org).first()
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
 
@@ -1122,6 +1280,7 @@ def generate_from_deal(
         company_id=getattr(deal, "company_id", None),
         project_id=deal.id,
         owner_id=current_user.id,
+        organization_id=org,
     )
     db.add(item)
     db.commit()
@@ -1144,7 +1303,8 @@ def list_notifications(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
-    q = db.query(Notification).filter(Notification.user_id == current_user.id)
+    org = get_org_id(current_user)
+    q = db.query(Notification).filter(Notification.user_id == current_user.id, Notification.organization_id == org)
     if unread_only:
         q = q.filter(Notification.read_at.is_(None))
     return q.order_by(Notification.created_at.desc()).limit(max(1, min(200, int(limit)))).all()
@@ -1156,7 +1316,12 @@ def mark_notification_read(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
-    n = db.query(Notification).filter(Notification.id == notification_id, Notification.user_id == current_user.id).first()
+    org = get_org_id(current_user)
+    n = (
+        db.query(Notification)
+        .filter(Notification.id == notification_id, Notification.user_id == current_user.id, Notification.organization_id == org)
+        .first()
+    )
     if not n:
         raise HTTPException(status_code=404, detail="Notification not found")
     if n.read_at is None:
@@ -1172,7 +1337,12 @@ def mark_all_notifications_read(
     current_user: User = Depends(get_current_user),
 ):
     now = _now_utc()
-    db.query(Notification).filter(Notification.user_id == current_user.id, Notification.read_at.is_(None)).update({"read_at": now})
+    org = get_org_id(current_user)
+    db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.organization_id == org,
+        Notification.read_at.is_(None),
+    ).update({"read_at": now})
     db.commit()
     return {"ok": True}
 
@@ -1194,21 +1364,37 @@ def run_reminders(
     now = _now_utc()
     horizon = now + timedelta(hours=24)
     created = 0
+    org = get_org_id(current_user)
 
     def _create_notification(user_id: int, *, dedupe_key: str, title: str, body: str, url: str) -> None:
         nonlocal created
         if not dedupe_key:
             return
-        exists = db.query(Notification).filter(Notification.dedupe_key == dedupe_key).first()
+        exists = db.query(Notification).filter(Notification.dedupe_key == dedupe_key, Notification.organization_id == org).first()
         if exists:
             return
-        db.add(Notification(user_id=user_id, type="reminder", title=title, body=body, url=url, dedupe_key=dedupe_key))
+        db.add(
+            Notification(
+                user_id=user_id,
+                organization_id=org,
+                type="reminder",
+                title=title,
+                body=body,
+                url=url,
+                dedupe_key=dedupe_key,
+            )
+        )
         created += 1
 
     # Content item scheduled publications
     items = (
         db.query(ContentItem)
-        .filter(ContentItem.scheduled_at.is_not(None), ContentItem.scheduled_at <= horizon, ContentItem.scheduled_at >= now)
+        .filter(
+            ContentItem.organization_id == org,
+            ContentItem.scheduled_at.is_not(None),
+            ContentItem.scheduled_at <= horizon,
+            ContentItem.scheduled_at >= now,
+        )
         .all()
     )
     for it in items:
@@ -1227,7 +1413,12 @@ def run_reminders(
     # Task deadlines
     tasks = (
         db.query(ContentTask)
-        .filter(ContentTask.deadline.is_not(None), ContentTask.deadline <= horizon, ContentTask.deadline >= now)
+        .filter(
+            ContentTask.organization_id == org,
+            ContentTask.deadline.is_not(None),
+            ContentTask.deadline <= horizon,
+            ContentTask.deadline >= now,
+        )
         .all()
     )
     for t in tasks:

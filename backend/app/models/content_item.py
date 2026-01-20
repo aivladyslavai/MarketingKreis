@@ -37,6 +37,7 @@ class ContentItem(Base):
     __tablename__ = "content_items"
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
 
     title = Column(String(255), nullable=False)
     channel = Column(String(100), nullable=False, default="Website")
@@ -195,6 +196,7 @@ class ContentTemplate(Base):
     __tablename__ = "content_templates"
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(String(120), nullable=False)
     description = Column(String(1024), nullable=True)
     channel = Column(String(100), nullable=True)
@@ -222,6 +224,7 @@ class ContentAutomationRule(Base):
     trigger = Column(String(60), nullable=False)  # e.g. deal_won
     template_id = Column(Integer, ForeignKey("content_templates.id", ondelete="SET NULL"), nullable=True, index=True)
     config = Column(JSON, nullable=True)  # arbitrary conditions/settings
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
 
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -236,6 +239,7 @@ class Notification(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     type = Column(String(60), nullable=False, default="info")
     title = Column(String(255), nullable=False)
     body = Column(String(2000), nullable=True)

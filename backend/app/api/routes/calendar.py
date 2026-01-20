@@ -7,8 +7,10 @@ from pydantic import BaseModel
 from app.db.session import get_db_session
 from app.models.calendar import CalendarEntry
 from app.models.content_item import ContentItem, ContentItemStatus
+from app.models.company import Company
+from app.models.deal import Deal
 from app.models.user import User
-from app.api.deps import get_current_user, require_writable_user
+from app.api.deps import get_current_user, get_org_id, require_writable_user
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -128,9 +130,10 @@ def list_calendar_events(
 ):
     """List calendar events for the current user."""
     try:
+        org = get_org_id(current_user)
         events = (
             db.query(CalendarEntry)
-            .filter(CalendarEntry.owner_id == current_user.id)
+            .filter(CalendarEntry.owner_id == current_user.id, CalendarEntry.organization_id == org)
             .order_by(CalendarEntry.start_time.asc())
             .offset(skip)
             .limit(limit)
@@ -179,6 +182,7 @@ def create_calendar_event(
 ):
     """Create a new calendar event owned by the current user."""
     try:
+        org = get_org_id(current_user)
         start_raw = event_data.get("start")
         start_time = (
             datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
@@ -195,6 +199,22 @@ def create_calendar_event(
         rec = _normalize_recurrence(event_data.get("recurrence"))
         exceptions = _normalize_exceptions(event_data.get("recurrence_exceptions") or event_data.get("exceptions"))
 
+        company_id = _to_int(event_data.get("company_id"))
+        project_id = _to_int(event_data.get("project_id"))
+        content_item_id = _to_int(event_data.get("content_item_id"))
+        if company_id is not None:
+            c = db.query(Company).filter(Company.id == int(company_id), Company.organization_id == org).first()
+            if not c:
+                raise HTTPException(status_code=404, detail="Company not found")
+        if project_id is not None:
+            p = db.query(Deal).filter(Deal.id == int(project_id), Deal.organization_id == org).first()
+            if not p:
+                raise HTTPException(status_code=404, detail="Project not found")
+        if content_item_id is not None:
+            it = db.query(ContentItem).filter(ContentItem.id == int(content_item_id), ContentItem.organization_id == org).first()
+            if not it:
+                raise HTTPException(status_code=404, detail="Content item not found")
+
         event = CalendarEntry(
             title=event_data.get("title", "Untitled Event"),
             description=event_data.get("description"),
@@ -209,10 +229,11 @@ def create_calendar_event(
             attendees=event_data.get("attendees"),
             recurrence=rec,
             recurrence_exceptions=exceptions,
-            company_id=_to_int(event_data.get("company_id")),
-            project_id=_to_int(event_data.get("project_id")),
-            content_item_id=_to_int(event_data.get("content_item_id")),
+            company_id=company_id,
+            project_id=project_id,
+            content_item_id=content_item_id,
             owner_id=current_user.id,
+            organization_id=org,
         )
         db.add(event)
         db.commit()
@@ -221,7 +242,11 @@ def create_calendar_event(
         # If linked to ContentItem, sync scheduled_at
         try:
             if getattr(event, "content_item_id", None):
-                item = db.query(ContentItem).filter(ContentItem.id == int(event.content_item_id)).first()
+                item = (
+                    db.query(ContentItem)
+                    .filter(ContentItem.id == int(event.content_item_id), ContentItem.organization_id == org)
+                    .first()
+                )
                 if item and item.owner_id in (None, current_user.id):
                     item.scheduled_at = event.start_time
                     if item.status in {ContentItemStatus.IDEA, ContentItemStatus.DRAFT, ContentItemStatus.REVIEW, ContentItemStatus.APPROVED}:
@@ -268,11 +293,13 @@ def update_calendar_event(
 ):
     """Update a calendar event owned by the current user."""
     try:
+        org = get_org_id(current_user)
         event = (
             db.query(CalendarEntry)
             .filter(
                 CalendarEntry.id == int(event_id),
                 CalendarEntry.owner_id == current_user.id,
+                CalendarEntry.organization_id == org,
             )
             .first()
         )
@@ -326,11 +353,32 @@ def update_calendar_event(
                 existing = _normalize_exceptions(getattr(event, "recurrence_exceptions", None) or [])
                 event.recurrence_exceptions = [d for d in existing if d != rm_s]
         if "company_id" in event_data:
-            event.company_id = _to_int(event_data.get("company_id"))
+            cid = _to_int(event_data.get("company_id"))
+            if cid is None:
+                event.company_id = None
+            else:
+                c = db.query(Company).filter(Company.id == int(cid), Company.organization_id == org).first()
+                if not c:
+                    raise HTTPException(status_code=404, detail="Company not found")
+                event.company_id = int(cid)
         if "project_id" in event_data:
-            event.project_id = _to_int(event_data.get("project_id"))
+            pid = _to_int(event_data.get("project_id"))
+            if pid is None:
+                event.project_id = None
+            else:
+                p = db.query(Deal).filter(Deal.id == int(pid), Deal.organization_id == org).first()
+                if not p:
+                    raise HTTPException(status_code=404, detail="Project not found")
+                event.project_id = int(pid)
         if "content_item_id" in event_data:
-            event.content_item_id = _to_int(event_data.get("content_item_id"))
+            iid = _to_int(event_data.get("content_item_id"))
+            if iid is None:
+                event.content_item_id = None
+            else:
+                it = db.query(ContentItem).filter(ContentItem.id == int(iid), ContentItem.organization_id == org).first()
+                if not it:
+                    raise HTTPException(status_code=404, detail="Content item not found")
+                event.content_item_id = int(iid)
         # Never allow changing owner via API – it must always be the current user
 
         db.commit()
@@ -339,7 +387,11 @@ def update_calendar_event(
         # If linked to ContentItem, sync scheduled_at
         try:
             if getattr(event, "content_item_id", None):
-                item = db.query(ContentItem).filter(ContentItem.id == int(event.content_item_id)).first()
+                item = (
+                    db.query(ContentItem)
+                    .filter(ContentItem.id == int(event.content_item_id), ContentItem.organization_id == org)
+                    .first()
+                )
                 if item and item.owner_id in (None, current_user.id):
                     item.scheduled_at = event.start_time
                     if item.status in {ContentItemStatus.IDEA, ContentItemStatus.DRAFT, ContentItemStatus.REVIEW, ContentItemStatus.APPROVED}:
@@ -387,11 +439,13 @@ def delete_calendar_event(
 ):
     """Delete a calendar event owned by the current user."""
     try:
+        org = get_org_id(current_user)
         event = (
             db.query(CalendarEntry)
             .filter(
                 CalendarEntry.id == int(event_id),
                 CalendarEntry.owner_id == current_user.id,
+                CalendarEntry.organization_id == org,
             )
             .first()
         )

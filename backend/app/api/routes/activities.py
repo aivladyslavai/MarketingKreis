@@ -6,7 +6,7 @@ from datetime import datetime, date
 from app.db.session import get_db_session
 from app.models.activity import Activity, ActivityType
 from app.models.user import User
-from app.api.deps import get_current_user, require_writable_user
+from app.api.deps import get_current_user, get_org_id, require_writable_user
 from pydantic import BaseModel
 from typing import Optional
 
@@ -47,9 +47,10 @@ def list_activities(
     чтобы новые пользователи видели только свои собственные данные.
     """
     try:
+        org = get_org_id(current_user)
         q = (
             db.query(Activity)
-            .filter(Activity.owner_id == current_user.id)
+            .filter(Activity.owner_id == current_user.id, Activity.organization_id == org)
             .order_by(Activity.created_at.desc())
         )
         activities = q.offset(skip).limit(limit).all()
@@ -92,6 +93,7 @@ def create_activity(
 ):
     """Create a new activity for the current user."""
     try:
+        org = get_org_id(current_user)
         def parse_date(value) -> Optional[date]:
             if value is None:
                 return None
@@ -116,6 +118,7 @@ def create_activity(
             end_date=parse_date(activity_data.get("end")),
             status=(activity_data.get("status") or "ACTIVE").upper(),
             owner_id=current_user.id,
+            organization_id=org,
         )
         db.add(activity)
         db.commit()
@@ -152,9 +155,10 @@ def update_activity(
 ):
     """Update an activity owned by the current user."""
     try:
+        org = get_org_id(current_user)
         activity = (
             db.query(Activity)
-            .filter(Activity.id == int(activity_id), Activity.owner_id == current_user.id)
+            .filter(Activity.id == int(activity_id), Activity.owner_id == current_user.id, Activity.organization_id == org)
             .first()
         )
         if not activity:
@@ -224,9 +228,10 @@ def delete_activity(
 ):
     """Delete an activity owned by the current user."""
     try:
+        org = get_org_id(current_user)
         activity = (
             db.query(Activity)
-            .filter(Activity.id == int(activity_id), Activity.owner_id == current_user.id)
+            .filter(Activity.id == int(activity_id), Activity.owner_id == current_user.id, Activity.organization_id == org)
             .first()
         )
         if not activity:

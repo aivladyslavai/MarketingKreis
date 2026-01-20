@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 
-from app.api.deps import get_db_session, get_current_user, is_demo_user, require_writable_user
+from app.api.deps import get_db_session, get_current_user, get_org_id, is_demo_user, require_writable_user
 from app.models.user import User, UserRole
 from app.models.content_task import ContentTask, ContentTaskStatus, ContentTaskPriority
 from app.models.content_item import ContentItem
@@ -32,8 +32,9 @@ def list_content_tasks(
     """
     can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
     demo_mode = is_demo_user(current_user)
+    org = get_org_id(current_user)
 
-    query = db.query(ContentTask)
+    query = db.query(ContentTask).filter(ContentTask.organization_id == org)
     if demo_mode:
         # Do not expose unassigned/shared tasks in demo mode.
         query = query.filter(ContentTask.owner_id == current_user.id)
@@ -81,13 +82,18 @@ def create_content_task(
 ):
     """Create a new content task for the current user."""
     can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
+    org = get_org_id(current_user)
 
     desired_owner_id: Optional[int] = current_user.id
     # Allow admins/editors to explicitly assign tasks (including unassigned = None)
     if can_manage_all and hasattr(payload, "model_fields_set") and "owner_id" in payload.model_fields_set:
         desired_owner_id = payload.owner_id
         if desired_owner_id is not None:
-            exists = db.query(User).filter(User.id == int(desired_owner_id)).first()
+            exists = (
+                db.query(User)
+                .filter(User.id == int(desired_owner_id), User.organization_id == org)
+                .first()
+            )
             if not exists:
                 raise HTTPException(status_code=400, detail="Owner user not found")
 
@@ -103,9 +109,14 @@ def create_content_task(
         content_item_id=payload.content_item_id,
         recurrence=payload.recurrence,
         owner_id=desired_owner_id,
+        organization_id=org,
     )
     if payload.content_item_id is not None:
-        item = db.query(ContentItem).filter(ContentItem.id == int(payload.content_item_id)).first()
+        item = (
+            db.query(ContentItem)
+            .filter(ContentItem.id == int(payload.content_item_id), ContentItem.organization_id == org)
+            .first()
+        )
         if not item:
             raise HTTPException(status_code=400, detail="Content item not found")
         # demo users can only link to their own items; regular users to own/unassigned; admins to any
@@ -130,7 +141,8 @@ def update_content_task(
 ):
     """Patch update a content task. Only the owner can modify their tasks."""
     can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
-    q = db.query(ContentTask).filter(ContentTask.id == task_id)
+    org = get_org_id(current_user)
+    q = db.query(ContentTask).filter(ContentTask.id == task_id, ContentTask.organization_id == org)
     if not can_manage_all:
         q = q.filter(ContentTask.owner_id == current_user.id)
     task = q.first()
@@ -159,7 +171,11 @@ def update_content_task(
         if cid is None:
             task.content_item_id = None
         else:
-            item = db.query(ContentItem).filter(ContentItem.id == int(cid)).first()
+            item = (
+                db.query(ContentItem)
+                .filter(ContentItem.id == int(cid), ContentItem.organization_id == org)
+                .first()
+            )
             if not item:
                 raise HTTPException(status_code=400, detail="Content item not found")
             if is_demo_user(current_user):
@@ -178,7 +194,11 @@ def update_content_task(
         else:
             desired_owner_id = data["owner_id"]
             if desired_owner_id is not None:
-                exists = db.query(User).filter(User.id == int(desired_owner_id)).first()
+                exists = (
+                    db.query(User)
+                    .filter(User.id == int(desired_owner_id), User.organization_id == org)
+                    .first()
+                )
                 if not exists:
                     raise HTTPException(status_code=400, detail="Owner user not found")
             task.owner_id = desired_owner_id
@@ -199,7 +219,8 @@ def delete_content_task(
 ):
     """Delete a content task. Only the owner can delete their tasks."""
     can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
-    q = db.query(ContentTask).filter(ContentTask.id == task_id)
+    org = get_org_id(current_user)
+    q = db.query(ContentTask).filter(ContentTask.id == task_id, ContentTask.organization_id == org)
     if not can_manage_all:
         q = q.filter(ContentTask.owner_id == current_user.id)
     task = q.first()
@@ -235,7 +256,8 @@ def complete_content_task(
     This is used by templates / recurring operational tasks.
     """
     can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
-    q = db.query(ContentTask).filter(ContentTask.id == task_id)
+    org = get_org_id(current_user)
+    q = db.query(ContentTask).filter(ContentTask.id == task_id, ContentTask.organization_id == org)
     if not can_manage_all:
         q = q.filter(ContentTask.owner_id == current_user.id)
     task = q.first()
@@ -297,6 +319,7 @@ def complete_content_task(
                 content_item_id=getattr(task, "content_item_id", None),
                 recurrence=next_rec,
                 owner_id=task.owner_id,
+                organization_id=org,
             )
             db.add(next_task)
             db.commit()

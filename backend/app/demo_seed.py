@@ -30,6 +30,7 @@ from app.models.performance import Performance
 from app.models.upload import Upload
 from app.models.user import User, UserRole
 from app.models.user_category import UserCategory
+from app.models.organization import Organization
 
 
 from app.demo import DEMO_SEED_SOURCE
@@ -71,6 +72,7 @@ def seed_demo_agency(
     email: str,
     password: str,
     reset: bool = False,
+    organization_id: int = 1,
 ) -> Dict[str, Any]:
     """
     Create (or refresh) a single demo account and a realistic dataset.
@@ -88,6 +90,15 @@ def seed_demo_agency(
         raise ValueError("email is required")
     if not password or len(password) < 6:
         raise ValueError("password must be at least 6 chars")
+
+    org_id = int(organization_id or 1)
+    # Ensure organization exists (bootstrap/migration creates id=1 by default).
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        org = Organization(id=org_id, name="Default" if org_id == 1 else f"Org {org_id}")
+        db.add(org)
+        db.commit()
+        db.refresh(org)
 
     created: Dict[str, int] = {
         "user": 0,
@@ -116,6 +127,8 @@ def seed_demo_agency(
         # Per-user domain objects (safe to wipe for demo user)
         existing_demo = db.query(User).filter(User.email == demo_email).first()
         if existing_demo:
+            if getattr(existing_demo, "organization_id", None) not in (None, org_id):
+                raise ValueError("Demo email already exists in another organization")
             db.query(UserCategory).filter(UserCategory.user_id == existing_demo.id).delete()
             db.query(CalendarEntry).filter(CalendarEntry.owner_id == existing_demo.id).delete()
             db.query(Activity).filter(Activity.owner_id == existing_demo.id).delete()
@@ -126,7 +139,7 @@ def seed_demo_agency(
             db.query(ContentTemplate).filter(ContentTemplate.created_by == existing_demo.id).delete()
 
         # Demo-tagged CRM rows
-        demo_companies = db.query(Company).filter(Company.lead_source == DEMO_SEED_SOURCE).all()
+        demo_companies = db.query(Company).filter(Company.lead_source == DEMO_SEED_SOURCE, Company.organization_id == org_id).all()
         demo_company_ids = [c.id for c in demo_companies]
         if demo_company_ids:
             db.query(Deal).filter(Deal.company_id.in_(demo_company_ids)).delete(synchronize_session=False)
@@ -135,7 +148,7 @@ def seed_demo_agency(
 
         # Performance rows are optional; remove only demo-tagged metric names
         demo_metrics = {"demo_revenue", "demo_leads", "demo_spend", "demo_roi"}
-        db.query(Performance).filter(Performance.metric.in_(list(demo_metrics))).delete(synchronize_session=False)
+        db.query(Performance).filter(Performance.metric.in_(list(demo_metrics)), Performance.organization_id == org_id).delete(synchronize_session=False)
 
         db.commit()
 
@@ -147,12 +160,15 @@ def seed_demo_agency(
             role=UserRole.user,
             hashed_password=_hash_password(password),
             is_verified=True,
+            organization_id=org_id,
         )
         db.add(demo_user)
         db.commit()
         db.refresh(demo_user)
         created["user"] += 1
     else:
+        if getattr(demo_user, "organization_id", None) not in (None, org_id):
+            raise ValueError("Demo email already exists in another organization")
         changed = False
         if reset:
             demo_user.hashed_password = _hash_password(password)
@@ -164,6 +180,9 @@ def seed_demo_agency(
             # Keep demo account non-privileged
             demo_user.role = UserRole.user
             changed = True
+        if getattr(demo_user, "organization_id", None) != org_id:
+            demo_user.organization_id = org_id
+            changed = True
         if changed:
             db.add(demo_user)
             db.commit()
@@ -171,7 +190,7 @@ def seed_demo_agency(
             updated["user"] += 1
 
     # --- User categories (marketing circle rings) ---
-    db.query(UserCategory).filter(UserCategory.user_id == demo_user.id).delete()
+    db.query(UserCategory).filter(UserCategory.user_id == demo_user.id, UserCategory.organization_id == org_id).delete()
     demo_categories = [
         ("VERKAUFSFOERDERUNG", "#ef4444"),
         ("IMAGE", "#f97316"),
@@ -182,6 +201,7 @@ def seed_demo_agency(
         db.add(
             UserCategory(
                 user_id=demo_user.id,
+                organization_id=org_id,
                 name=name,
                 color=color,
                 position=idx,
@@ -253,12 +273,18 @@ def seed_demo_agency(
 
     companies: Dict[str, Company] = {}
     for row in companies_payload:
+        payload = dict(row)
+        payload["organization_id"] = org_id
         obj, was_created = _upsert_one(
             db,
             Company,
-            where=[Company.lead_source == DEMO_SEED_SOURCE, Company.website == row["website"]],
-            create=row,
-            update=row,
+            where=[
+                Company.lead_source == DEMO_SEED_SOURCE,
+                Company.website == row["website"],
+                Company.organization_id == org_id,
+            ],
+            create=payload,
+            update=payload,
         )
         companies[row["name"]] = obj
         if was_created:
@@ -326,11 +352,12 @@ def seed_demo_agency(
             "email": row["email"],
             "phone": row.get("phone"),
             "position": row.get("position"),
+            "organization_id": org_id,
         }
         obj, was_created = _upsert_one(
             db,
             Contact,
-            where=[Contact.email == row["email"]],
+            where=[Contact.email == row["email"], Contact.company_id == company.id, Contact.organization_id == org_id],
             create=create,
             update=create,
         )
@@ -439,11 +466,17 @@ def seed_demo_agency(
             "expected_close_date": row["expected_close_date"],
             "owner": row["owner"],
             "notes": row["notes"],
+            "organization_id": org_id,
         }
         obj, was_created = _upsert_one(
             db,
             Deal,
-            where=[Deal.company_id == company.id, Deal.title == row["title"], Deal.owner == row["owner"]],
+            where=[
+                Deal.company_id == company.id,
+                Deal.title == row["title"],
+                Deal.owner == row["owner"],
+                Deal.organization_id == org_id,
+            ],
             create=create,
             update=create,
         )
@@ -506,11 +539,12 @@ def seed_demo_agency(
             "end_date": end_d,
             "status": status,
             "owner_id": demo_user.id,
+            "organization_id": org_id,
         }
         obj, was_created = _upsert_one(
             db,
             Activity,
-            where=[Activity.owner_id == demo_user.id, Activity.title == title],
+            where=[Activity.owner_id == demo_user.id, Activity.title == title, Activity.organization_id == org_id],
             create=create,
             update=create,
         )
@@ -603,11 +637,12 @@ def seed_demo_agency(
             "company_id": company_id,
             "project_id": project_id,
             "owner_id": demo_user.id,
+            "organization_id": org_id,
         }
         obj, was_created = _upsert_one(
             db,
             CalendarEntry,
-            where=[CalendarEntry.owner_id == demo_user.id, CalendarEntry.title == spec["title"]],
+            where=[CalendarEntry.owner_id == demo_user.id, CalendarEntry.title == spec["title"], CalendarEntry.organization_id == org_id],
             create=create,
             update=create,
         )
@@ -633,11 +668,16 @@ def seed_demo_agency(
         ],
         "reviewers": [demo_user.id],
         "created_by": demo_user.id,
+        "organization_id": org_id,
     }
     tpl_pack, was_created = _upsert_one(
         db,
         ContentTemplate,
-        where=[ContentTemplate.created_by == demo_user.id, ContentTemplate.name == deal_pack_template_payload["name"]],
+        where=[
+            ContentTemplate.created_by == demo_user.id,
+            ContentTemplate.name == deal_pack_template_payload["name"],
+            ContentTemplate.organization_id == org_id,
+        ],
         create=deal_pack_template_payload,
         update=deal_pack_template_payload,
     )
@@ -653,11 +693,16 @@ def seed_demo_agency(
         "template_id": tpl_pack.id,
         "config": {"source": "demo_seed"},
         "created_by": demo_user.id,
+        "organization_id": org_id,
     }
     rule, was_created = _upsert_one(
         db,
         ContentAutomationRule,
-        where=[ContentAutomationRule.created_by == demo_user.id, ContentAutomationRule.name == rule_payload["name"]],
+        where=[
+            ContentAutomationRule.created_by == demo_user.id,
+            ContentAutomationRule.name == rule_payload["name"],
+            ContentAutomationRule.organization_id == org_id,
+        ],
         create=rule_payload,
         update=rule_payload,
     )
@@ -670,6 +715,7 @@ def seed_demo_agency(
     # A welcome notification for demo user (shows notifications UI)
     n_payload = {
         "user_id": demo_user.id,
+        "organization_id": org_id,
         "type": "info",
         "title": "Willkommen im Demo‑Account",
         "body": "Diese Daten sind read‑only. Du kannst Content Items ansehen, Kalender planen und Reports prüfen.",
@@ -679,7 +725,7 @@ def seed_demo_agency(
     n, was_created = _upsert_one(
         db,
         Notification,
-        where=[Notification.dedupe_key == n_payload["dedupe_key"]],
+        where=[Notification.dedupe_key == n_payload["dedupe_key"], Notification.organization_id == org_id],
         create=n_payload,
         update=n_payload,
     )
@@ -801,11 +847,12 @@ def seed_demo_agency(
             "owner_id": demo_user.id,
             "blocked_reason": None,
             "blocked_by": [],
+            "organization_id": org_id,
         }
         obj, was_created = _upsert_one(
             db,
             ContentItem,
-            where=[ContentItem.owner_id == demo_user.id, ContentItem.title == spec["title"]],
+            where=[ContentItem.owner_id == demo_user.id, ContentItem.title == spec["title"], ContentItem.organization_id == org_id],
             create=create,
             update=create,
         )
@@ -835,11 +882,12 @@ def seed_demo_agency(
                 "project_id": project_id,
                 "content_item_id": obj.id,
                 "owner_id": demo_user.id,
+                "organization_id": org_id,
             }
             ev, was_created = _upsert_one(
                 db,
                 CalendarEntry,
-                where=[CalendarEntry.owner_id == demo_user.id, CalendarEntry.content_item_id == obj.id],
+                where=[CalendarEntry.owner_id == demo_user.id, CalendarEntry.content_item_id == obj.id, CalendarEntry.organization_id == org_id],
                 create=ev_create,
                 update=ev_create,
             )
@@ -951,7 +999,7 @@ def seed_demo_agency(
 
                 payload_bytes = b"DEMO asset file: carousel copy notes\n"
                 sha = hashlib.sha256(payload_bytes).hexdigest()
-                up = db.query(Upload).filter(Upload.sha256 == sha).first()
+                up = db.query(Upload).filter(Upload.sha256 == sha, Upload.organization_id == org_id).first()
                 if not up:
                     up = Upload(
                         original_name="demo-carousel-notes.txt",
@@ -960,6 +1008,7 @@ def seed_demo_agency(
                         content=payload_bytes,
                         sha256=sha,
                         stored_in_db=True,
+                        organization_id=org_id,
                     )
                     db.add(up)
                     db.commit()
@@ -1019,11 +1068,12 @@ def seed_demo_agency(
             "content_item_id": content_item_ids.get(title),
             "recurrence": {"freq": "weekly", "interval": 1, "count": 8} if title == "Weekly Content Ops Check" else None,
             "owner_id": demo_user.id,
+            "organization_id": org_id,
         }
         obj, was_created = _upsert_one(
             db,
             ContentTask,
-            where=[ContentTask.owner_id == demo_user.id, ContentTask.title == title],
+            where=[ContentTask.owner_id == demo_user.id, ContentTask.title == title, ContentTask.organization_id == org_id],
             create=create,
             update=create,
         )
@@ -1043,11 +1093,11 @@ def seed_demo_agency(
         demo_perf_rows.append(("demo_roi", Decimal("2.6") + (Decimal(m) * Decimal("0.03")), period))
 
     for metric, value, period in demo_perf_rows:
-        create = {"metric": metric, "value": value, "period": period}
+        create = {"metric": metric, "value": value, "period": period, "organization_id": org_id}
         obj, was_created = _upsert_one(
             db,
             Performance,
-            where=[Performance.metric == metric, Performance.period == period],
+            where=[Performance.metric == metric, Performance.period == period, Performance.organization_id == org_id],
             create=create,
             update=create,
         )

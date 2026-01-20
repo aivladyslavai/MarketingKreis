@@ -48,6 +48,18 @@ def is_demo_user(user: User) -> bool:
     return (user.email or "").strip().lower() in emails
 
 
+def get_org_id(user: User) -> int:
+    """
+    Multi-tenant helper.
+
+    Backward-compatible default for older datasets: org=1 (migration/bootstrap backfills to 1).
+    """
+    try:
+        return int(getattr(user, "organization_id", None) or 1)
+    except Exception:
+        return 1
+
+
 def require_writable_user(user: User = Depends(get_current_user)) -> User:
     """
     Enforce a strict read-only mode for demo accounts on mutating endpoints.

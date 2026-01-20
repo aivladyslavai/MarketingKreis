@@ -17,6 +17,7 @@ class Activity(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
     type = Column(Enum(ActivityType), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     # Optional human-readable category name (e.g. user-defined ring like "Product")
     category_name = Column(String(255), nullable=True)
     budget = Column(Numeric(12, 2), nullable=True)

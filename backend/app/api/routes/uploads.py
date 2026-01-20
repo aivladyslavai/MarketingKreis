@@ -11,7 +11,7 @@ from app.models.upload import Upload
 from app.models.job import Job
 from app.models.activity import Activity, ActivityType
 from app.models.user import User
-from app.api.deps import get_current_user, is_demo_user, require_writable_user
+from app.api.deps import get_current_user, get_org_id, is_demo_user, require_writable_user
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/uploads", tags=["uploads"]) 
@@ -44,8 +44,10 @@ def list_uploads(
     # Uploads are global in current schema; do not show them in demo mode to avoid leaking real data.
     if is_demo_user(current_user):
         return {"items": []}
+    org = get_org_id(current_user)
     items = (
         db.query(Upload)
+        .filter(Upload.organization_id == org)
         .order_by(Upload.created_at.desc())
         .all()
     )
@@ -83,12 +85,14 @@ def upload_file(
     start|start_date, end|end_date
     """
     settings = get_settings()
+    org = get_org_id(current_user)
 
     # Save upload metadata (and optionally bytes in DB)
     upload = Upload(
         original_name=file.filename or "file",
         file_type=file.content_type or "",
         file_size=0,
+        organization_id=org,
     )
     db.add(upload)
     db.commit()
@@ -241,6 +245,7 @@ def upload_file(
                     start_date=start,
                     end_date=end,
                     owner_id=current_user.id,
+                    organization_id=org,
                 )
                 db.add(activity)
                 created_count += 1
@@ -251,7 +256,13 @@ def upload_file(
 
         # Record a completed job
         rq_id = f"local-{upload.id}"
-        job = Job(rq_id=rq_id, type="import_activities", status="finished", result=f"created={created_count};skipped={skipped_count}")
+        job = Job(
+            rq_id=rq_id,
+            type="import_activities",
+            status="finished",
+            result=f"created={created_count};skipped={skipped_count}",
+            organization_id=org,
+        )
         db.add(job)
         db.commit()
 

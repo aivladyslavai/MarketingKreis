@@ -8,6 +8,8 @@ from app.db.session import get_db_session
 from app.core.config import get_settings
 from datetime import timedelta, datetime, timezone
 from jose import jwt
+from app.api.deps import get_org_id, require_role
+from app.models.organization import Organization
 from app.models.user import User, UserRole
 import bcrypt
 from app.utils.mailer import send_email
@@ -136,7 +138,15 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
     # Redirect hint for frontend
     response.headers["X-Redirect-To"] = "/dashboard"
     role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
-    return {"message": "ok", "user": {"id": user.id, "email": user.email, "role": role_value}}
+    return {
+        "message": "ok",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "role": role_value,
+            "organization_id": get_org_id(user),
+        },
+    }
 
 class RegisterRequest(BaseModel):
     email: str
@@ -170,6 +180,8 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
 
     # Mode enforcement / invited role
     invited_role = settings.default_role
+    invited_org_id: int | None = None
+    create_new_org = False
     if settings.signup_mode == "invite_only":
         if not body.token:
             raise HTTPException(status_code=400, detail="Invite token required")
@@ -179,12 +191,32 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
                 raise HTTPException(status_code=400, detail="Invalid invite token")
             invited_email = data.get("email")
             invited_role = data.get("role") or settings.default_role
+            invited_org_id = int(data.get("org_id") or 0) or None
             if invited_email and invited_email.lower() != body.email.lower():
                 raise HTTPException(status_code=400, detail="Invite email mismatch")
         except HTTPException:
             raise
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid or expired invite token")
+    else:
+        # signup_mode=open
+        if body.token:
+            # Optional: allow joining an existing org via invite token even in open mode
+            try:
+                data = _decode_special(body.token)
+                if data.get("typ") == "invite":
+                    invited_email = data.get("email")
+                    invited_role = data.get("role") or settings.default_role
+                    invited_org_id = int(data.get("org_id") or 0) or None
+                    if invited_email and invited_email.lower() != body.email.lower():
+                        raise HTTPException(status_code=400, detail="Invite email mismatch")
+            except HTTPException:
+                raise
+            except Exception:
+                # Ignore malformed token in open mode; treat as self-serve signup
+                invited_org_id = None
+        if not invited_org_id:
+            create_new_org = True
 
     # Case-insensitive check (Postgres UNIQUE is case-sensitive by default)
     existing = db.query(User).filter(func.lower(User.email) == body.email).first()
@@ -202,11 +234,49 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
     if total_users == 0:
         role = UserRole.admin
     else:
-        try:
-            role = UserRole(invited_role)
-        except Exception:
-            role = UserRole.user
-    user = User(email=body.email, hashed_password=_hash_password(body.password), role=role)
+        if create_new_org:
+            # First user of a new org must be admin to manage their workspace.
+            role = UserRole.admin
+        else:
+            try:
+                role = UserRole(invited_role)
+            except Exception:
+                role = UserRole.user
+
+    # Organization assignment
+    org_id: int | None = None
+    if total_users == 0:
+        # Bootstrap default org (created by migration/bootstrap); create if missing.
+        org = db.query(Organization).filter(Organization.id == 1).first()
+        if not org:
+            org = Organization(id=1, name="Default")
+            db.add(org)
+            db.commit()
+            db.refresh(org)
+        org_id = int(org.id)
+    elif create_new_org:
+        domain = (body.email.split("@", 1)[1] if "@" in body.email else "").strip().lower()
+        name = domain or "Workspace"
+        org = Organization(name=name)
+        db.add(org)
+        db.commit()
+        db.refresh(org)
+        org_id = int(org.id)
+    else:
+        if not invited_org_id:
+            # Backward-compatible fallback; should not happen for invite flows.
+            invited_org_id = 1
+        org = db.query(Organization).filter(Organization.id == int(invited_org_id)).first()
+        if not org:
+            raise HTTPException(status_code=400, detail="Invalid organization")
+        org_id = int(org.id)
+
+    user = User(
+        email=body.email,
+        hashed_password=_hash_password(body.password),
+        role=role,
+        organization_id=org_id,
+    )
     db.add(user)
     try:
         db.commit()
@@ -224,7 +294,12 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
             db.commit()
             db.refresh(user)
             role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
-            return {"id": user.id, "email": user.email, "role": role_value}
+            return {
+                "id": user.id,
+                "email": user.email,
+                "role": role_value,
+                "organization_id": get_org_id(user),
+            }
     except Exception:
         # fall through to normal verify flow if anything goes wrong
         pass
@@ -242,7 +317,13 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
     except Exception:
         sent = False
     role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
-    return {"id": user.id, "email": user.email, "role": role_value, "verify": {"token": verify_token, "sent": sent}}
+    return {
+        "id": user.id,
+        "email": user.email,
+        "role": role_value,
+        "organization_id": get_org_id(user),
+        "verify": {"token": verify_token, "sent": sent},
+    }
 
 @router.get("/profile")
 def profile(request: Request, db: Session = Depends(get_db_session)):
@@ -250,7 +331,7 @@ def profile(request: Request, db: Session = Depends(get_db_session)):
     from app.api.deps import get_current_user
     user = get_current_user(request, db)
     role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
-    return {"id": user.id, "email": user.email, "role": role_value}
+    return {"id": user.id, "email": user.email, "role": role_value, "organization_id": get_org_id(user)}
 
 @router.post("/logout")
 def logout(response: Response):
@@ -266,13 +347,17 @@ class InviteRequest(BaseModel):
     expires_minutes: int = 60 * 24 * 7  # 7 days
 
 @router.post("/invite")
-def create_invite(body: InviteRequest, request: Request, db: Session = Depends(get_db_session)):
-    # Only admins
-    from app.api.deps import require_role
-    require_role(UserRole.admin)(request, db)  # will raise if not admin
+def create_invite(
+    body: InviteRequest,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
     settings = get_settings()
     role = body.role or settings.default_role
-    token = _encode_special({"typ": "invite", "email": body.email, "role": role}, minutes=body.expires_minutes)
+    token = _encode_special(
+        {"typ": "invite", "email": body.email, "role": role, "org_id": get_org_id(current_user)},
+        minutes=body.expires_minutes,
+    )
     return {"token": token, "link": f"/signup?token={token}"}
 
 class ResetRequest(BaseModel):

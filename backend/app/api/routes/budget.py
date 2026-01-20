@@ -6,7 +6,7 @@ from math import isfinite
 from app.db.session import get_db_session
 from app.models.budget import BudgetTarget, KpiTarget
 from app.models.user import User, UserRole
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, get_org_id, require_role
 
 
 router = APIRouter(prefix="/budget", tags=["budget"])
@@ -19,8 +19,9 @@ def get_targets(
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     try:
-        bt = db.query(BudgetTarget).filter(BudgetTarget.period == period).all()
-        kt = db.query(KpiTarget).filter(KpiTarget.period == period).all()
+        org = get_org_id(current_user)
+        bt = db.query(BudgetTarget).filter(BudgetTarget.period == period, BudgetTarget.organization_id == org).all()
+        kt = db.query(KpiTarget).filter(KpiTarget.period == period, KpiTarget.organization_id == org).all()
         return {
             "budgetTargets": [
                 {"id": b.id, "period": b.period, "category": b.category, "amount": float(b.amount_chf)} for b in bt
@@ -41,26 +42,35 @@ def upsert_targets(
     current_user: User = Depends(require_role(UserRole.admin, UserRole.editor)),
 ) -> Dict[str, Any]:
     try:
+        org = get_org_id(current_user)
         # Upsert budget targets
         for bt in payload.get("budgetTargets", []):
             category = str(bt.get("category") or "").upper()
             amount = float(bt.get("amount") or 0)
-            existing = db.query(BudgetTarget).filter(BudgetTarget.period == period, BudgetTarget.category == category).first()
+            existing = (
+                db.query(BudgetTarget)
+                .filter(BudgetTarget.period == period, BudgetTarget.category == category, BudgetTarget.organization_id == org)
+                .first()
+            )
             if existing:
                 existing.amount_chf = amount
             else:
-                db.add(BudgetTarget(period=period, category=category, amount_chf=amount))
+                db.add(BudgetTarget(period=period, category=category, amount_chf=amount, organization_id=org))
         # Upsert KPI targets
         for kt in payload.get("kpiTargets", []):
             metric = str(kt.get("metric") or "")
             target = float(kt.get("target") or 0)
             unit = kt.get("unit") or None
-            existing_k = db.query(KpiTarget).filter(KpiTarget.period == period, KpiTarget.metric == metric).first()
+            existing_k = (
+                db.query(KpiTarget)
+                .filter(KpiTarget.period == period, KpiTarget.metric == metric, KpiTarget.organization_id == org)
+                .first()
+            )
             if existing_k:
                 existing_k.target_value = target
                 existing_k.unit = unit
             else:
-                db.add(KpiTarget(period=period, metric=metric, target_value=target, unit=unit))
+                db.add(KpiTarget(period=period, metric=metric, target_value=target, unit=unit, organization_id=org))
 
         db.commit()
 
@@ -85,6 +95,7 @@ def simulate_scenario(
     - categoryMultipliers: optional per-category multiplier to reweight distribution beyond uniform scaling
     """
     try:
+        org = get_org_id(current_user)
         period: Optional[str] = payload.get("period")
         change_percent: float = float(payload.get("changePercent") or 0.0)
         elasticities: Dict[str, float] = payload.get("elasticities") or {}
@@ -95,11 +106,11 @@ def simulate_scenario(
 
         # Load current targets for the period if provided; otherwise aggregate latest available
         if period:
-            bt = db.query(BudgetTarget).filter(BudgetTarget.period == period).all()
-            kt = db.query(KpiTarget).filter(KpiTarget.period == period).all()
+            bt = db.query(BudgetTarget).filter(BudgetTarget.period == period, BudgetTarget.organization_id == org).all()
+            kt = db.query(KpiTarget).filter(KpiTarget.period == period, KpiTarget.organization_id == org).all()
         else:
-            bt = db.query(BudgetTarget).all()
-            kt = db.query(KpiTarget).all()
+            bt = db.query(BudgetTarget).filter(BudgetTarget.organization_id == org).all()
+            kt = db.query(KpiTarget).filter(KpiTarget.organization_id == org).all()
 
         # Base budget totals
         base_categories: List[Dict[str, Any]] = [

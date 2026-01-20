@@ -9,6 +9,7 @@ class Contact(Base):
     __tablename__ = "contacts"
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), index=True, nullable=True)
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True)
     name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=True)

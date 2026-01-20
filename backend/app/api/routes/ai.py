@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_org_id
 from app.core.config import get_settings
 from app.db.session import get_db_session
 from app.models.company import Company
@@ -214,10 +214,11 @@ async def activity_suggest(
     settings = get_settings()
     draft: Dict[str, Any] = dict(req.draft or {})
     prompt: Dict[str, Any] = dict(req.prompt or {})
+    org = get_org_id(current_user)
 
     company: Optional[Company] = None
     if req.company_id:
-        company = db.query(Company).filter(Company.id == int(req.company_id)).first()
+        company = db.query(Company).filter(Company.id == int(req.company_id), Company.organization_id == org).first()
 
     # Always provide a useful fallback (no hard dependency on OpenAI)
     fallback = _fallback(company, draft, prompt)
@@ -301,6 +302,7 @@ async def content_assistant(
     """
     settings = get_settings()
     action = (req.action or "brief").strip().lower()
+    org = get_org_id(current_user)
     draft: Dict[str, Any] = dict(req.draft or {})
     prompt = (req.prompt or "").strip()
     tone = (req.tone or str(draft.get("tone") or "")).strip()
@@ -310,11 +312,11 @@ async def content_assistant(
     project: Optional[Deal] = None
     activity: Optional[Activity] = None
     if req.company_id:
-        company = db.query(Company).filter(Company.id == int(req.company_id)).first()
+        company = db.query(Company).filter(Company.id == int(req.company_id), Company.organization_id == org).first()
     if req.project_id:
-        project = db.query(Deal).filter(Deal.id == int(req.project_id)).first()
+        project = db.query(Deal).filter(Deal.id == int(req.project_id), Deal.organization_id == org).first()
     if req.activity_id:
-        activity = db.query(Activity).filter(Activity.id == int(req.activity_id)).first()
+        activity = db.query(Activity).filter(Activity.id == int(req.activity_id), Activity.organization_id == org).first()
 
     fallback = _content_fallback(
         company=company,

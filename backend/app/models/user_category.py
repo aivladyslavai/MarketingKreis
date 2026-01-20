@@ -10,6 +10,7 @@ class UserCategory(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
     color = Column(String(32), nullable=False)
     position = Column(Integer, nullable=False, default=0)

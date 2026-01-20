@@ -18,6 +18,10 @@ from app.demo import DEMO_SEED_SOURCE
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 
+def _org_id(user: User) -> int:
+    # Backward-compatible default for older DBs; migration backfills to 1.
+    return int(getattr(user, "organization_id", None) or 1)
+
 
 @router.get("/companies", response_model=List[CompanyOut])
 def list_companies(
@@ -27,6 +31,7 @@ def list_companies(
     current_user: User = Depends(get_current_user),
 ):
     q = db.query(Company)
+    q = q.filter(Company.organization_id == _org_id(current_user))
     if is_demo_user(current_user):
         q = q.filter(Company.lead_source == DEMO_SEED_SOURCE)
     return q.offset(skip).limit(limit).all()
@@ -41,6 +46,7 @@ def list_contacts(
     current_user: User = Depends(get_current_user),
 ):
     q = db.query(Contact)
+    q = q.filter(Contact.organization_id == _org_id(current_user))
     if is_demo_user(current_user):
         q = q.join(Company, Company.id == Contact.company_id).filter(Company.lead_source == DEMO_SEED_SOURCE)
     if company_id:
@@ -58,6 +64,7 @@ def list_deals(
     current_user: User = Depends(get_current_user),
 ):
     q = db.query(Deal)
+    q = q.filter(Deal.organization_id == _org_id(current_user))
     if is_demo_user(current_user):
         q = q.join(Company, Company.id == Deal.company_id).filter(Company.lead_source == DEMO_SEED_SOURCE)
     if company_id:
@@ -92,23 +99,29 @@ def get_crm_stats(
     - conversionRate: доля выигранных сделок от всех (в процентах)
     """
     if is_demo_user(current_user):
-        total_companies = db.query(Company).filter(Company.lead_source == DEMO_SEED_SOURCE).count()
+        org = _org_id(current_user)
+        total_companies = (
+            db.query(Company)
+            .filter(Company.lead_source == DEMO_SEED_SOURCE, Company.organization_id == org)
+            .count()
+        )
         total_contacts = (
             db.query(Contact)
             .join(Company, Company.id == Contact.company_id)
-            .filter(Company.lead_source == DEMO_SEED_SOURCE)
+            .filter(Company.lead_source == DEMO_SEED_SOURCE, Company.organization_id == org)
             .count()
         )
         deals: List[Deal] = (
             db.query(Deal)
             .join(Company, Company.id == Deal.company_id)
-            .filter(Company.lead_source == DEMO_SEED_SOURCE)
+            .filter(Company.lead_source == DEMO_SEED_SOURCE, Company.organization_id == org)
             .all()
         )
     else:
-        total_companies = db.query(Company).count()
-        total_contacts = db.query(Contact).count()
-        deals = db.query(Deal).all()
+        org = _org_id(current_user)
+        total_companies = db.query(Company).filter(Company.organization_id == org).count()
+        total_contacts = db.query(Contact).filter(Contact.organization_id == org).count()
+        deals = db.query(Deal).filter(Deal.organization_id == org).all()
     total_deals = len(deals)
 
     open_deals = [d for d in deals if _stage(d) not in ("lost",)]
@@ -141,7 +154,13 @@ def list_users(
     if is_demo_user(current_user):
         # Avoid leaking other real users in demo mode.
         return db.query(User).filter(User.id == current_user.id).all()
-    return db.query(User).order_by(User.id.asc()).all()
+    # Multi-tenant: only users from the same organization (privacy-safe).
+    return (
+        db.query(User)
+        .filter(User.organization_id == _org_id(current_user))
+        .order_by(User.id.asc())
+        .all()
+    )
 
 
 @router.get("/projects", response_model=List[DealOut])
@@ -160,6 +179,7 @@ def list_projects(
       брать id и title.
     """
     q = db.query(Deal)
+    q = q.filter(Deal.organization_id == _org_id(current_user))
     if is_demo_user(current_user):
         q = q.join(Company, Company.id == Deal.company_id).filter(Company.lead_source == DEMO_SEED_SOURCE)
     if company_id:
@@ -174,7 +194,9 @@ def create_company(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(require_writable_user),
 ):
-    db_company = Company(**company.dict())
+    data = company.dict()
+    data["organization_id"] = _org_id(current_user)
+    db_company = Company(**data)
     db.add(db_company)
     db.commit()
     db.refresh(db_company)
@@ -193,7 +215,11 @@ def update_company(
 
     Используется CRM‑формой при редактировании компании.
     """
-    company = db.get(Company, company_id)
+    company = (
+        db.query(Company)
+        .filter(Company.id == company_id, Company.organization_id == _org_id(current_user))
+        .first()
+    )
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
@@ -214,6 +240,7 @@ def create_contact(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(require_writable_user),
 ):
+    org = _org_id(current_user)
     # Convert first_name + last_name to single name field
     contact_data = contact.dict()
     if 'first_name' in contact_data and 'last_name' in contact_data:
@@ -225,6 +252,12 @@ def create_contact(
     valid_fields = {'company_id', 'name', 'email', 'phone', 'position'}
     contact_data = {k: v for k, v in contact_data.items() if k in valid_fields}
     
+    if contact_data.get("company_id"):
+        company = db.query(Company).filter(Company.id == int(contact_data["company_id"]), Company.organization_id == org).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+    contact_data["organization_id"] = org
     db_contact = Contact(**contact_data)
     db.add(db_contact)
     db.commit()
@@ -244,11 +277,20 @@ def update_contact(
 
     UI работает с полем name, поэтому first_name/last_name мапим обратно в одно поле.
     """
-    contact = db.get(Contact, contact_id)
+    contact = (
+        db.query(Contact)
+        .filter(Contact.id == contact_id, Contact.organization_id == _org_id(current_user))
+        .first()
+    )
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
+    org = _org_id(current_user)
     data = payload.dict(exclude_unset=True)
+    if "company_id" in data and data.get("company_id"):
+        company = db.query(Company).filter(Company.id == int(data["company_id"]), Company.organization_id == org).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
 
     # Сконструировать полное имя из first_name / last_name, если они переданы
     first = data.pop("first_name", None)
@@ -276,7 +318,31 @@ def create_deal(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(require_writable_user),
 ):
-    db_deal = Deal(**deal.dict())
+    org = _org_id(current_user)
+    data = deal.dict()
+    data["organization_id"] = org
+
+    # Multi-tenant safety: validate foreign keys belong to the same org.
+    company_id = data.get("company_id")
+    contact_id = data.get("contact_id")
+    company = None
+    contact = None
+    if company_id:
+        company = db.query(Company).filter(Company.id == int(company_id), Company.organization_id == org).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+    if contact_id:
+        contact = db.query(Contact).filter(Contact.id == int(contact_id), Contact.organization_id == org).first()
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        # If company isn't provided, derive it from the contact to keep the graph consistent.
+        if not company_id and getattr(contact, "company_id", None):
+            data["company_id"] = int(contact.company_id)  # type: ignore[arg-type]
+            company_id = data.get("company_id")
+        if company_id and getattr(contact, "company_id", None) and int(contact.company_id) != int(company_id):  # type: ignore[arg-type]
+            raise HTTPException(status_code=400, detail="Contact does not belong to company")
+
+    db_deal = Deal(**data)
     db.add(db_deal)
     db.commit()
     db.refresh(db_deal)
@@ -296,9 +362,14 @@ def _run_deal_won_automation(db: Session, deal: Deal, actor: User) -> None:
     Execute active automation rules for trigger 'deal_won'.
     Creates content items linked to the deal and applies templates.
     """
+    org = int(getattr(deal, "organization_id", None) or _org_id(actor))
     rules = (
         db.query(ContentAutomationRule)
-        .filter(ContentAutomationRule.trigger == "deal_won", ContentAutomationRule.is_active.is_(True))
+        .filter(
+            ContentAutomationRule.trigger == "deal_won",
+            ContentAutomationRule.is_active.is_(True),
+            ContentAutomationRule.organization_id == org,
+        )
         .order_by(ContentAutomationRule.updated_at.desc())
         .all()
     )
@@ -308,14 +379,23 @@ def _run_deal_won_automation(db: Session, deal: Deal, actor: User) -> None:
     for rule in rules:
         tpl: ContentTemplate | None = None
         if getattr(rule, "template_id", None):
-            tpl = db.query(ContentTemplate).filter(ContentTemplate.id == int(rule.template_id)).first()
+            tpl = (
+                db.query(ContentTemplate)
+                .filter(ContentTemplate.id == int(rule.template_id), ContentTemplate.organization_id == org)
+                .first()
+            )
         if not tpl:
             continue
 
         title = f"{deal.title} — {tpl.name}"
         existing = (
             db.query(ContentItem)
-            .filter(ContentItem.project_id == deal.id, ContentItem.title == title, ContentItem.owner_id == actor.id)
+            .filter(
+                ContentItem.project_id == deal.id,
+                ContentItem.title == title,
+                ContentItem.owner_id == actor.id,
+                ContentItem.organization_id == org,
+            )
             .first()
         )
         if existing:
@@ -331,6 +411,7 @@ def _run_deal_won_automation(db: Session, deal: Deal, actor: User) -> None:
             company_id=getattr(deal, "company_id", None),
             project_id=deal.id,
             owner_id=actor.id,
+            organization_id=org,
         )
         db.add(item)
         db.commit()
@@ -349,6 +430,7 @@ def _run_deal_won_automation(db: Session, deal: Deal, actor: User) -> None:
             db.add(
                 Notification(
                     user_id=actor.id,
+                    organization_id=org,
                     type="info",
                     title="Content Pack erstellt",
                     body=f"Für Deal '{deal.title}' wurde '{tpl.name}' angelegt.",
@@ -368,12 +450,39 @@ def update_deal(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(require_writable_user),
 ):
-    deal = db.get(Deal, deal_id)
+    deal = (
+        db.query(Deal)
+        .filter(Deal.id == deal_id, Deal.organization_id == _org_id(current_user))
+        .first()
+    )
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
     prev_stage = (deal.stage or "").lower()
 
+    org = _org_id(current_user)
     data = payload.dict(exclude_unset=True)
+
+    # Multi-tenant safety: validate FK updates belong to the same org.
+    if "company_id" in data and data.get("company_id"):
+        company = db.query(Company).filter(Company.id == int(data["company_id"]), Company.organization_id == org).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+    if "contact_id" in data and data.get("contact_id"):
+        contact = db.query(Contact).filter(Contact.id == int(data["contact_id"]), Contact.organization_id == org).first()
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+    # Consistency check: if both are set (either already on deal or in payload),
+    # ensure contact belongs to the selected company.
+    next_company_id = int(data.get("company_id") or getattr(deal, "company_id", 0) or 0)
+    next_contact_id = int(data.get("contact_id") or getattr(deal, "contact_id", 0) or 0)
+    if next_company_id and next_contact_id:
+        contact = db.query(Contact).filter(Contact.id == next_contact_id, Contact.organization_id == org).first()
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        if getattr(contact, "company_id", None) and int(contact.company_id) != next_company_id:  # type: ignore[arg-type]
+            raise HTTPException(status_code=400, detail="Contact does not belong to company")
+
     for field, value in data.items():
         if hasattr(deal, field):
             setattr(deal, field, value)
@@ -398,7 +507,11 @@ def delete_deal(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(require_writable_user),
 ):
-    deal = db.get(Deal, deal_id)
+    deal = (
+        db.query(Deal)
+        .filter(Deal.id == deal_id, Deal.organization_id == _org_id(current_user))
+        .first()
+    )
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
     db.delete(deal)

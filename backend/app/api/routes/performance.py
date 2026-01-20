@@ -10,7 +10,7 @@ from app.models.deal import Deal
 from app.models.activity import Activity
 from app.models.calendar import CalendarEntry
 from app.models.user import User
-from app.api.deps import get_current_user, is_demo_user
+from app.api.deps import get_current_user, get_org_id, is_demo_user
 
 router = APIRouter(prefix="/performance", tags=["performance"])
 
@@ -40,21 +40,30 @@ def get_performance(
   """
   now = datetime.utcnow()
   year = year or now.year
+  org = get_org_id(current_user)
 
   if is_demo_user(current_user):
     # Demo mode should only reflect demo-tagged CRM data + demo-owned user domain objects.
     deals = (
       db.query(Deal)
       .join(Company, Company.id == Deal.company_id)
-      .filter(Company.lead_source == DEMO_SEED_SOURCE)
+      .filter(Company.lead_source == DEMO_SEED_SOURCE, Deal.organization_id == org)
       .all()
     )
-    activities = db.query(Activity).filter(Activity.owner_id == current_user.id).all()
-    events = db.query(CalendarEntry).filter(CalendarEntry.owner_id == current_user.id).all()
+    activities = (
+      db.query(Activity)
+      .filter(Activity.owner_id == current_user.id, Activity.organization_id == org)
+      .all()
+    )
+    events = (
+      db.query(CalendarEntry)
+      .filter(CalendarEntry.owner_id == current_user.id, CalendarEntry.organization_id == org)
+      .all()
+    )
   else:
-    deals = db.query(Deal).all()
-    activities = db.query(Activity).all()
-    events = db.query(CalendarEntry).all()
+    deals = db.query(Deal).filter(Deal.organization_id == org).all()
+    activities = db.query(Activity).filter(Activity.organization_id == org).all()
+    events = db.query(CalendarEntry).filter(CalendarEntry.organization_id == org).all()
 
   # --- KPI totals (same logic as in frontend) ---
   total_revenue = sum(_to_float(d.value) for d in deals if _stage(d) == "won")

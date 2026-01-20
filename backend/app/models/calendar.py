@@ -10,6 +10,7 @@ class CalendarEntry(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     activity_id = Column(Integer, ForeignKey("activities.id", ondelete="SET NULL"), nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     # Core event fields
     title = Column(String(255), nullable=False)
     description = Column(String(2048), nullable=True)
