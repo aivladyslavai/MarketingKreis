@@ -18,6 +18,10 @@ export function NetworkDebugPatch() {
   React.useEffect(() => {
     try {
       const w = window as any
+      const now = () =>
+        typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : Date.now()
 
       const patch = () => {
         if (w.__mkFetchPatched) return
@@ -26,9 +30,9 @@ export function NetworkDebugPatch() {
         w.__mkFetchOrig = orig
         window.fetch = async function (...args: any[]) {
           const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || ''
-          const t0 = window.performance?.now ? performance.now() : Date.now()
+          const t0 = now()
           const res = await orig.apply(this, args as any)
-          const t1 = window.performance?.now ? performance.now() : Date.now()
+          const t1 = now()
           try {
             // eslint-disable-next-line no-console
             console.debug('[MK][fetch]', url, res.status, Math.round(t1 - t0) + 'ms')
