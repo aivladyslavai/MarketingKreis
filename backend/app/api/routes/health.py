@@ -14,6 +14,19 @@ def _release() -> str | None:
     return os.getenv("RENDER_GIT_COMMIT") or os.getenv("GIT_SHA") or None
 
 
+@router.get("/")
+def root() -> dict:
+    # Render default health check may hit "/" (GET/HEAD). Keep it cheap and 200.
+    settings = get_settings()
+    return {
+        "status": "ok",
+        "service": "marketingkreis-backend",
+        "environment": settings.environment,
+        "release": _release(),
+        "time": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/health")
 @router.get("/healthz")
 def health() -> dict:
