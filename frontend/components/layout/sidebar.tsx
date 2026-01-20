@@ -13,7 +13,8 @@ import {
   Image as ImageIcon,
   FileBarChart,
   UploadCloud,
-  Shield
+  Shield,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -40,23 +41,29 @@ const navItems = [
 interface SidebarProps {
   isCollapsed: boolean
   onToggle: () => void
+  variant?: "fixed" | "drawer"
 }
 
-export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
+export function Sidebar({ isCollapsed, onToggle, variant = "fixed" }: SidebarProps) {
   const pathname = usePathname()
   const { user } = useAuth()
   const isAdmin = user?.role === "admin"
   const visibleNavItems = isAdmin ? navItems : navItems.filter((i) => i.href !== "/admin")
+  const isDrawer = variant === "drawer"
 
   return (
     <aside 
       className={`
-        fixed left-0 top-0 h-screen 
-        ${isCollapsed ? 'w-20' : 'w-64'} 
+        ${isDrawer ? 'relative h-full' : 'fixed left-0 top-0 h-[100dvh]'}
+        ${isDrawer ? 'w-full' : (isCollapsed ? 'w-20' : 'w-64')} 
         bg-white dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 
         border-r border-slate-200 dark:border-white/10 shadow-2xl overflow-hidden z-50 
         transition-all duration-300 ease-in-out
       `}
+      style={{
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
       data-tour="sidebar"
     >
       {/* Subtle Background Effects */}
@@ -141,10 +148,15 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             className={`
               w-full text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/5 
               transition-all duration-200
-              ${isCollapsed ? 'justify-center px-2' : 'justify-start'}
+              ${isDrawer ? 'justify-start' : (isCollapsed ? 'justify-center px-2' : 'justify-start')}
             `}
           >
-            {isCollapsed ? (
+            {isDrawer ? (
+              <>
+                <X className="h-4 w-4 mr-2" />
+                <span className="text-xs">Schließen</span>
+              </>
+            ) : isCollapsed ? (
               <span className="text-sm">›</span>
             ) : (
               <>

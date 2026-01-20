@@ -92,7 +92,13 @@ export function AccountDrawer({ isOpen, onClose }: AccountDrawerProps) {
           <div className="pointer-events-none absolute -bottom-32 -left-32 h-64 w-64 rounded-full bg-gradient-to-tr from-cyan-500/20 to-emerald-500/20 blur-3xl" />
 
           {/* Content container */}
-          <div className="relative h-full flex flex-col">
+          <div
+            className="relative h-full flex flex-col"
+            style={{
+              paddingTop: "env(safe-area-inset-top)",
+              paddingBottom: "env(safe-area-inset-bottom)",
+            }}
+          >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
               <div className="flex items-center gap-3">

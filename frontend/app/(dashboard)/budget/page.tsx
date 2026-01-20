@@ -112,7 +112,7 @@ export default function BudgetPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16]">
-      <div className="p-4 sm:p-6 md:p-8 pb-24 md:pb-8 space-y-6 sm:space-y-8">
+      <div className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
       {/* Hero */}
       <motion.div
         initial={{ opacity: 0, y: 14 }}

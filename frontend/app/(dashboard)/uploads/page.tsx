@@ -172,10 +172,23 @@ export default function UploadsPage() {
   const [query, setQuery] = React.useState("")
   const [categoryValueMap, setCategoryValueMap] = React.useState<Record<string, string>>({})
   const [bulkCategoryTarget, setBulkCategoryTarget] = React.useState<string>("")
+  const [circleSize, setCircleSize] = React.useState<number>(520)
 
   const { uploads, isLoading, refresh, uploadFile, previewFile } = useUploadsApi()
   const { jobs, isLoading: jobsLoading, refresh: refreshJobs } = useJobsApi()
   const { categories: userCategories } = useUserCategories()
+
+  // Responsive circle size (prevents overflow on mobile)
+  React.useEffect(() => {
+    const calc = () => {
+      const w = typeof window !== "undefined" ? window.innerWidth : 1024
+      const target = Math.min(520, w - 56) // approx: page padding + card padding
+      setCircleSize(Math.max(280, Number.isFinite(target) ? target : 520))
+    }
+    calc()
+    window.addEventListener("resize", calc)
+    return () => window.removeEventListener("resize", calc)
+  }, [])
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -516,7 +529,7 @@ export default function UploadsPage() {
 
   return (
     <motion.div
-      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-7 sm:space-y-9 pb-28 md:pb-10"
+      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-7 sm:space-y-9"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
@@ -925,7 +938,7 @@ export default function UploadsPage() {
                       <RadialCircle
                         activities={circlePreview.activities as any}
                         categories={platformCategoryOptions}
-                        size={520}
+                        size={circleSize}
                         year={circlePreview.year}
                       />
                     ) : (

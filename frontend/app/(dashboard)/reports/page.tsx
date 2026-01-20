@@ -181,7 +181,7 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 pb-24 md:pb-8 space-y-6 sm:space-y-8">
+    <div className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
       {/* Header */}
       <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-4 sm:p-6 md:p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

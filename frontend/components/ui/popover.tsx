@@ -12,7 +12,7 @@ export function PopoverTrigger({ children, asChild }: { children: React.ReactNod
 
 export function PopoverContent({ children, className = "", align, sideOffset }: { children: React.ReactNode; className?: string; align?: string; sideOffset?: number }) {
   return (
-    <div className={`absolute z-50 mt-2 rounded-md border border-slate-700 bg-slate-900 p-3 shadow-xl ${className}`}>{children}</div>
+    <div className={`absolute z-[90] mt-2 max-w-[92vw] rounded-md border border-slate-700 bg-slate-900 p-3 shadow-xl ${className}`}>{children}</div>
   )
 }
 

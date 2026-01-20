@@ -13,12 +13,12 @@ export function Dialog({ open = false, onOpenChange, children }: DialogProps) {
   return (
     <div
       // Mobile UX: bottom-sheet style on small screens, centered on >=sm.
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-3 sm:p-6 overscroll-contain"
       onClick={() => onOpenChange?.(false)}
     >
       <div className="absolute inset-0 bg-black/50" />
       <div
-        className="relative z-10 w-full sm:w-auto max-h-[85vh] overflow-auto"
+        className="relative z-10 w-full sm:w-auto max-h-[85vh] overflow-auto overscroll-contain"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
         onClick={(e)=> e.stopPropagation()}
       >

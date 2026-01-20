@@ -107,10 +107,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => { if (id) clearInterval(id) }
   }, [flags.autoRefresh])
 
+  // Prevent background scroll when mobile drawer is open
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [mobileMenuOpen])
+
   const bgStyle = useMemo(() => {
     if (!flags.gridBackground) return undefined
     const line = 'rgba(148,163,184,0.12)'
-    const lineDark = 'rgba(255,255,255,0.06)'
     return {
       backgroundImage: `
         linear-gradient(to right, var(--mk-grid-color, ${line}) 1px, transparent 1px),
@@ -123,7 +132,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ModalProvider>
       <div
-        className="min-h-screen bg-slate-50 dark:bg-slate-950"
+        className="min-h-[100dvh] bg-slate-50 dark:bg-slate-950 overflow-x-hidden"
         style={bgStyle}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
@@ -143,7 +152,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             />
             <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw]">
               {/* Reuse Sidebar at full width for mobile */}
-              <Sidebar isCollapsed={false} onToggle={() => setMobileMenuOpen(false)} />
+              <Sidebar variant="drawer" isCollapsed={false} onToggle={() => setMobileMenuOpen(false)} />
             </div>
           </div>
         )}
@@ -168,8 +177,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Header onMenuClick={() => setMobileMenuOpen(true)} />
 
           {/* Page Content */}
-          <main className="p-4 pb-20 md:pb-6 lg:pb-8 md:p-6 lg:p-8">
-            <div className="max-w-[1600px] mx-auto">
+          <main className="p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6 lg:pb-8 md:p-6 lg:p-8">
+            <div className="max-w-[1600px] mx-auto w-full min-w-0">
               {children}
             </div>
           </main>

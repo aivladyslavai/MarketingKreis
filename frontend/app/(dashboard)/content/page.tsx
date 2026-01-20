@@ -823,7 +823,7 @@ export default function ContentPage() {
   }
 
   return (
-    <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 md:p-8 pb-24 md:pb-8 min-h-screen">
+    <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 md:p-8 min-h-[100dvh]">
       <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-4 sm:p-6 md:p-10 text-white shadow-2xl border border-white/10">
         <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-gradient-to-tr from-cyan-500/30 to-emerald-500/30 blur-3xl" />

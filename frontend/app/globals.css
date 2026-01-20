@@ -389,3 +389,21 @@
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
+/* Hide scrollbars (keep scrolling) */
+.mk-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.mk-no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* iOS Safari: prevent auto-zoom on focus (needs >=16px) */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}

@@ -27,7 +27,7 @@ export default function RootLayout({
       <head>
         <meta name="color-scheme" content="dark" />
       </head>
-      <body className={`${inter.className} min-h-screen bg-[hsl(var(--background))] text-[hsl(var(--foreground))] antialiased`}>
+      <body className={`${inter.className} min-h-[100dvh] overflow-x-hidden bg-[hsl(var(--background))] text-[hsl(var(--foreground))] antialiased`}>
         <NetworkDebugPatch />
         {children}
       </body>

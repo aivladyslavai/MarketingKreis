@@ -292,7 +292,7 @@ export default function SimpleCalendarView({
                           <div className="opacity-70">{activity.owner?.name || 'Unassigned'}</div>
 
                           {hoverEventId === activity.id && (
-                            <div className="absolute left-0 top-full mt-2 z-50 w-64 rounded-xl border border-white/10 bg-slate-900/95 text-slate-200 shadow-2xl p-3 backdrop-blur-md">
+                            <div className="absolute left-0 top-full mt-2 z-[90] w-64 rounded-xl border border-white/10 bg-slate-900/95 text-slate-200 shadow-2xl p-3 backdrop-blur-md">
                               <div className="font-semibold truncate">{activity.title}</div>
                               <div className="text-sm text-slate-300">
                                 {format(activity.start as any, 'EEEE, dd.MM.yyyy', { locale: de })}

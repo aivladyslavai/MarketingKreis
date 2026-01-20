@@ -457,7 +457,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="p-4 sm:p-10 md:p-12 pb-24 md:pb-12 space-y-6 sm:space-y-16">
+    <div className="p-4 sm:p-10 md:p-12 space-y-6 sm:space-y-16">
       {/* Hero header with animated blobs */}
       <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-4 sm:p-8 md:p-10">
         <div className="pointer-events-none absolute -top-24 -right-16 h-48 sm:h-72 w-48 sm:w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl animate-gradient-shift" />

@@ -34,7 +34,10 @@ export function Header({ onMenuClick }: HeaderProps) {
   })()
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm">
+    <header
+      className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
       <div className="flex h-16 items-center justify-between px-4 md:px-6 lg:px-8">
         {/* Left side */}
         <div className="flex items-center gap-3">
@@ -43,7 +46,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             variant="ghost"
             size="icon"
             onClick={onMenuClick}
-            className="sm:hidden h-11 w-11 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="md:hidden h-11 w-11 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             aria-label="Open menu"
             data-tour="menu-button"
           >

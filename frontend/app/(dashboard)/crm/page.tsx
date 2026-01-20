@@ -850,7 +850,7 @@ export default function CRMPage() {
       </div>
 
       {/* Content */}
-      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 pb-24 md:pb-6">
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
           {/* Tabs Navigation - scrollable on mobile */}
           <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
@@ -1001,11 +1001,11 @@ export default function CRMPage() {
               <div className="grid grid-cols-1 gap-4" data-tour="crm-table">
                 {filteredCompanies.map((company: any) => (
                   <Card key={company.id} className="glass-card hover:border-blue-500/30 transition-all group">
-                    <CardContent className="p-6">
+                    <CardContent className="p-4 sm:p-6">
                       <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-4 flex-1">
-                          <div className="h-14 w-14 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-2xl shadow-md shadow-blue-500/20">
-                            <Building2 className="h-7 w-7 text-white" />
+                        <div className="flex items-start gap-3 sm:gap-4 flex-1">
+                          <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-2xl shadow-md shadow-blue-500/20">
+                            <Building2 className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
@@ -1287,7 +1287,7 @@ export default function CRMPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredContacts.map((contact: any) => (
                 <Card key={contact.id} className="bg-white dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-600 transition-all shadow-sm hover:shadow-lg">
-                  <CardContent className="p-6">
+                  <CardContent className="p-4 sm:p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20">
                         {String(contact.name || '?').split(' ').map((p: string) => p[0]).slice(0, 2).join('')}
@@ -1369,9 +1369,9 @@ export default function CRMPage() {
             <div className="space-y-3">
               {filteredDeals.map((deal: any) => (
                 <Card key={deal.id} className="bg-white dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-600 transition-all shadow-sm hover:shadow-lg">
-                  <CardContent className="p-6">
+                  <CardContent className="p-4 sm:p-6">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-start gap-4 flex-1">
+                      <div className="flex items-start gap-3 sm:gap-4 flex-1">
                         <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20">
                           <DollarSign className="h-6 w-6 text-white" />
                         </div>
@@ -1380,7 +1380,7 @@ export default function CRMPage() {
                             <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{deal.title}</h3>
                             <Badge className={getStageColor(deal.stage)}>{deal.stage}</Badge>
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mt-4">
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 sm:gap-6 mt-3 sm:mt-4">
                             <div>
                               <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Value</p>
                               <p className="text-sm font-semibold text-slate-900 dark:text-white">CHF {((Number(deal.value) || 0) / 1000).toFixed(0)}K</p>
