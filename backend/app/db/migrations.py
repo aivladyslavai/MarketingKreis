@@ -273,6 +273,8 @@ def bootstrap_production_schema() -> None:
                 ");"
             )
         )
+        # Backward-compatible: table may exist without organization_id.
+        conn.execute(text("alter table content_items add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_content_items_owner_id on content_items (owner_id);"))
         conn.execute(text("create index if not exists ix_content_items_company_id on content_items (company_id);"))
         conn.execute(text("create index if not exists ix_content_items_project_id on content_items (project_id);"))
@@ -402,6 +404,8 @@ def bootstrap_production_schema() -> None:
                 ");"
             )
         )
+        # Backward-compatible: table may exist without organization_id.
+        conn.execute(text("alter table content_templates add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_content_templates_created_by on content_templates (created_by);"))
         conn.execute(text("create index if not exists ix_content_templates_organization_id on content_templates (organization_id);"))
         conn.execute(text("update content_templates set organization_id = 1 where organization_id is null;"))
@@ -422,6 +426,8 @@ def bootstrap_production_schema() -> None:
                 ");"
             )
         )
+        # Backward-compatible: table may exist without organization_id.
+        conn.execute(text("alter table content_automation_rules add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_content_automation_rules_template_id on content_automation_rules (template_id);"))
         conn.execute(text("create index if not exists ix_content_automation_rules_created_by on content_automation_rules (created_by);"))
         conn.execute(text("create index if not exists ix_content_automation_rules_organization_id on content_automation_rules (organization_id);"))
@@ -444,6 +450,8 @@ def bootstrap_production_schema() -> None:
                 ");"
             )
         )
+        # Backward-compatible: table may exist without organization_id.
+        conn.execute(text("alter table notifications add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_notifications_user_id on notifications (user_id);"))
         conn.execute(text("create index if not exists ix_notifications_organization_id on notifications (organization_id);"))
         conn.execute(text("update notifications set organization_id = 1 where organization_id is null;"))

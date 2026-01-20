@@ -27,6 +27,12 @@ def root() -> dict:
     }
 
 
+@router.head("/")
+def root_head() -> Response:
+    # Render may probe "/" with HEAD. Return 200.
+    return Response(status_code=200)
+
+
 @router.get("/health")
 @router.get("/healthz")
 def health() -> dict:
