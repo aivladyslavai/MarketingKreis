@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260120_0007"
+    target_revision = "20260120_0008"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:
@@ -145,6 +145,8 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("alter table uploads add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_uploads_organization_id on uploads (organization_id);"))
         conn.execute(text("update uploads set organization_id = 1 where organization_id is null;"))
+        conn.execute(text("alter table uploads add column if not exists owner_id integer;"))
+        conn.execute(text("create index if not exists ix_uploads_owner_id on uploads (owner_id);"))
 
         # Jobs (imports/exports): keep tenant-local
         conn.execute(text("alter table jobs add column if not exists organization_id integer;"))

@@ -1009,6 +1009,7 @@ def seed_demo_agency(
                         sha256=sha,
                         stored_in_db=True,
                         organization_id=org_id,
+                            owner_id=demo_user.id,
                     )
                     db.add(up)
                     db.commit()

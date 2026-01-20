@@ -10,7 +10,7 @@ from app.db.session import get_db_session
 from app.models.upload import Upload
 from app.models.job import Job
 from app.models.activity import Activity, ActivityType
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.api.deps import get_current_user, get_org_id, is_demo_user, require_writable_user
 from app.core.config import get_settings
 
@@ -45,12 +45,12 @@ def list_uploads(
     if is_demo_user(current_user):
         return {"items": []}
     org = get_org_id(current_user)
-    items = (
-        db.query(Upload)
-        .filter(Upload.organization_id == org)
-        .order_by(Upload.created_at.desc())
-        .all()
-    )
+    can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
+    q = db.query(Upload).filter(Upload.organization_id == org)
+    if not can_manage_all:
+        # Regular users can only see their own uploads (avoid cross-user leakage inside org).
+        q = q.filter(Upload.owner_id == current_user.id)
+    items = q.order_by(Upload.created_at.desc()).all()
     return {
         "items": [
             {
@@ -93,6 +93,7 @@ def upload_file(
         file_type=file.content_type or "",
         file_size=0,
         organization_id=org,
+        owner_id=current_user.id,
     )
     db.add(upload)
     db.commit()

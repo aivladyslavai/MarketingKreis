@@ -25,6 +25,7 @@ from app.db.base import Base
 from app.db.session import engine
 from app.db.migrations import run_migrations_on_startup
 from app.core.security import CSRFMiddleware
+from app.core.security_headers import SecurityHeadersMiddleware
 import os
 
 
@@ -62,6 +63,9 @@ def create_app() -> FastAPI:
     if getattr(settings, "backend_cors_origins_regex", None):
         cors_kwargs["allow_origin_regex"] = settings.backend_cors_origins_regex  # type: ignore
     app.add_middleware(CORSMiddleware, **cors_kwargs)
+
+    # Centralized security headers (all environments; HSTS only when https)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # CSRF middleware (prod-only)
     if settings.environment == "production":

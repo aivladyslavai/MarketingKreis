@@ -692,6 +692,7 @@ def create_asset(
 ):
     item = _require_item_access(db, item_id=item_id, user=current_user)
     org = get_org_id(current_user)
+    can_manage_all = _can_manage_all(current_user)
     kind = payload.kind or ContentAssetKind.LINK
     if kind == ContentAssetKind.UPLOAD and not payload.upload_id:
         raise HTTPException(status_code=400, detail="upload_id is required for UPLOAD assets")
@@ -707,6 +708,9 @@ def create_asset(
         )
         if not upload:
             raise HTTPException(status_code=400, detail="Upload not found")
+        # Prevent guessing someone else's upload_id inside the same org.
+        if not can_manage_all and getattr(upload, "owner_id", None) not in (None, current_user.id):
+            raise HTTPException(status_code=403, detail="Forbidden")
 
     a = ContentItemAsset(
         item_id=item.id,
@@ -750,6 +754,7 @@ def upload_asset(
     upload.content = content
     upload.stored_in_db = True
     upload.organization_id = org
+    upload.owner_id = current_user.id
     db.add(upload)
     db.commit()
     db.refresh(upload)
@@ -832,6 +837,17 @@ def download_asset(
         url = (a.url or "").strip()
         if not url:
             raise HTTPException(status_code=404, detail="No URL")
+        # Safety: never redirect to non-http(s) schemes (javascript:, data:, file:, etc.)
+        try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            if (parsed.scheme or "").lower() not in {"http", "https"}:
+                raise HTTPException(status_code=400, detail="Unsupported URL scheme")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid URL")
         return RedirectResponse(url=url, status_code=302)
 
     if not a.upload_id:
@@ -840,12 +856,35 @@ def download_asset(
     if not upload or not getattr(upload, "content", None):
         raise HTTPException(status_code=404, detail="Upload content not found")
 
-    media_type = upload.file_type or "application/octet-stream"
-    name = upload.original_name or f"asset-{asset_id}"
+    def _safe_filename(name: str) -> str:
+        s = (name or "").strip() or f"asset-{asset_id}"
+        # Prevent header injection / weird control chars
+        s = s.replace("\r", " ").replace("\n", " ").replace('"', "'")
+        return s[:180]
+
+    raw_type = (upload.file_type or "").strip().lower()
+    name = _safe_filename(upload.original_name or f"asset-{asset_id}")
+
+    # Active content risk: never serve HTML/SVG as inline-renderable types.
+    unsafe_types = {
+        "text/html",
+        "application/xhtml+xml",
+        "image/svg+xml",
+        "text/xml",
+        "application/xml",
+    }
+    media_type = "application/octet-stream" if raw_type in unsafe_types else (raw_type or "application/octet-stream")
+
     return Response(
         content=upload.content,
         media_type=media_type,
-        headers={"Content-Disposition": f'inline; filename="{name}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+            # Extra hardening in case a browser still tries to render:
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
     )
 
 
