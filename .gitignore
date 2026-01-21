@@ -55,3 +55,11 @@ frontend/app/(dashboard)/uploads/page-old-mock.tsx
 # Local env files
 .env*
 backend/.env*
+env.local
+**/env.local
+**/env.*.local
+**/env.secrets*
+
+# Cookie jars / tokens (never commit)
+**/cookies.txt
+**/cookies*.txt

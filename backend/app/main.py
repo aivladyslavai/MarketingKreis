@@ -42,7 +42,7 @@ def create_app() -> FastAPI:
     init_tracing(app)
 
     # Trusted hosts (prod hardening)
-    if settings.environment == "production":
+    if settings.environment in {"production", "staging"}:
         default_hosts = ["marketingkreis.ch", "app.marketingkreis.ch", ".marketingkreis.ch", "localhost", "127.0.0.1"]
         extra_hosts = [h.strip() for h in os.getenv("ALLOWED_HOSTS", ".onrender.com,.vercel.app").split(",") if h.strip()]
         allowed_hosts = list(dict.fromkeys(default_hosts + extra_hosts))
@@ -68,7 +68,7 @@ def create_app() -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
 
     # CSRF middleware (prod-only)
-    if settings.environment == "production":
+    if settings.environment in {"production", "staging"}:
         app.add_middleware(
             CSRFMiddleware,
             allowed_origins=origins,

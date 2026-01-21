@@ -107,11 +107,23 @@ class Settings(BaseSettings):
     upload_store_in_db: bool = Field(default=True, env="UPLOAD_STORE_IN_DB")
     upload_max_bytes: int = Field(default=10 * 1024 * 1024, env="UPLOAD_MAX_BYTES")  # 10MB
 
+    @validator("csrf_secret_key")
+    def validate_csrf_secret(cls, v: str, values: dict) -> str:
+        """Ensure CSRF secret is strong in production-like envs."""
+        env = values.get("environment")
+        if env in {"production", "staging"}:
+            if len(v) < 32 or "dev-csrf" in v or "change" in v.lower():
+                raise ValueError(
+                    "CSRF_SECRET_KEY must be a strong, unique secret (min 32 chars) in production. "
+                    "Generate with: python3 -c \"import secrets; print(secrets.token_urlsafe(64))\""
+                )
+        return v
+
     @validator("jwt_secret_key")
     def validate_jwt_secret(cls, v: str, values: dict) -> str:
         """Ensure JWT secret is strong in production"""
         env = values.get("environment")
-        if env == "production":
+        if env in {"production", "staging"}:
             if len(v) < 32 or "dev-secret" in v or "change" in v.lower():
                 raise ValueError(
                     "JWT_SECRET_KEY must be a strong, unique secret (min 32 chars) in production. "
@@ -123,14 +135,14 @@ class Settings(BaseSettings):
     def validate_database_url(cls, v: str, values: dict) -> str:
         """Validate database URL; disallow SQLite in production."""
         env = values.get("environment")
-        if env == "production" and v.startswith("sqlite"):
+        if env in {"production", "staging"} and v.startswith("sqlite"):
             raise ValueError("SQLite is not allowed for DATABASE_URL in production. Use PostgreSQL.")
         return v
 
     @validator("debug")
     def validate_debug(cls, v: bool, values: dict) -> bool:
         """Never allow DEBUG=true in production."""
-        if values.get("environment") == "production" and v:
+        if values.get("environment") in {"production", "staging"} and v:
             raise ValueError("DEBUG must be false in production.")
         return v
 
@@ -139,13 +151,18 @@ class Settings(BaseSettings):
         """
         Email verification bypass must NEVER be enabled in production.
         """
-        if values.get("environment") == "production" and v:
+        if values.get("environment") in {"production", "staging"} and v:
             raise ValueError("SKIP_EMAIL_VERIFY must be false in production.")
         return v
 
     class Config:
         # Load env file based on ENVIRONMENT; default to development
-        env_file = ".env.production" if os.getenv("ENVIRONMENT") == "production" else ".env.development"
+        _env = (os.getenv("ENVIRONMENT") or "development").strip().lower()
+        env_file = (
+            ".env.production"
+            if _env == "production"
+            else (".env.staging" if _env == "staging" else ".env.development")
+        )
         env_file_encoding = "utf-8"
         case_sensitive = False
 

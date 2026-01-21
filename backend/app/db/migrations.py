@@ -507,7 +507,7 @@ def run_migrations_on_startup() -> None:
     - ALEMBIC_UPGRADE_ON_STARTUP=true: run upgrade head (applies migrations)
     """
     settings = get_settings()
-    if settings.environment != "production":
+    if settings.environment not in {"production", "staging"}:
         return
 
     stamp = _bool_env("ALEMBIC_STAMP_IF_MISSING", default=False)

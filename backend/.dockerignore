@@ -45,3 +45,10 @@ package.json
 package-lock.json
 nest-cli.json
 
+# Env / secrets (never bake into images)
+.env*
+env.*
+env.local
+env.*.local
+env.secrets*
+

@@ -1,3 +1,21 @@
+node_modules
+.next
+.vercel
+out
+dist
+build
+coverage
+
+*.log
+*.pid
+.DS_Store
+
+# Env / secrets
+.env*
+env.local
+env.*.local
+env.secrets*
+
 node_modules/
 node_modules.bak.*/
 .next/

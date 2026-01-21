@@ -32,6 +32,41 @@ services:
       - key: OPENAI_API_KEY
         value: ""
 
+  # Staging backend (production-like hardening, separate secrets/DB).
+  # Create a separate Render service from this block and set real values in dashboard.
+  - type: web
+    name: kreismarketing-backend-staging
+    env: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: staging
+      - key: BACKEND_CORS_ORIGINS
+        # TODO: replace with your staging frontend URL(s)
+        value: https://staging.example.com
+      - key: ALLOWED_HOSTS
+        value: .onrender.com,.vercel.app,staging.example.com
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: DEBUG
+        value: "false"
+      # Fill these in the Render dashboard after creating the service
+      - key: DATABASE_URL
+        value: ""
+      - key: JWT_SECRET_KEY
+        value: ""
+      - key: CSRF_SECRET_KEY
+        value: ""
+      # Optional
+      - key: OPENAI_API_KEY
+        value: ""
+
 
 
 

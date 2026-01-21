@@ -46,7 +46,7 @@ def _ensure_production_schema() -> None:
     global _schema_checked
     if _schema_checked:
         return
-    if settings.environment != "production":
+    if settings.environment not in {"production", "staging"}:
         _schema_checked = True
         return
     if is_sqlite:
