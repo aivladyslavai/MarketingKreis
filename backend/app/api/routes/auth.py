@@ -7,12 +7,21 @@ from sqlalchemy.exc import IntegrityError
 from app.db.session import get_db_session
 from app.core.config import get_settings
 from datetime import timedelta, datetime, timezone
+import uuid
 from jose import jwt
 from app.api.deps import get_org_id, require_role
 from app.models.organization import Organization
 from app.models.user import User, UserRole
+from app.models.auth_session import AuthSession, AuthRefreshToken
 import bcrypt
 from app.utils.mailer import send_email
+from app.core.rate_limit import (
+    enforce_rate_limit,
+    enforce_bruteforce_protection,
+    record_login_failure,
+    record_login_success,
+    get_client_ip,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -22,14 +31,79 @@ class LoginRequest(BaseModel):
     password: str
 
 
-def create_jwt(subject: str, secret: str, algorithm: str, minutes: int) -> str:
-    payload = {"sub": subject, "exp": datetime.now(timezone.utc) + timedelta(minutes=minutes)}
-    return jwt.encode(payload, secret, algorithm=algorithm)
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _encode_jwt(payload: dict, minutes: int) -> str:
+    settings = get_settings()
+    now = _utcnow()
+    return jwt.encode(
+        {
+            **payload,
+            "iat": int(now.timestamp()),
+            "exp": now + timedelta(minutes=minutes),
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def create_access_jwt(user_id: str, session_id: str, minutes: int) -> str:
+    return _encode_jwt({"sub": user_id, "sid": session_id, "typ": "access"}, minutes=minutes)
+
+
+def create_refresh_jwt(user_id: str, session_id: str, jti: str, minutes: int) -> str:
+    return _encode_jwt({"sub": user_id, "sid": session_id, "jti": jti, "typ": "refresh"}, minutes=minutes)
+
+
+def _set_auth_cookies(response: Response, *, access_token: str, refresh_token: str, settings) -> None:
+    cookie_domain = settings.cookie_domain
+    cookie_secure = settings.cookie_secure
+    cookie_samesite = settings.cookie_samesite
+
+    response.set_cookie(
+        key=settings.cookie_access_name,
+        value=access_token,
+        httponly=True,
+        secure=cookie_secure,
+        samesite=cookie_samesite,
+        path="/",
+        domain=cookie_domain,
+        max_age=settings.access_token_expire_minutes * 60,
+    )
+    # Refresh token: restrict to /auth to reduce exposure surface
+    response.set_cookie(
+        key=settings.cookie_refresh_name,
+        value=refresh_token,
+        httponly=True,
+        secure=cookie_secure,
+        samesite=cookie_samesite,
+        path="/auth",
+        domain=cookie_domain,
+        max_age=settings.refresh_token_expire_minutes * 60,
+    )
+
+
+def _clear_auth_cookies(response: Response, settings) -> None:
+    # Access cookie is global
+    response.delete_cookie(settings.cookie_access_name, path="/", domain=settings.cookie_domain)
+    # Refresh cookie is restricted to /auth, but older deployments used path="/"
+    response.delete_cookie(settings.cookie_refresh_name, path="/auth", domain=settings.cookie_domain)
+    response.delete_cookie(settings.cookie_refresh_name, path="/", domain=settings.cookie_domain)
 
 
 @router.post("/login")
 async def login(request: Request, response: Response, db: Session = Depends(get_db_session)):
     settings = get_settings()
+
+    # Rate limiting (basic brute-force protection)
+    enforce_rate_limit(
+        request,
+        scope="auth_login_ip",
+        limit=int(getattr(settings, "auth_login_rl_ip_per_minute", 20)),
+        window_seconds=60,
+    )
 
     # Robust body parsing: accept JSON body regardless of client behavior
     # Accept JSON or form bodies and be lenient with clients
@@ -75,10 +149,32 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
     email = email.strip().lower()
     password = password.strip()
 
+    enforce_rate_limit(
+        request,
+        scope="auth_login_email",
+        limit=int(getattr(settings, "auth_login_rl_email_per_minute", 10)),
+        window_seconds=60,
+        discriminator=email,
+    )
+    enforce_bruteforce_protection(
+        request,
+        email=email,
+        max_failures=int(getattr(settings, "auth_bruteforce_max_failures", 8)),
+        window_seconds=int(getattr(settings, "auth_bruteforce_window_seconds", 15 * 60)),
+        lockout_seconds=int(getattr(settings, "auth_bruteforce_lockout_seconds", 15 * 60)),
+    )
+
     # Verify user and password (case-insensitive email match)
     user = db.query(User).filter(func.lower(User.email) == email).first()
     if not user or not user.hashed_password:
         # No user with this email -> still treat as invalid
+        record_login_failure(
+            request,
+            email=email,
+            max_failures=int(getattr(settings, "auth_bruteforce_max_failures", 8)),
+            window_seconds=int(getattr(settings, "auth_bruteforce_window_seconds", 15 * 60)),
+            lockout_seconds=int(getattr(settings, "auth_bruteforce_lockout_seconds", 15 * 60)),
+        )
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Strict password verification using bcrypt.
@@ -89,51 +185,60 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
     except Exception:
         valid = False
     if not valid:
+        record_login_failure(
+            request,
+            email=email,
+            max_failures=int(getattr(settings, "auth_bruteforce_max_failures", 8)),
+            window_seconds=int(getattr(settings, "auth_bruteforce_window_seconds", 15 * 60)),
+            lockout_seconds=int(getattr(settings, "auth_bruteforce_lockout_seconds", 15 * 60)),
+        )
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    record_login_success(request, email=email)
     # Email verification check
     # If SKIP_EMAIL_VERIFY=true – do not block logins.
-    # Also never block admin logins to avoid locking yourself out of the system.
     if not getattr(user, "is_verified", True):
+        # In production we enforce verification for all users (including admins).
+        if settings.environment == "production":
+            raise HTTPException(status_code=403, detail="Email not verified")
+        # Non-production may allow skipping verification (dev/testing convenience).
         if not getattr(settings, "skip_email_verify", False) and user.role != UserRole.admin:
             raise HTTPException(status_code=403, detail="Email not verified")
 
-    access_token = create_jwt(
-        subject=str(user.id),
-        secret=settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
+    # Create a server-side session and issue access+refresh tokens (rotation supported)
+    now = _utcnow()
+    session_id = str(uuid.uuid4())
+    refresh_jti = str(uuid.uuid4())
+
+    sess = AuthSession(
+        id=session_id,
+        user_id=int(user.id),
+        ip=get_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        last_seen_at=now,
+    )
+    rt = AuthRefreshToken(
+        session_id=session_id,
+        token_jti=refresh_jti,
+        issued_at=now,
+        expires_at=now + timedelta(minutes=settings.refresh_token_expire_minutes),
+    )
+    db.add(sess)
+    db.add(rt)
+    db.commit()
+
+    access_token = create_access_jwt(
+        user_id=str(user.id),
+        session_id=session_id,
         minutes=settings.access_token_expire_minutes,
     )
-    refresh_token = create_jwt(
-        subject=str(user.id),
-        secret=settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
+    refresh_token = create_refresh_jwt(
+        user_id=str(user.id),
+        session_id=session_id,
+        jti=refresh_jti,
         minutes=settings.refresh_token_expire_minutes,
     )
-
-    cookie_domain = settings.cookie_domain
-    cookie_secure = settings.cookie_secure
-    cookie_samesite = settings.cookie_samesite
-
-    response.set_cookie(
-        key=settings.cookie_access_name,
-        value=access_token,
-        httponly=True,
-        secure=cookie_secure,
-        samesite=cookie_samesite,
-        path="/",
-        domain=cookie_domain,
-        max_age=settings.access_token_expire_minutes * 60,
-    )
-    response.set_cookie(
-        key=settings.cookie_refresh_name,
-        value=refresh_token,
-        httponly=True,
-        secure=cookie_secure,
-        samesite=cookie_samesite,
-        path="/",
-        domain=cookie_domain,
-        max_age=settings.refresh_token_expire_minutes * 60,
-    )
+    _set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token, settings=settings)
 
     # Redirect hint for frontend
     response.headers["X-Redirect-To"] = "/dashboard"
@@ -147,6 +252,101 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
             "organization_id": get_org_id(user),
         },
     }
+
+
+@router.post("/refresh")
+def refresh_session(request: Request, response: Response, db: Session = Depends(get_db_session)):
+    """
+    Rotate refresh token and issue a new access token.
+    """
+    settings = get_settings()
+    enforce_rate_limit(
+        request,
+        scope="auth_refresh_ip",
+        limit=int(getattr(settings, "auth_refresh_rl_ip_per_minute", 60)),
+        window_seconds=60,
+    )
+
+    raw = request.cookies.get(settings.cookie_refresh_name)
+    if not raw:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        payload = jwt.decode(raw, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        if payload.get("typ") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user_id = int(payload.get("sub"))
+        sid = str(payload.get("sid") or "")
+        jti = str(payload.get("jti") or "")
+        if not sid or not jti:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except HTTPException:
+        raise
+    except Exception:
+        _clear_auth_cookies(response, settings)
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    now = _utcnow()
+    session = db.get(AuthSession, sid)
+    if not session or session.revoked_at is not None or int(session.user_id) != int(user_id):
+        _clear_auth_cookies(response, settings)
+        raise HTTPException(status_code=401, detail="Session revoked")
+
+    token_row = (
+        db.query(AuthRefreshToken)
+        .filter(AuthRefreshToken.session_id == sid, AuthRefreshToken.token_jti == jti)
+        .first()
+    )
+
+    # Reuse / unknown token -> revoke whole session (possible compromise)
+    if not token_row or token_row.revoked_at is not None or token_row.replaced_by_jti:
+        session.revoked_at = now
+        session.revoked_reason = "refresh_reuse"
+        db.add(session)
+        db.commit()
+        _clear_auth_cookies(response, settings)
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    if token_row.expires_at and token_row.expires_at <= now:
+        session.revoked_at = now
+        session.revoked_reason = "refresh_expired"
+        token_row.revoked_at = now
+        db.add(session)
+        db.add(token_row)
+        db.commit()
+        _clear_auth_cookies(response, settings)
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Rotate refresh token
+    new_jti = str(uuid.uuid4())
+    new_row = AuthRefreshToken(
+        session_id=sid,
+        token_jti=new_jti,
+        issued_at=now,
+        expires_at=now + timedelta(minutes=settings.refresh_token_expire_minutes),
+    )
+    token_row.revoked_at = now
+    token_row.replaced_by_jti = new_jti
+    session.last_seen_at = now
+    db.add(new_row)
+    db.add(token_row)
+    db.add(session)
+    db.commit()
+
+    access_token = create_access_jwt(
+        user_id=str(user_id),
+        session_id=sid,
+        minutes=settings.access_token_expire_minutes,
+    )
+    refresh_token = create_refresh_jwt(
+        user_id=str(user_id),
+        session_id=sid,
+        jti=new_jti,
+        minutes=settings.refresh_token_expire_minutes,
+    )
+    _set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token, settings=settings)
+    return {"message": "ok"}
+
 
 class RegisterRequest(BaseModel):
     email: str
@@ -173,10 +373,24 @@ def _decode_special(token: str) -> dict:
     return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
 
 @router.post("/register")
-def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db_session)):
+def register(body: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db_session)):
     settings = get_settings()
     # Normalize email to guarantee case-insensitive uniqueness
     body.email = (body.email or "").strip().lower()
+
+    enforce_rate_limit(
+        request,
+        scope="auth_register_ip",
+        limit=int(getattr(settings, "auth_register_rl_ip_per_hour", 30)),
+        window_seconds=60 * 60,
+    )
+    enforce_rate_limit(
+        request,
+        scope="auth_register_email",
+        limit=int(getattr(settings, "auth_register_rl_ip_per_hour", 30)),
+        window_seconds=60 * 60,
+        discriminator=body.email,
+    )
 
     # Mode enforcement / invited role
     invited_role = settings.default_role
@@ -317,12 +531,16 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
     except Exception:
         sent = False
     role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
+    verify_payload: dict = {"sent": sent}
+    # Do NOT leak verification tokens in production responses.
+    if settings.environment != "production" and settings.debug:
+        verify_payload["token"] = verify_token
     return {
         "id": user.id,
         "email": user.email,
         "role": role_value,
         "organization_id": get_org_id(user),
-        "verify": {"token": verify_token, "sent": sent},
+        "verify": verify_payload,
     }
 
 @router.get("/profile")
@@ -334,11 +552,42 @@ def profile(request: Request, db: Session = Depends(get_db_session)):
     return {"id": user.id, "email": user.email, "role": role_value, "organization_id": get_org_id(user)}
 
 @router.post("/logout")
-def logout(response: Response):
+def logout(request: Request, response: Response, db: Session = Depends(get_db_session)):
     settings = get_settings()
+    # Best-effort: revoke the current session
+    sid: str | None = None
+    raw_access = request.cookies.get(settings.cookie_access_name)
+    if raw_access:
+        try:
+            payload = jwt.decode(raw_access, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+            if payload.get("typ") == "access":
+                sid = str(payload.get("sid") or "") or None
+        except Exception:
+            sid = None
+    if not sid:
+        raw_refresh = request.cookies.get(settings.cookie_refresh_name)
+        if raw_refresh:
+            try:
+                payload = jwt.decode(raw_refresh, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+                if payload.get("typ") == "refresh":
+                    sid = str(payload.get("sid") or "") or None
+            except Exception:
+                sid = None
+
+    if sid:
+        try:
+            sess = db.get(AuthSession, sid)
+            if sess and sess.revoked_at is None:
+                sess.revoked_at = _utcnow()
+                sess.revoked_reason = "logout"
+                db.add(sess)
+                db.commit()
+        except Exception:
+            # Do not block logout if DB is unavailable
+            pass
+
     # Clear cookies
-    response.delete_cookie(settings.cookie_access_name, path="/", domain=settings.cookie_domain)
-    response.delete_cookie(settings.cookie_refresh_name, path="/", domain=settings.cookie_domain)
+    _clear_auth_cookies(response, settings)
     return {"message": "ok"}
 
 class InviteRequest(BaseModel):
@@ -368,8 +617,21 @@ class ResetConfirmRequest(BaseModel):
     new_password: str = Field(min_length=6)
 
 @router.post("/request-reset")
-def request_reset(body: ResetRequest):
+def request_reset(body: ResetRequest, request: Request):
     settings = get_settings()
+    enforce_rate_limit(
+        request,
+        scope="auth_reset_request_ip",
+        limit=int(getattr(settings, "auth_reset_request_rl_ip_per_hour", 30)),
+        window_seconds=60 * 60,
+    )
+    enforce_rate_limit(
+        request,
+        scope="auth_reset_request_email",
+        limit=int(getattr(settings, "auth_reset_request_rl_email_per_hour", 10)),
+        window_seconds=60 * 60,
+        discriminator=body.email,
+    )
     token = _encode_special({"typ": "reset", "email": body.email}, minutes=60)
     link_front = (settings.frontend_url or "").rstrip("/") + f"/reset?token={token}" if settings.frontend_url else None
     subject = "Password reset"
@@ -388,7 +650,14 @@ def request_reset(body: ResetRequest):
     return {"sent": sent}
 
 @router.post("/reset")
-def reset_password(body: ResetConfirmRequest, db: Session = Depends(get_db_session)):
+def reset_password(body: ResetConfirmRequest, request: Request, db: Session = Depends(get_db_session)):
+    settings = get_settings()
+    enforce_rate_limit(
+        request,
+        scope="auth_reset_confirm_ip",
+        limit=int(getattr(settings, "auth_reset_confirm_rl_ip_per_hour", 60)),
+        window_seconds=60 * 60,
+    )
     try:
         data = _decode_special(body.token)
         if data.get("typ") != "reset":
@@ -401,13 +670,35 @@ def reset_password(body: ResetConfirmRequest, db: Session = Depends(get_db_sessi
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    now = _utcnow()
     user.hashed_password = _hash_password(body.new_password)
     db.add(user)
+
+    # Revoke all existing sessions for this user (forces re-login everywhere)
+    try:
+        sessions = (
+            db.query(AuthSession)
+            .filter(AuthSession.user_id == int(user.id), AuthSession.revoked_at.is_(None))
+            .all()
+        )
+        for s in sessions:
+            s.revoked_at = now
+            s.revoked_reason = "password_reset"
+            db.add(s)
+    except Exception:
+        pass
     db.commit()
     return {"message": "password_updated"}
 
 @router.get("/verify")
-def verify_email(token: str, db: Session = Depends(get_db_session)):
+def verify_email(token: str, request: Request, db: Session = Depends(get_db_session)):
+    settings = get_settings()
+    enforce_rate_limit(
+        request,
+        scope="auth_verify_ip",
+        limit=int(getattr(settings, "auth_verify_rl_ip_per_hour", 120)),
+        window_seconds=60 * 60,
+    )
     try:
         data = _decode_special(token)
         if data.get("typ") != "verify":

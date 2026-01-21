@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260120_0008"
+    target_revision = "20260121_0009"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:
@@ -455,6 +455,43 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("create index if not exists ix_notifications_user_id on notifications (user_id);"))
         conn.execute(text("create index if not exists ix_notifications_organization_id on notifications (organization_id);"))
         conn.execute(text("update notifications set organization_id = 1 where organization_id is null;"))
+
+        # --- Auth sessions / refresh tokens (rotation + revocation) ---
+        conn.execute(
+            text(
+                "create table if not exists auth_sessions ("
+                "id varchar(36) primary key, "
+                "user_id integer not null, "
+                "user_agent text, "
+                "ip varchar(64), "
+                "revoked_at timestamptz, "
+                "revoked_reason varchar(255), "
+                "last_seen_at timestamptz, "
+                "created_at timestamptz not null default now(), "
+                "updated_at timestamptz not null default now()"
+                ")"
+            )
+        )
+        conn.execute(text("create index if not exists ix_auth_sessions_user_id on auth_sessions (user_id);"))
+        conn.execute(text("create index if not exists ix_auth_sessions_revoked_at on auth_sessions (revoked_at);"))
+
+        conn.execute(
+            text(
+                "create table if not exists auth_refresh_tokens ("
+                "id serial primary key, "
+                "session_id varchar(36) not null, "
+                "token_jti varchar(64) not null, "
+                "issued_at timestamptz not null, "
+                "expires_at timestamptz not null, "
+                "revoked_at timestamptz, "
+                "replaced_by_jti varchar(64), "
+                "created_at timestamptz not null default now()"
+                ")"
+            )
+        )
+        conn.execute(text("create index if not exists ix_auth_refresh_tokens_session_id on auth_refresh_tokens (session_id);"))
+        conn.execute(text("create unique index if not exists ux_auth_refresh_tokens_token_jti on auth_refresh_tokens (token_jti);"))
+        conn.execute(text("create index if not exists ix_auth_refresh_tokens_revoked_at on auth_refresh_tokens (revoked_at);"))
 
         # Ensure version table has exactly one row with target head.
         conn.execute(text("delete from alembic_version;"))

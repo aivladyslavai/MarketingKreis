@@ -6,6 +6,7 @@ from typing import Callable
 from app.core.config import get_settings
 from app.db.session import get_db_session  # re-exported for convenience
 from app.models.user import User, UserRole
+from app.models.auth_session import AuthSession
 
 
 def get_current_user(
@@ -19,8 +20,24 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        if payload.get("typ") != "access":
+            raise HTTPException(status_code=401, detail="Invalid token")
         user_id = int(payload.get("sub"))
+        sid = payload.get("sid")
     except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Session revocation check (refresh-token based sessions)
+    try:
+        if not sid:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        session = db.get(AuthSession, str(sid))
+        if not session or session.revoked_at is not None:
+            raise HTTPException(status_code=401, detail="Session revoked")
+    except HTTPException:
+        raise
+    except Exception:
+        # Fail closed: if anything goes wrong, require re-auth.
         raise HTTPException(status_code=401, detail="Invalid token")
 
     user = db.get(User, user_id)

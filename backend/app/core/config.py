@@ -81,6 +81,23 @@ class Settings(BaseSettings):
     # Feature flags
     skip_email_verify: bool = Field(default=False, env="SKIP_EMAIL_VERIFY")
 
+    # Auth hardening
+    auth_rate_limit_enabled: bool = Field(default=True, env="AUTH_RATE_LIMIT_ENABLED")
+    # Basic per-endpoint rate limits (production defaults; can be tuned via env)
+    auth_login_rl_ip_per_minute: int = Field(default=20, env="AUTH_LOGIN_RL_IP_PER_MINUTE")
+    auth_login_rl_email_per_minute: int = Field(default=10, env="AUTH_LOGIN_RL_EMAIL_PER_MINUTE")
+    auth_register_rl_ip_per_hour: int = Field(default=30, env="AUTH_REGISTER_RL_IP_PER_HOUR")
+    auth_reset_request_rl_ip_per_hour: int = Field(default=30, env="AUTH_RESET_REQUEST_RL_IP_PER_HOUR")
+    auth_reset_request_rl_email_per_hour: int = Field(default=10, env="AUTH_RESET_REQUEST_RL_EMAIL_PER_HOUR")
+    auth_reset_confirm_rl_ip_per_hour: int = Field(default=60, env="AUTH_RESET_CONFIRM_RL_IP_PER_HOUR")
+    auth_verify_rl_ip_per_hour: int = Field(default=120, env="AUTH_VERIFY_RL_IP_PER_HOUR")
+    auth_refresh_rl_ip_per_minute: int = Field(default=60, env="AUTH_REFRESH_RL_IP_PER_MINUTE")
+
+    # Brute-force protection (login failures)
+    auth_bruteforce_max_failures: int = Field(default=8, env="AUTH_BRUTEFORCE_MAX_FAILURES")
+    auth_bruteforce_window_seconds: int = Field(default=15 * 60, env="AUTH_BRUTEFORCE_WINDOW_SECONDS")
+    auth_bruteforce_lockout_seconds: int = Field(default=15 * 60, env="AUTH_BRUTEFORCE_LOCKOUT_SECONDS")
+
     # Demo mode
     # Comma-separated list of demo emails which should be enforced as read-only on mutating endpoints.
     demo_readonly_emails: str = Field(default="demo@marketingkreis.ch", env="DEMO_READONLY_EMAILS")
@@ -115,6 +132,15 @@ class Settings(BaseSettings):
         """Never allow DEBUG=true in production."""
         if values.get("environment") == "production" and v:
             raise ValueError("DEBUG must be false in production.")
+        return v
+
+    @validator("skip_email_verify")
+    def validate_skip_email_verify(cls, v: bool, values: dict) -> bool:
+        """
+        Email verification bypass must NEVER be enabled in production.
+        """
+        if values.get("environment") == "production" and v:
+            raise ValueError("SKIP_EMAIL_VERIFY must be false in production.")
         return v
 
     class Config:
