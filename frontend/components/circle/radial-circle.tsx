@@ -465,7 +465,20 @@ export default function RadialCircle({
         return (
           <g key={`ring-${ring.name}`}>
             <circle cx={center} cy={center} r={ringR} fill="none" stroke={color} strokeWidth={sw(1.5)} opacity={0.35} />
-            <text x={center} y={center - ringR - 12 * scale} fontSize={fs(11)} fill={color} textAnchor="middle" dominantBaseline="middle" fontWeight="600">{ring.name}</text>
+            {/* Ring labels are too noisy on mobile; use the legend outside the circle instead */}
+            {!isSmall && (
+              <text
+                x={center}
+                y={center - ringR - 12 * scale}
+                fontSize={fs(11)}
+                fill={color}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontWeight="600"
+              >
+                {ring.name}
+              </text>
+            )}
           </g>
         )
       })}
@@ -550,14 +563,15 @@ export default function RadialCircle({
         const y1 = center + Math.sin(angle) * inner
         const x2 = center + Math.cos(angle) * outer
         const y2 = center + Math.sin(angle) * outer
-        const step = isTiny ? 8 : isSmall ? 6 : 4
+        // Reduce visual noise on small screens
+        const step = isTiny ? 14 : isSmall ? 10 : 4
         const showLabel = w === 1 || w % step === 1
         const lx = center + Math.cos(angle) * (radius - 30 * scale)
         const ly = center + Math.sin(angle) * (radius - 30 * scale)
         return (
           <g key={`kw-${w}`}>
             <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#334155" strokeWidth={sw(1)} opacity={0.6} />
-            {showLabel && (
+            {showLabel && !isTiny && (
               <text 
                 x={lx} 
                 y={ly} 

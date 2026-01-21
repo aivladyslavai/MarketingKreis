@@ -9,6 +9,7 @@ import { sync } from "@/lib/sync"
 import CommandPalette from "@/components/command-palette"
 import MobileNav from "@/components/layout/mobile-nav"
 import OnboardingTour from "@/components/onboarding/onboarding-tour"
+import MobileMenuSheet from "@/components/layout/mobile-menu-sheet"
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -142,20 +143,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <Sidebar isCollapsed={sidebarCollapsed} onToggle={toggleSidebar} />
         </div>
 
-        {/* Mobile drawer */}
-        {mobileMenuOpen && (
-          <div className="fixed inset-0 z-[70] md:hidden">
-            <div
-              className="absolute inset-0 bg-black/40"
-              onClick={() => setMobileMenuOpen(false)}
-              aria-label="close-mobile-menu"
-            />
-            <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw]">
-              {/* Reuse Sidebar at full width for mobile */}
-              <Sidebar variant="drawer" isCollapsed={false} onToggle={() => setMobileMenuOpen(false)} />
-            </div>
-          </div>
-        )}
+        {/* Mobile menu (bottom sheet) */}
+        <MobileMenuSheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen} />
 
         {/* Main Content */}
         <div 
@@ -185,7 +174,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <OnboardingTour />
           <ChatWidget />
           <div data-tour="mobile-nav">
-            <MobileNav />
+            {!mobileMenuOpen && <MobileNav />}
           </div>
           <CommandPalette />
         </div>

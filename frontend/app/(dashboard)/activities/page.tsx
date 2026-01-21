@@ -268,13 +268,16 @@ export default function ActivitiesPage() {
                   <Button size="sm" variant="outline" className="glass-card h-8 w-8 sm:w-auto sm:px-2 p-0" onClick={() => setYear((y) => y + 1)}>+</Button>
                 </div>
               </div>
-              <div className="flex items-center justify-between sm:justify-start gap-2">
-                <span className="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-white/80 text-xs sm:text-sm">Zoom: {zoom.toFixed(1)}x</span>
-                <div className="flex items-center gap-1">
-                  <Button size="sm" variant="outline" className="glass-card h-8 w-8 sm:w-auto sm:px-2 p-0" onClick={() => setZoom((z) => Math.max(0.6, z - 0.2))}>-</Button>
-                  <Button size="sm" variant="outline" className="glass-card h-8 w-8 sm:w-auto sm:px-2 p-0" onClick={() => setZoom((z) => Math.min(1.6, z + 0.2))}>+</Button>
+              {/* Zoom controls are useful on desktop, but add noise on mobile */}
+              {!isSmall && (
+                <div className="flex items-center justify-between sm:justify-start gap-2">
+                  <span className="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-white/80 text-xs sm:text-sm">Zoom: {zoom.toFixed(1)}x</span>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="outline" className="glass-card h-8 w-8 sm:w-auto sm:px-2 p-0" onClick={() => setZoom((z) => Math.max(0.6, z - 0.2))}>-</Button>
+                    <Button size="sm" variant="outline" className="glass-card h-8 w-8 sm:w-auto sm:px-2 p-0" onClick={() => setZoom((z) => Math.min(1.6, z + 0.2))}>+</Button>
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="w-full sm:w-auto">
                 <GlassSelect
                   value={categoryFilter}
@@ -290,10 +293,7 @@ export default function ActivitiesPage() {
               </div>
             </div>
             {/* Circle container with proper overflow handling */}
-            <div
-              className="w-full flex items-center justify-center overflow-x-auto overflow-y-hidden"
-              style={{ height: `${(compact ? (isSmall ? 320 : 560) : (isSmall ? 380 : 700)) * zoom}px` }}
-            >
+            <div className="w-full flex items-center justify-center">
               <RadialCircle
                 activities={visibleActivities.map((a: any) => ({
                   ...a,
@@ -304,7 +304,8 @@ export default function ActivitiesPage() {
                   budgetCHF: a.budgetCHF || 0,
                   expectedLeads: a.expectedLeads || 0,
                 }))}
-                size={(isSmall ? 360 : 700) * zoom}
+                // Let the circle fill the available width on mobile (no tiny 360px cap)
+                size={(isSmall ? 720 : 700) * (isSmall ? 1 : zoom)}
                 year={year}
                 onActivityClick={(activity) => setSelectedActivity(activity)}
                 categories={categories}

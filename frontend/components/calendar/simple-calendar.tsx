@@ -207,8 +207,7 @@ export default function SimpleCalendarView({
                 key={day}
                 className="p-1 sm:p-2 text-center text-xs sm:text-sm font-medium text-muted-foreground"
               >
-                <span className="hidden sm:inline">{day}</span>
-                <span className="sm:hidden">{day.charAt(0)}</span>
+                {day}
               </div>
             ))}
           </div>
@@ -250,7 +249,7 @@ export default function SimpleCalendarView({
                       aria-label="add-event"
                       variant="ghost"
                       size="icon"
-                      className="h-5 w-5 p-0 opacity-100 sm:opacity-0 group-hover:opacity-100 hover:opacity-100 text-slate-300 hover:text-white bg-transparent"
+                      className="hidden sm:inline-flex h-5 w-5 p-0 opacity-0 group-hover:opacity-100 hover:opacity-100 text-slate-300 hover:text-white bg-transparent"
                       onClick={(e) => {
                         e.stopPropagation()
                         onCreateActivity?.(day)
@@ -289,7 +288,7 @@ export default function SimpleCalendarView({
                             <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: primaryColor }} />
                             <span className="truncate">{activity.title}</span>
                           </div>
-                          <div className="opacity-70">{activity.owner?.name || 'Unassigned'}</div>
+                          <div className="opacity-70 hidden sm:block">{activity.owner?.name || 'Unassigned'}</div>
 
                           {hoverEventId === activity.id && (
                             <div className="absolute left-0 top-full mt-2 z-[90] w-64 rounded-xl border border-white/10 bg-slate-900/95 text-slate-200 shadow-2xl p-3 backdrop-blur-md">
@@ -320,13 +319,22 @@ export default function SimpleCalendarView({
                         <div className="text-xs sm:text-sm font-semibold">
                           {format(day, 'EEEE, dd.MM.yyyy', { locale: de })}
                         </div>
-                        <button
-                          className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-white/10"
-                          onClick={(e)=>{ e.stopPropagation(); setOpenDayIso(null) }}
-                          aria-label="close-day-popover"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-white/10"
+                            onClick={(e)=>{ e.stopPropagation(); onCreateActivity?.(day) }}
+                            aria-label="add-day-activity"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-white/10"
+                            onClick={(e)=>{ e.stopPropagation(); setOpenDayIso(null) }}
+                            aria-label="close-day-popover"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       <div className="flex-1 overflow-auto space-y-1 pr-1">
                         {dayActivities.length === 0 && (
@@ -348,7 +356,7 @@ export default function SimpleCalendarView({
                                 <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: primaryColor }} />
                                 <span className="truncate">{activity.title}</span>
                               </div>
-                              <div className="opacity-70">
+                              <div className="opacity-70 hidden sm:block">
                                 {activity.owner?.name || 'Unassigned'}
                               </div>
                             </div>
