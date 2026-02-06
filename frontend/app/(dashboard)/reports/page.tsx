@@ -14,10 +14,21 @@ import { ResponsiveContainer, AreaChart, Area } from "recharts"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 
 export default function ReportsPage() {
+  const toYMD = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, "0")
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  }
   const [loading, setLoading] = useState(true)
   const [crmStats, setCrmStats] = useState<any | null>(null)
-  const [from, setFrom] = useState<string>("")
-  const [to, setTo] = useState<string>("")
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // Default to last ~quarter so the report isn't empty by default.
+  const [from, setFrom] = useState<string>(() => {
+    const end = new Date()
+    const start = new Date()
+    start.setDate(end.getDate() - 89)
+    return toYMD(start)
+  })
+  const [to, setTo] = useState<string>(() => toYMD(new Date()))
   const [genLoading, setGenLoading] = useState(false)
   const [reportHtml, setReportHtml] = useState<string>("")
   const { openModal } = useModal()
@@ -37,22 +48,24 @@ export default function ReportsPage() {
   const [brand, setBrand] = useState<{ company?: string; logoUrl?: string }>({ company: "", logoUrl: "" })
 
   const ReportIFrame = ({ html, height }: { html: string; height: number }) => {
-    const src = `<!doctype html><html><head><meta charset='utf-8'></head><body>${html}</body></html>`
+    // IMPORTANT: viewport meta makes the report readable on phones (otherwise iOS renders at ~980px and scales down).
+    const src = `<!doctype html><html><head><meta charset='utf-8'><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>${html}</body></html>`
     return (
       <iframe
         srcDoc={src}
         className="w-full rounded-lg border border-white/10 bg-slate-900"
         style={{ height }}
-        sandbox="allow-same-origin allow-popups allow-forms allow-scripts"
+        // No scripts needed; keep preview safe even if HTML contains unexpected tags.
+        sandbox="allow-same-origin allow-popups"
       />
     )
   }
   const StyledSelect = ({ value, onChange, children }: any) => (
-    <div className="relative inline-block">
+    <div className="relative inline-block w-full sm:w-auto">
       <select
         value={value}
         onChange={onChange}
-        className="h-9 appearance-none rounded-lg bg-slate-900/70 border border-white/15 px-3 pr-9 text-slate-200 shadow-inner shadow-black/20 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+        className="h-11 sm:h-9 w-full appearance-none rounded-lg bg-slate-900/70 border border-white/15 px-3 pr-9 text-slate-200 shadow-inner shadow-black/20 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
       >
         {children}
       </select>
@@ -73,7 +86,7 @@ export default function ReportsPage() {
     }
     return (
       <div
-        className="group relative w-full h-9 rounded-lg border border-dashed border-white/20 bg-slate-900/50 hover:bg-slate-900/60 transition-colors cursor-pointer overflow-hidden"
+        className="group relative w-full h-11 sm:h-9 rounded-lg border border-dashed border-white/20 bg-slate-900/50 hover:bg-slate-900/60 transition-colors cursor-pointer overflow-hidden"
         onDragOver={(e)=>{ e.preventDefault() }}
         onDrop={(e)=>{ e.preventDefault(); onFiles(e.dataTransfer.files) }}
         onClick={()=>{ const input = document.getElementById('logoFileInput') as HTMLInputElement; input?.click() }}
@@ -101,16 +114,26 @@ export default function ReportsPage() {
       </div>
     )
   }
-  const { activities, refetch: refetchActivities } = useActivities()
-  const { events, refresh: refreshCalendar } = useCalendarApi()
-  const { uploads, refresh: refreshUploads } = useUploadsApi()
-  const { jobs, refresh: refreshJobs } = useJobsApi()
+  const { activities, error: activitiesError, refetch: refetchActivities } = useActivities()
+  const { events, error: calendarError, refresh: refreshCalendar } = useCalendarApi()
+  const { uploads, error: uploadsError, refresh: refreshUploads } = useUploadsApi()
+  const { jobs, error: jobsError, refresh: refreshJobs } = useJobsApi()
 
   const load = async () => {
     try {
       setLoading(true)
-      const stats = await authFetch('/crm/stats').then(r => r.json()).catch(()=> ({}))
-      setCrmStats(stats || {})
+      setLoadError(null)
+      const res = await authFetch('/crm/stats')
+      let body: any = null
+      try { body = await res.json() } catch { body = null }
+      if (!res.ok) {
+        const msg = body?.detail || body?.error || res.statusText || "Failed to load CRM stats"
+        throw new Error(msg)
+      }
+      setCrmStats(body || {})
+    } catch (e: any) {
+      setCrmStats({})
+      setLoadError(e?.message || "Failed to load CRM stats")
     } finally { setLoading(false) }
   }
 
@@ -182,6 +205,21 @@ export default function ReportsPage() {
 
   return (
     <div className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
+      {(loadError || activitiesError || calendarError || uploadsError || jobsError) && (
+        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-rose-100">
+          <div className="text-sm font-semibold">Daten konnten nicht geladen werden</div>
+          <div className="mt-1 text-xs text-rose-100/90 space-y-1">
+            {loadError && <div>- CRM: {loadError}</div>}
+            {activitiesError && <div>- Aktivitäten: {activitiesError}</div>}
+            {calendarError && <div>- Kalender: {(calendarError as any)?.message || String(calendarError)}</div>}
+            {uploadsError && <div>- Uploads: {(uploadsError as any)?.message || String(uploadsError)}</div>}
+            {jobsError && <div>- Jobs: {(jobsError as any)?.message || String(jobsError)}</div>}
+          </div>
+          <div className="mt-2 text-[11px] text-rose-100/70">
+            Tipp: Prüfe Login/Cookies und dass in Vercel/Render die Variable <span className="font-semibold">BACKEND_URL</span> korrekt gesetzt ist.
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-4 sm:p-6 md:p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -225,19 +263,19 @@ export default function ReportsPage() {
                     const end = new Date()
                     const start = new Date()
                     start.setDate(end.getDate() - p.d)
-                    setFrom(start.toISOString().slice(0,10))
-                    setTo(end.toISOString().slice(0,10))
+                    setFrom(toYMD(start))
+                    setTo(toYMD(end))
                   }}>{p.k}</Button>
               ))}
             </div>
           </div>
           {/* Date range and comparison */}
           <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-3">
-            <div className="flex items-center gap-2 text-xs sm:text-sm">
-              <span className="text-slate-300">Zeitraum:</span>
-              <input type="date" value={from} onChange={(e)=>setFrom(e.target.value)} className="h-8 sm:h-9 rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200 text-xs sm:text-sm" />
+            <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+              <span className="text-slate-300 w-full sm:w-auto">Zeitraum:</span>
+              <input type="date" value={from} onChange={(e)=>setFrom(e.target.value)} className="h-11 sm:h-9 w-[160px] max-w-full rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200 text-xs sm:text-sm" />
               <span className="text-slate-400">–</span>
-              <input type="date" value={to} onChange={(e)=>setTo(e.target.value)} className="h-8 sm:h-9 rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200 text-xs sm:text-sm" />
+              <input type="date" value={to} onChange={(e)=>setTo(e.target.value)} className="h-11 sm:h-9 w-[160px] max-w-full rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200 text-xs sm:text-sm" />
             </div>
             <div className="flex items-center gap-2 text-xs sm:text-sm">
               <span className="text-slate-300">Vergleich:</span>
@@ -296,7 +334,7 @@ export default function ReportsPage() {
                 👁️ Preview
               </Button>
               <Button variant="outline" size="sm" className="border-white/20 text-slate-200 h-8 sm:h-9 text-xs sm:text-sm" onClick={()=>{
-                const blob = new Blob([`<!doctype html><meta charset=\"utf-8\">${reportHtml}`], { type: 'text/html;charset=utf-8' })
+                const blob = new Blob([`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>${reportHtml}</body></html>`], { type: 'text/html;charset=utf-8' })
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement('a')
                 a.href = url; a.download = `report-${from||'all'}_${to||'all'}.html`; a.click(); URL.revokeObjectURL(url)
@@ -304,7 +342,7 @@ export default function ReportsPage() {
                 <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" /> <span className="hidden sm:inline">Download HTML</span>
               </Button>
               <Button variant="outline" size="sm" className="border-white/20 text-slate-200 h-8 sm:h-9 text-xs sm:text-sm" onClick={()=>{
-                const wrapper = `<!doctype html><html><head><meta charset='utf-8'><title>Report</title>
+                const wrapper = `<!doctype html><html><head><meta charset='utf-8'><meta name="viewport" content="width=device-width, initial-scale=1"><title>Report</title>
                 <style>@page{margin:18mm} body{background:#0b1220;color:#e5e7eb} @media print{body{background:white;color:black}}</style>
                 </head><body>${reportHtml}<script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 500)}</script></body></html>`
                 const blob = new Blob([wrapper], { type: 'text/html;charset=utf-8' })
@@ -343,8 +381,13 @@ export default function ReportsPage() {
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="text-sm text-slate-300">Branding:</div>
-              <input placeholder="Company" value={brand.company || ''} onChange={(e)=> setBrand(b => ({ ...b, company: e.target.value }))} className="h-9 rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200" />
-              <div className="min-w-[280px] w-[320px]"><LogoDrop /></div>
+              <input
+                placeholder="Company"
+                value={brand.company || ''}
+                onChange={(e)=> setBrand(b => ({ ...b, company: e.target.value }))}
+                className="h-11 sm:h-9 w-full sm:w-auto rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200"
+              />
+              <div className="w-full sm:min-w-[280px] sm:w-[320px]"><LogoDrop /></div>
             </div>
           </div>
         )}

@@ -775,9 +775,9 @@ export default function CRMPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16]">
+    <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16] overflow-x-hidden">
       {/* Header Section */}
-      <div className="sticky top-0 z-10 backdrop-blur-xl bg-white/80 dark:bg-[#0b101a]/70 border-b border-slate-200 dark:border-slate-800/60">
+      <div className="md:sticky md:top-[calc(4rem+env(safe-area-inset-top))] z-10 backdrop-blur-xl bg-white/80 dark:bg-[#0b101a]/70 border-b border-slate-200 dark:border-slate-800/60">
         <div className="px-4 sm:px-6 py-4 sm:py-6">
           <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
             <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 dark:from-blue-500/40 dark:to-purple-600/40 border border-blue-200/50 dark:border-white/10 shadow-lg shadow-blue-500/10 flex items-center justify-center shrink-0">

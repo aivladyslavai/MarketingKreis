@@ -27,10 +27,28 @@ function VerifyInner() {
   }, [token, router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="w-full max-w-sm bg-white/10 dark:bg-slate-900/60 border border-white/20 dark:border-slate-700 rounded-xl p-6 space-y-3">
-        <h1 className="text-xl font-semibold">Email verification</h1>
+    <div className="min-h-[100dvh] flex items-center justify-center p-4 sm:p-6">
+      <div className="w-full max-w-sm bg-white/10 dark:bg-slate-900/60 border border-white/20 dark:border-slate-700 rounded-2xl p-5 sm:p-6 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-lg sm:text-xl font-semibold">Email verification</h1>
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+              status === "pending"
+                ? "bg-slate-500/10 text-slate-200 border-slate-400/20"
+                : status === "ok"
+                  ? "bg-emerald-500/10 text-emerald-200 border-emerald-400/20"
+                  : "bg-rose-500/10 text-rose-200 border-rose-400/20"
+            }`}
+          >
+            {status === "pending" ? "Checking…" : status === "ok" ? "Verified" : "Error"}
+          </span>
+        </div>
         <p className="text-sm text-slate-600 dark:text-slate-300 break-all">{msg || "Checking token..."}</p>
+        {status === "ok" && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Redirecting…
+          </p>
+        )}
       </div>
     </div>
   )

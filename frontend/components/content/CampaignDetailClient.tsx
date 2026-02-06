@@ -85,16 +85,16 @@ function TaskQuickCreate({ defaultStatus, defaultChannel, onCreate }: TaskQuickC
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="z.B. Landingpage für Kampagne"
-          className="h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm"
+          className="h-11 sm:h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm"
         />
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div className="space-y-1">
           <label className="text-xs text-slate-300">Channel</label>
           <input
             value={channel}
             onChange={(e) => setChannel(e.target.value)}
-            className="h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm"
+            className="h-11 sm:h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm"
           />
         </div>
         <div className="space-y-1">
@@ -103,17 +103,17 @@ function TaskQuickCreate({ defaultStatus, defaultChannel, onCreate }: TaskQuickC
             value={format || ""}
             onChange={(e) => setFormat(e.target.value || undefined)}
             placeholder="Landing Page, Newsletter…"
-            className="h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm"
+            className="h-11 sm:h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm"
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div className="space-y-1">
           <label className="text-xs text-slate-300">Priorität</label>
           <select
             value={priority}
             onChange={(e) => setPriority(e.target.value as any)}
-            className="h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-xs text-slate-200"
+            className="h-11 sm:h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-xs text-slate-200"
           >
             <option value="LOW">Niedrig</option>
             <option value="MEDIUM">Mittel</option>
@@ -127,7 +127,7 @@ function TaskQuickCreate({ defaultStatus, defaultChannel, onCreate }: TaskQuickC
             type="date"
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
-            className="h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm text-slate-200"
+            className="h-11 sm:h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm text-slate-200"
           />
         </div>
       </div>

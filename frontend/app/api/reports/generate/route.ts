@@ -9,19 +9,30 @@ export async function POST(req: NextRequest) {
     if (!apiKey) return NextResponse.json({ error: 'OPENAI_API_KEY is not configured' }, { status: 500 })
 
     const cookie = req.headers.get('cookie') || ''
-    const base = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+    // Use request origin (works on Vercel/Preview too). Avoid relying on NEXT_PUBLIC_SITE_URL.
+    const base = req.nextUrl?.origin || new URL(req.url).origin
     const mkUrl = (p: string) => `${base}/api${p.startsWith('/') ? p : '/' + p}`
     const headers = { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }
+    const generatedAt = new Date().toISOString()
 
     async function getJSON(path: string, init: RequestInit = {}) {
       const r = await fetch(mkUrl(path), { ...init, headers, cache: 'no-store' })
-      if (!r.ok) throw new Error(await r.text())
+      if (!r.ok) {
+        const text = await r.text()
+        let msg = text
+        try {
+          const j = JSON.parse(text)
+          msg = (j as any)?.detail || (j as any)?.error || msg
+        } catch {}
+        throw new Error(`${path} failed (${r.status}): ${msg}`)
+      }
       try { return await r.json() } catch { return null }
     }
 
     // Fetch data in parallel
     const [crmStats, activitiesRaw, calendarRaw, uploadsRaw, jobsRaw, companiesRaw, contactsRaw, dealsRaw] = await Promise.all([
-      getJSON('/crm/stats').catch(()=>({})),
+      // crm/stats is required for meaningful KPIs; if it fails we should error (not silently generate an empty report).
+      getJSON('/crm/stats'),
       getJSON('/activities').catch(()=>[]),
       getJSON('/calendar').catch(()=>[]),
       getJSON('/uploads').catch(()=>({ items: [] })),
@@ -41,6 +52,10 @@ export async function POST(req: NextRequest) {
 
     const fromDate = from ? new Date(from) : null
     const toDate = to ? new Date(to) : null
+    // Treat `to` as inclusive end-of-day for date-only inputs (type="date").
+    if (toDate && Number.isFinite(toDate.getTime())) {
+      toDate.setHours(23, 59, 59, 999)
+    }
     const inRange = (d: any) => {
       const dt = d ? new Date(d) : null
       if (!dt) return true
@@ -67,6 +82,9 @@ export async function POST(req: NextRequest) {
         prevFrom = new Date(fromDate); prevFrom.setFullYear(prevFrom.getFullYear() - 1)
         prevTo = new Date(toDate); prevTo.setFullYear(prevTo.getFullYear() - 1)
       }
+      if (prevTo && Number.isFinite(prevTo.getTime())) {
+        prevTo.setHours(23, 59, 59, 999)
+      }
       const inPrev = (d: any) => {
         const dt = d ? new Date(d) : null
         if (!dt) return false
@@ -91,6 +109,15 @@ export async function POST(req: NextRequest) {
 
     // Labels based on language
     const lang = (options?.language || 'de') as 'de' | 'en'
+    const generatedAtText = (() => {
+      const d = new Date(generatedAt)
+      if (!Number.isFinite(d.getTime())) return generatedAt
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const dd = pad(d.getDate())
+      const mm = pad(d.getMonth() + 1)
+      const yyyy = d.getFullYear()
+      return lang === 'de' ? `${dd}.${mm}.${yyyy}` : `${yyyy}-${mm}-${dd}`
+    })()
     const labels = lang === 'de' ? {
       title: 'MarketingKreis – Executive Report',
       company: 'Firma',
@@ -138,8 +165,23 @@ export async function POST(req: NextRequest) {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .page-break { page-break-before: always; }
     }
+    /* Mobile preview (inside iframe) */
+    @media (max-width: 640px) {
+      main{ padding:22px 14px; }
+      h1{ font-size:22px; }
+      h2{ font-size:18px; margin-top:22px; }
+      .cover .title{ font-size:22px; }
+      .brandbar{ flex-direction:column; align-items:flex-start; gap:8px; }
+      .brandbar .logo{ height:38px; max-width:200px; }
+      .kpi-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; }
+      .kpi:nth-child(5){ grid-column: 1 / -1; }
+      .kpi{ padding:12px 12px; border-radius:12px; }
+      .kpi .value{ font-size:22px; }
+      th,td{ padding:8px 10px; }
+      table{ display:block; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    }
     *{box-sizing:border-box}
-    body{background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif; line-height:1.6; }
+    body{margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif; line-height:1.6; }
     main{max-width:1120px; margin:0 auto; padding:40px 28px;}
     h1,h2,h3{margin:0 0 12px 0}
     h1{font-size:28px}
@@ -170,7 +212,7 @@ export async function POST(req: NextRequest) {
 
 REQUIREMENTS
 - Layout for A4 portrait, with print CSS (page-breaks between major sections, margins 18mm, page numbers in footer).
-- Top cover: title "MarketingKreis – Executive Report", company placeholder, period (from–to) and generation timestamp.
+- Top cover: title "MarketingKreis – Executive Report", company placeholder, period (from–to) and generation timestamp (use the provided "generatedAtText" value; do NOT output placeholders like "[DATUM]").
 - KPI grid: Pipeline Value, Won Value, Deals, Uploads, Jobs (big numbers, small trend captions – text only).
 - Sections (use clear anchors and <h2>):
   1) Executive Summary (5–8 bullets)
@@ -216,6 +258,8 @@ OUTPUT
         { role: 'system', content: options?.deterministic ? (system + "\\n\\nSTYLE VARIATION\\n- Use deterministic, concise wording. Avoid randomness and verbose language.") : system },
         { role: 'user', content: JSON.stringify({
           period: { from, to },
+          generatedAt,
+          generatedAtText,
           kpis: {
             pipelineValue: crmStats?.pipelineValue || 0,
             wonValue: crmStats?.wonValue || 0,

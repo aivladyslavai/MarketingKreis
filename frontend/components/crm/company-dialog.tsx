@@ -152,7 +152,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900/80 border-slate-200 dark:border-white/10 backdrop-blur-xl">
+      <DialogContent className="w-[min(92vw,720px)] sm:max-w-[720px] max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900/80 border-slate-200 dark:border-white/10 backdrop-blur-xl">
         <DialogHeader>
           <DialogTitle>
             <span className="text-slate-900 dark:text-white">
@@ -162,7 +162,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Company Name *</Label>
                 <Input
@@ -184,7 +184,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -206,7 +206,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="website">Website</Label>
                 <Input
@@ -232,7 +232,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="employees">Employees</Label>
                 <Input
@@ -266,7 +266,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
                 Diese Felder sind nicht Pflicht. Wenn du später mehrere Kontakte pflegen willst, nutze den Tab{" "}
                 <span className="font-medium">Kontakte</span>.
               </div>
-              <div className="grid grid-cols-2 gap-4 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                 <div className="space-y-2">
                   <Label htmlFor="contact_person_name">Name</Label>
                   <Input
@@ -310,7 +310,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
             <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-white/5 p-3">
               <div className="text-sm font-semibold text-slate-900 dark:text-white">Wichtige Infos (optional)</div>
               <div className="text-xs text-slate-600 dark:text-slate-400">Alles hier ist optional – hilft aber im CRM.</div>
-              <div className="grid grid-cols-2 gap-4 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                 <div className="space-y-2">
                   <Label htmlFor="vat_id">UID / MWST</Label>
                   <Input

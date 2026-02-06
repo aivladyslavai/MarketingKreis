@@ -82,86 +82,96 @@ export function EditorialCalendar({ items, onOpenItem, onReschedule }: Props) {
               {format(cursor, "MMMM yyyy", { locale: de })}
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setCursor((d) => addDays(startOfMonth(d), -1))}>
+              <Button variant="outline" size="icon" onClick={() => setCursor((d) => addDays(startOfMonth(d), -1))} aria-label="Vorheriger Monat">
                 ←
               </Button>
               <Button variant="outline" size="sm" onClick={() => setCursor(new Date())}>
                 Heute
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setCursor((d) => addDays(endOfMonth(d), 1))}>
+              <Button variant="outline" size="icon" onClick={() => setCursor((d) => addDays(endOfMonth(d), 1))} aria-label="Nächster Monat">
                 →
               </Button>
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-px bg-white/10">
-            {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w) => (
-              <div key={w} className="bg-slate-950/70 p-2 text-[11px] font-semibold text-slate-300">
-                {w}
+          {/* Mobile: allow horizontal scroll instead of squished 7 columns */}
+          <div className="overflow-x-auto sm:overflow-visible mk-no-scrollbar">
+            <div className="min-w-[720px] sm:min-w-0">
+              <div className="grid grid-cols-7 gap-px bg-white/10">
+                {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w) => (
+                  <div key={w} className="bg-slate-950/70 p-2 text-[11px] font-semibold text-slate-300">
+                    {w}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          <div className="grid grid-cols-7 gap-px bg-white/10">
-            {days.map((d) => {
-              const k = dayKey(d)
-              const list = scheduledByDay.get(k) || []
-              const isDim = !isSameMonth(d, cursor)
-              const isToday = isSameDay(d, new Date())
-              return (
-                <Droppable droppableId={`day-${k}`} key={k}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      className={cn(
-                        "min-h-[110px] bg-slate-950/70 p-2 overflow-hidden",
-                        snapshot.isDraggingOver && "ring-1 ring-blue-500/30",
-                        isDim && "opacity-60",
-                      )}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className={cn("text-[11px] font-semibold", isToday ? "text-emerald-300" : "text-slate-300")}>
-                          {format(d, "d")}
-                        </div>
-                        {list.length > 0 && (
-                          <Badge variant="secondary" className="text-[10px]">
-                            {list.length}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="mt-2 space-y-1">
-                        {list.map((it, idx) => (
-                          <Draggable draggableId={`item-${it.id}`} index={idx} key={it.id}>
-                            {(dragProvided, dragSnapshot) => (
-                              <button
-                                type="button"
-                                ref={dragProvided.innerRef}
-                                {...dragProvided.draggableProps}
-                                {...dragProvided.dragHandleProps}
-                                className={cn(
-                                  "w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-left text-[11px] text-slate-100 hover:bg-white/10",
-                                  dragSnapshot.isDragging && "ring-1 ring-blue-500/30",
-                                )}
-                                onClick={() => onOpenItem?.(it.id)}
-                                title={it.title}
-                              >
-                                <div className="truncate font-semibold">{it.title}</div>
-                                <div className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-400">
-                                  <span className="truncate">{it.channel}</span>
-                                  {it.format ? <span className="truncate">· {it.format}</span> : null}
-                                </div>
-                              </button>
+              <div className="grid grid-cols-7 gap-px bg-white/10">
+                {days.map((d) => {
+                  const k = dayKey(d)
+                  const list = scheduledByDay.get(k) || []
+                  const isDim = !isSameMonth(d, cursor)
+                  const isToday = isSameDay(d, new Date())
+                  return (
+                    <Droppable droppableId={`day-${k}`} key={k}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.droppableProps}
+                          className={cn(
+                            "min-h-[84px] sm:min-h-[110px] bg-slate-950/70 p-2 overflow-hidden",
+                            snapshot.isDraggingOver && "ring-1 ring-blue-500/30",
+                            isDim && "opacity-60",
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div
+                              className={cn(
+                                "text-[11px] font-semibold",
+                                isToday ? "text-emerald-300" : "text-slate-300",
+                              )}
+                            >
+                              {format(d, "d")}
+                            </div>
+                            {list.length > 0 && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {list.length}
+                              </Badge>
                             )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                      </div>
-                    </div>
-                  )}
-                </Droppable>
-              )
-            })}
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {list.map((it, idx) => (
+                              <Draggable draggableId={`item-${it.id}`} index={idx} key={it.id}>
+                                {(dragProvided, dragSnapshot) => (
+                                  <button
+                                    type="button"
+                                    ref={dragProvided.innerRef}
+                                    {...dragProvided.draggableProps}
+                                    {...dragProvided.dragHandleProps}
+                                    className={cn(
+                                      "w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-left text-[11px] text-slate-100 hover:bg-white/10",
+                                      dragSnapshot.isDragging && "ring-1 ring-blue-500/30",
+                                    )}
+                                    onClick={() => onOpenItem?.(it.id)}
+                                    title={it.title}
+                                  >
+                                    <div className="truncate font-semibold">{it.title}</div>
+                                    <div className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-400">
+                                      <span className="truncate">{it.channel}</span>
+                                      {it.format ? <span className="truncate">· {it.format}</span> : null}
+                                    </div>
+                                  </button>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </div>
+                        </div>
+                      )}
+                    </Droppable>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         </div>
 

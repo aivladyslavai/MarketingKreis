@@ -86,11 +86,14 @@ export function ActivityPanel({
   return (
     <Card
       className={cn(
-        "fixed right-6 top-1/2 transform -translate-y-1/2 w-96 max-h-[80vh] overflow-auto shadow-xl border-2 z-50 bg-white dark:bg-neutral-900",
+        // Mobile: bottom sheet. Desktop: floating side panel.
+        "fixed z-[120] overflow-auto shadow-xl border-2 bg-white dark:bg-neutral-900",
+        "inset-x-0 bottom-0 max-h-[75dvh] w-full rounded-t-2xl border-b-0",
+        "sm:inset-auto sm:right-6 sm:top-1/2 sm:bottom-auto sm:w-96 sm:max-h-[80vh] sm:rounded-2xl sm:border-b-2 sm:-translate-y-1/2",
         className
       )}
     >
-      <CardHeader className="pb-4">
+      <CardHeader className="pb-4 sticky top-0 z-10 bg-white/90 dark:bg-neutral-900/90 backdrop-blur border-b border-black/5 dark:border-white/10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
@@ -115,7 +118,7 @@ export function ActivityPanel({
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="h-8 w-8 p-0"
+            className="h-8 w-11 sm:w-8 p-0"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -137,7 +140,7 @@ export function ActivityPanel({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
         {/* Key metrics */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">

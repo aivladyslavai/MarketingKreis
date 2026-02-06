@@ -197,7 +197,7 @@ function SignupInner() {
   }
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-[#060b1a]">
+    <div className="relative min-h-[100dvh] w-full overflow-hidden bg-[#060b1a]">
       {/* Animated background */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-40 -right-40 h-[500px] w-[500px] animate-pulse rounded-full bg-gradient-to-br from-violet-600/20 to-fuchsia-600/20 blur-3xl" />
@@ -214,7 +214,7 @@ function SignupInner() {
       {/* Grid overlay */}
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]" />
 
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-4xl items-center justify-center px-6 sm:px-8 py-12">
+      <div className="relative z-10 mx-auto flex min-h-[100dvh] max-w-4xl items-center justify-center px-4 sm:px-8 py-10 sm:py-12">
         <div className="w-full max-w-lg">
           {/* Header */}
           <div className="mb-8 text-center">
@@ -609,7 +609,7 @@ export default function SignupPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[#060b1a]">
+        <div className="flex min-h-[100dvh] items-center justify-center bg-[#060b1a] px-4">
           <div className="flex items-center gap-2 text-slate-400">
             <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" opacity="0.25" />

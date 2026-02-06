@@ -216,17 +216,17 @@ export function DataTable({ data, onAdd, onEdit, onDelete, onExport, loading = f
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <CardTitle className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5" />
             Marketing Daten Tabelle
           </CardTitle>
-          <div className="flex items-center gap-2">
-            <Button onClick={onExport} variant="outline" size="sm">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+            <Button onClick={onExport} variant="outline" size="sm" className="w-full sm:w-auto">
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
-            <Button onClick={() => setIsCreateDialogOpen(true)} size="sm">
+            <Button onClick={() => setIsCreateDialogOpen(true)} size="sm" className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" />
               Neue Daten
             </Button>
@@ -234,17 +234,17 @@ export function DataTable({ data, onAdd, onEdit, onDelete, onExport, loading = f
         </div>
         
         {/* Filters */}
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1">
             <Input
               placeholder="Suchen..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="max-w-sm"
+              className="w-full sm:max-w-sm"
             />
           </div>
           <Select value={filterCategory} onValueChange={setFilterCategory}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Kategorie" />
             </SelectTrigger>
             <SelectContent>
@@ -255,7 +255,7 @@ export function DataTable({ data, onAdd, onEdit, onDelete, onExport, loading = f
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>

@@ -1,15 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { 
   Plus, 
   Calendar, 
-  Clock,
-  User,
   AlertCircle,
   CheckCircle,
   Eye,
@@ -277,7 +275,6 @@ function KanbanColumn({
     setHoverIndex(null)
     
     const taskId = e.dataTransfer.getData('text/plain')
-    const taskData = e.dataTransfer.getData('application/json')
     
     if (taskId && onTaskMove) {
       onTaskMove(taskId, status, index)
@@ -287,7 +284,8 @@ function KanbanColumn({
   return (
     <div 
       className={cn(
-        "rounded-lg p-4 transition-all",
+        // Mobile: slightly tighter padding; desktop keeps roomy column cards.
+        "rounded-xl p-3 sm:p-4 transition-all",
         config.bgColor, 
         config.borderColor, 
         "border",
@@ -315,7 +313,7 @@ function KanbanColumn({
         </Button>
       </div>
 
-      <div className="space-y-2 min-h-[200px]" ref={listRef}>
+      <div className="space-y-2 min-h-[180px] sm:min-h-[200px]" ref={listRef}>
         {tasks.map((task) => (
           <TaskCard
             key={task.id}
@@ -339,17 +337,15 @@ function KanbanColumn({
   )
 }
 
-function KanbanBoard({ tasks, onTaskMove, onTaskClick, onCreateTask, onEditTask, onDeleteTask }: KanbanBoardProps) {
+function KanbanBoard({ tasks, onTaskMove, onTaskClick, onCreateTask }: KanbanBoardProps) {
   const statuses: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'REVIEW', 'APPROVED', 'PUBLISHED', 'ARCHIVED']
   const { toast } = useToast()
-  const [draggedTask, setDraggedTask] = React.useState<ContentTask | null>(null)
 
   const getTasksByStatus = (status: TaskStatus) => {
     return tasks.filter(task => task.status === status)
   }
 
   const handleDragStart = (task: ContentTask) => {
-    setDraggedTask(task)
     console.log('🎯 Drag started:', task.title)
   }
 
@@ -365,13 +361,31 @@ function KanbanBoard({ tasks, onTaskMove, onTaskClick, onCreateTask, onEditTask,
       
       onTaskMove?.(taskId, newStatus, newIndex)
     }
-    setDraggedTask(null)
   }
 
   return (
     <div className="w-full">
-      <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {statuses.map(status => (
+      {/* Mobile: horizontal swipe columns (prevents an endless vertical list). */}
+      <div className="lg:hidden -mx-4 px-4 overflow-x-auto mk-no-scrollbar snap-x snap-mandatory">
+        <div className="flex gap-4 min-w-max pb-2">
+          {statuses.map((status) => (
+            <div key={status} className="w-[86vw] max-w-[420px] flex-shrink-0 snap-start">
+              <KanbanColumn
+                status={status}
+                tasks={getTasksByStatus(status)}
+                onCreateTask={onCreateTask}
+                onTaskClick={onTaskClick}
+                onTaskMove={handleTaskMove}
+                onDragStart={handleDragStart}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Desktop/tablet: multi-column grid */}
+      <div className="hidden lg:grid lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        {statuses.map((status) => (
           <KanbanColumn
             key={status}
             status={status}

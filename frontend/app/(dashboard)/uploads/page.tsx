@@ -173,6 +173,8 @@ export default function UploadsPage() {
   const [categoryValueMap, setCategoryValueMap] = React.useState<Record<string, string>>({})
   const [bulkCategoryTarget, setBulkCategoryTarget] = React.useState<string>("")
   const [circleSize, setCircleSize] = React.useState<number>(520)
+  const [isSmall, setIsSmall] = React.useState(false)
+  const [showAllPreviewCols, setShowAllPreviewCols] = React.useState(false)
 
   const { uploads, isLoading, refresh, uploadFile, previewFile } = useUploadsApi()
   const { jobs, isLoading: jobsLoading, refresh: refreshJobs } = useJobsApi()
@@ -190,6 +192,17 @@ export default function UploadsPage() {
     return () => window.removeEventListener("resize", calc)
   }, [])
 
+  // Responsive UI helpers
+  React.useEffect(() => {
+    try {
+      const mql = window.matchMedia("(max-width: 640px)")
+      const apply = () => setIsSmall(mql.matches)
+      apply()
+      mql.addEventListener?.("change", apply)
+      return () => mql.removeEventListener?.("change", apply)
+    } catch {}
+  }, [])
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.12 } },
@@ -203,6 +216,7 @@ export default function UploadsPage() {
 
   const loadPreview = React.useCallback(
     async (file: File) => {
+      setShowAllPreviewCols(false)
       setPreview(null)
       setCategoryValueMap({})
       setBulkCategoryTarget("")
@@ -241,6 +255,7 @@ export default function UploadsPage() {
   }
 
   const selectedIsTabular = Boolean(selectedFile && isTabularFile(selectedFile.name))
+  const previewCols = isSmall && !showAllPreviewCols ? 4 : 8
 
   const platformCategoryOptions = React.useMemo(() => {
     return (userCategories || [])
@@ -835,12 +850,17 @@ export default function UploadsPage() {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" className="glass-card" onClick={onPick} disabled={uploading || previewLoading}>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <Button
+                variant="outline"
+                className="glass-card w-full sm:w-auto"
+                onClick={onPick}
+                disabled={uploading || previewLoading}
+              >
                 Datei wählen
               </Button>
               <Button
-                className="bg-kaboom-red hover:bg-red-600"
+                className="bg-kaboom-red hover:bg-red-600 w-full sm:w-auto"
                 onClick={doImport}
                 disabled={uploading || previewLoading || !canProceed}
                 title={
@@ -898,12 +918,24 @@ export default function UploadsPage() {
                 ))}
               </div>
 
-              <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Vorschau</div>
-              <div className="overflow-auto rounded-lg border border-slate-200/60 dark:border-slate-800">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Vorschau</div>
+                {isSmall && preview.headers.length > 4 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="glass-card"
+                    onClick={() => setShowAllPreviewCols((v) => !v)}
+                  >
+                    {showAllPreviewCols ? "Weniger Spalten" : "Mehr Spalten"}
+                  </Button>
+                )}
+              </div>
+              <div className="overflow-auto mk-no-scrollbar rounded-lg border border-slate-200/60 dark:border-slate-800">
                 <table className="min-w-full text-xs">
                   <thead className="bg-slate-50/70 dark:bg-slate-900/60">
                     <tr>
-                      {preview.headers.slice(0, 8).map((h) => (
+                      {preview.headers.slice(0, previewCols).map((h) => (
                         <th key={h} className="px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-200">
                           {h}
                         </th>
@@ -913,7 +945,7 @@ export default function UploadsPage() {
                   <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800">
                     {preview.samples.map((row, idx) => (
                       <tr key={idx}>
-                        {preview.headers.slice(0, 8).map((h) => (
+                        {preview.headers.slice(0, previewCols).map((h) => (
                           <td key={h} className="px-4 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">
                             {row?.[h] != null ? String(row[h]).slice(0, 120) : ""}
                           </td>

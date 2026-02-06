@@ -33,7 +33,7 @@ export default function ActivityDetailPage() {
 
   if (!activity) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-[100dvh] flex items-center justify-center p-4">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white mb-4">
             Aktivität nicht gefunden
@@ -87,24 +87,25 @@ export default function ActivityDetailPage() {
   const [tab, setTab] = useState("overview")
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 p-6">
+    <div className="min-h-[100dvh] p-4 sm:p-6 md:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <Button 
             variant="outline" 
             onClick={() => router.back()}
-            className="border-gray-300 dark:border-slate-600"
+            className="border-gray-300 dark:border-slate-600 w-full sm:w-auto justify-center sm:justify-start"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Zurück zu Activities
+            <span className="sm:hidden">Zurück</span>
+            <span className="hidden sm:inline">Zurück zu Activities</span>
           </Button>
           
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button 
               variant="outline" 
               onClick={handleEdit}
-              className="border-gray-300 dark:border-slate-600"
+              className="border-gray-300 dark:border-slate-600 w-full sm:w-auto"
             >
               <Edit className="w-4 h-4 mr-2" />
               Bearbeiten
@@ -112,7 +113,7 @@ export default function ActivityDetailPage() {
             <Button 
               variant="outline" 
               onClick={handleDelete}
-              className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+              className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20 w-full sm:w-auto"
             >
               <Trash2 className="w-4 h-4 mr-2" />
               Löschen
@@ -123,12 +124,12 @@ export default function ActivityDetailPage() {
         {/* Title Section */}
         <Card className="bg-white dark:bg-slate-800 border-0 shadow-lg">
           <CardHeader className="pb-4">
-            <div className="flex items-start justify-between">
-              <div className="space-y-3">
-                <CardTitle className="text-3xl font-bold text-slate-800 dark:text-white">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div className="space-y-3 min-w-0">
+                <CardTitle className="text-xl sm:text-3xl font-bold text-slate-800 dark:text-white break-words">
                   {activity.title}
                 </CardTitle>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge className={categoryColors[String(activity.category)] || ""}>
                     {activity.category}
                   </Badge>
@@ -142,8 +143,8 @@ export default function ActivityDetailPage() {
                   )}
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-slate-800 dark:text-white">
+              <div className="text-left sm:text-right">
+                <div className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-white">
                   {activity.budget || 'N/A'}
                 </div>
                 <div className="text-sm text-slate-500 dark:text-slate-400">
@@ -153,16 +154,16 @@ export default function ActivityDetailPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-lg text-slate-600 dark:text-slate-300 leading-relaxed">
+            <p className="text-sm sm:text-lg text-slate-600 dark:text-slate-300 leading-relaxed">
               {activity.description}
             </p>
           </CardContent>
         </Card>
 
         {/* Details Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
           <Card className="bg-white dark:bg-slate-800 border-0 shadow-lg">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3 mb-3">
                 <Calendar className="w-5 h-5 text-blue-600" />
                 <h3 className="font-semibold text-slate-800 dark:text-white">Datum</h3>
@@ -172,7 +173,7 @@ export default function ActivityDetailPage() {
           </Card>
 
           <Card className="bg-white dark:bg-slate-800 border-0 shadow-lg">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3 mb-3">
                 <DollarSign className="w-5 h-5 text-green-600" />
                 <h3 className="font-semibold text-slate-800 dark:text-white">Budget</h3>
@@ -182,7 +183,7 @@ export default function ActivityDetailPage() {
           </Card>
 
           <Card className="bg-white dark:bg-slate-800 border-0 shadow-lg">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center gap-3 mb-3">
                 <User className="w-5 h-5 text-purple-600" />
                 <h3 className="font-semibold text-slate-800 dark:text-white">Zugewiesen an</h3>

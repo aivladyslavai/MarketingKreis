@@ -177,8 +177,8 @@ export default function CalendarPage() {
             <h1 className="text-2xl sm:text-3xl font-semibold text-white">Kalender</h1>
             <p className="text-slate-300 text-sm">Marketing Termine, Events und Aufgaben</p>
           </div>
-          <div className="flex gap-2" data-tour="calendar-toolbar">
-            <Button size="sm" variant="outline" className="glass-card" onClick={() => openModal({
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto" data-tour="calendar-toolbar">
+            <Button size="sm" variant="outline" className="glass-card w-full sm:w-auto" onClick={() => openModal({
               type: "custom",
               title: "Vorlagen",
               content: (
@@ -190,7 +190,7 @@ export default function CalendarPage() {
                 />
               )
             })}>Vorlagen</Button>
-            <Button size="sm" className="bg-white text-slate-900 hover:bg-white/90" onClick={() => openModal({
+            <Button size="sm" className="bg-white text-slate-900 hover:bg-white/90 w-full sm:w-auto" onClick={() => openModal({
               type: "custom",
               title: "Neue Aktivität",
               content: (

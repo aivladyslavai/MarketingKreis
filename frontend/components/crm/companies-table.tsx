@@ -284,30 +284,30 @@ export function CompaniesTable({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <CardTitle className="flex items-center gap-2">
             <Building2 className="h-5 w-5" />
             Unternehmen
           </CardTitle>
-          <Button onClick={() => setIsCreateDialogOpen(true)} size="sm">
+          <Button onClick={() => setIsCreateDialogOpen(true)} size="sm" className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             Neues Unternehmen
           </Button>
         </div>
         
         {/* Filters */}
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
               placeholder="Unternehmen suchen..."
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="pl-9 max-w-sm"
+              className="pl-9 w-full sm:max-w-sm"
             />
           </div>
           <Select value={filterIndustry} onValueChange={setFilterIndustry}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Branche" />
             </SelectTrigger>
             <SelectContent>
@@ -318,7 +318,7 @@ export function CompaniesTable({
             </SelectContent>
           </Select>
           <Select value={filterSize} onValueChange={setFilterSize}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Größe" />
             </SelectTrigger>
             <SelectContent>
@@ -342,11 +342,11 @@ export function CompaniesTable({
               <TableHeader>
                 <TableRow>
                   <TableHead>Unternehmen</TableHead>
-                  <TableHead>Branche</TableHead>
-                  <TableHead>Größe</TableHead>
-                  <TableHead>Standort</TableHead>
-                  <TableHead>Kontakte</TableHead>
-                  <TableHead>Deals</TableHead>
+                  <TableHead className="hidden lg:table-cell">Branche</TableHead>
+                  <TableHead className="hidden lg:table-cell">Größe</TableHead>
+                  <TableHead className="hidden lg:table-cell">Standort</TableHead>
+                  <TableHead className="hidden lg:table-cell">Kontakte</TableHead>
+                  <TableHead className="hidden lg:table-cell">Deals</TableHead>
                   <TableHead className="text-right">Wert</TableHead>
                   <TableHead className="w-10"></TableHead>
                 </TableRow>
@@ -364,30 +364,56 @@ export function CompaniesTable({
                   filteredCompanies.map((company) => (
                     <TableRow key={company.id} className="hover:bg-muted/50">
                       <TableCell>
-                        <div className="space-y-1">
-                          <div className="font-medium">{company.name}</div>
+                        <div className="space-y-1 min-w-0">
+                          <div className="font-medium truncate">{company.name}</div>
                           {company.website && (
-                            <div className="flex items-center text-sm text-muted-foreground">
-                              <Globe className="h-3 w-3 mr-1" />
+                            <div className="flex items-center text-xs sm:text-sm text-muted-foreground min-w-0">
+                              <Globe className="h-3 w-3 mr-1 flex-shrink-0" />
                               <a 
                                 href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="hover:underline"
+                                className="hover:underline truncate"
                               >
                                 {company.website}
                               </a>
                             </div>
                           )}
+                          {/* Mobile/tablet condensed details */}
+                          <div className="lg:hidden space-y-1 text-[11px] text-muted-foreground">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              {company.industry ? <span>{company.industry}</span> : null}
+                              {company.size ? (
+                                <>
+                                  <span className="opacity-60">·</span>
+                                  <span>{company.size}</span>
+                                </>
+                              ) : null}
+                            </div>
+                            {company.city && company.country ? (
+                              <div className="flex items-center gap-1 min-w-0">
+                                <MapPin className="h-3 w-3 flex-shrink-0" />
+                                <span className="truncate">{company.city}, {company.country}</span>
+                              </div>
+                            ) : null}
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <span className="inline-flex items-center gap-1">
+                                <Users className="h-3 w-3" /> {company.contactsCount}
+                              </span>
+                              <span className="inline-flex items-center gap-1">
+                                <DollarSign className="h-3 w-3" /> {company.dealsCount}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </TableCell>
-                      <TableCell>{company.industry}</TableCell>
-                      <TableCell>
+                      <TableCell className="hidden lg:table-cell">{company.industry}</TableCell>
+                      <TableCell className="hidden lg:table-cell">
                         <Badge className={SIZE_COLORS[company.size]}>
                           {company.size}
                         </Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden lg:table-cell">
                         {company.city && company.country ? (
                           <div className="flex items-center text-sm">
                             <MapPin className="h-3 w-3 mr-1 text-muted-foreground" />
@@ -397,13 +423,13 @@ export function CompaniesTable({
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden lg:table-cell">
                         <div className="flex items-center">
                           <Users className="h-3 w-3 mr-1 text-muted-foreground" />
                           {company.contactsCount}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden lg:table-cell">
                         <div className="flex items-center">
                           <DollarSign className="h-3 w-3 mr-1 text-muted-foreground" />
                           {company.dealsCount}
@@ -449,7 +475,7 @@ export function CompaniesTable({
 
       {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[min(92vw,700px)] sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Neues Unternehmen hinzufügen</DialogTitle>
             <DialogDescription>
@@ -458,7 +484,7 @@ export function CompaniesTable({
           </DialogHeader>
           <div className="grid gap-4 py-4">
             {/* Basic Info */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Unternehmensname *</Label>
                 <Input
@@ -479,7 +505,7 @@ export function CompaniesTable({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="industry">Branche *</Label>
                 <Select value={formData.industry} onValueChange={(value) => setFormData(prev => ({ ...prev, industry: value }))}>
@@ -519,7 +545,7 @@ export function CompaniesTable({
             </div>
 
             {/* Contact Info */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="phone">Telefon</Label>
                 <Input
@@ -619,7 +645,7 @@ export function CompaniesTable({
 
       {/* Edit Dialog */}
       <Dialog open={!!editingCompany} onOpenChange={() => { setEditingCompany(null); resetForm(); }}>
-        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[min(92vw,700px)] sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Unternehmen bearbeiten</DialogTitle>
             <DialogDescription>
@@ -628,7 +654,7 @@ export function CompaniesTable({
           </DialogHeader>
           <div className="grid gap-4 py-4">
             {/* Same form fields as create dialog */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-name">Unternehmensname *</Label>
                 <Input
@@ -649,7 +675,7 @@ export function CompaniesTable({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-industry">Branche *</Label>
                 <Select value={formData.industry} onValueChange={(value) => setFormData(prev => ({ ...prev, industry: value }))}>
@@ -688,7 +714,7 @@ export function CompaniesTable({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-phone">Telefon</Label>
                 <Input
@@ -787,7 +813,7 @@ export function CompaniesTable({
 
       {/* View Dialog */}
       <Dialog open={!!viewingCompany} onOpenChange={() => setViewingCompany(null)}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="w-[min(92vw,600px)] sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>
               <span className="flex items-center gap-2">
@@ -798,7 +824,7 @@ export function CompaniesTable({
           </DialogHeader>
           {viewingCompany && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-muted-foreground">Branche</Label>
                   <p>{viewingCompany.industry}</p>
@@ -826,7 +852,7 @@ export function CompaniesTable({
               )}
 
               {(viewingCompany.phone || viewingCompany.email) && (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {viewingCompany.phone && (
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Telefon</Label>
@@ -859,7 +885,7 @@ export function CompaniesTable({
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-muted-foreground">Kontakte</Label>
                   <p className="text-2xl font-bold">{viewingCompany.contactsCount}</p>

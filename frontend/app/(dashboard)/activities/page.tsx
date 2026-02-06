@@ -224,7 +224,7 @@ export default function ActivitiesPage() {
                   <button
                     key={k}
                     onClick={() => setPreset(k as any)}
-                    className={`px-2.5 sm:px-3 h-8 sm:h-9 text-xs sm:text-sm whitespace-nowrap ${preset === k ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
+                    className={`px-2.5 sm:px-3 h-10 sm:h-9 text-xs sm:text-sm whitespace-nowrap ${preset === k ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
                   >
                     {label}
                   </button>
@@ -236,7 +236,7 @@ export default function ActivitiesPage() {
             <div className="flex flex-wrap items-center gap-2" data-tour="activities-actions">
               <button
                 onClick={() => setCompact(c => !c)}
-                className={`h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg border border-white/20 text-xs sm:text-sm ${compact ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
+                className={`h-10 sm:h-9 px-2.5 sm:px-3 rounded-lg border border-white/20 text-xs sm:text-sm ${compact ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
               >
                 {compact ? "Kompakt" : "Erweitert"}
               </button>

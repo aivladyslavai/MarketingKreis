@@ -270,30 +270,30 @@ export function ContactsTable({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
             Kontakte
           </CardTitle>
-          <Button onClick={() => setIsCreateDialogOpen(true)} size="sm">
+          <Button onClick={() => setIsCreateDialogOpen(true)} size="sm" className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             Neuer Kontakt
           </Button>
         </div>
         
         {/* Filters */}
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
               placeholder="Kontakte suchen..."
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="pl-9 max-w-sm"
+              className="pl-9 w-full sm:max-w-sm"
             />
           </div>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -317,11 +317,11 @@ export function ContactsTable({
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>E-Mail</TableHead>
-                  <TableHead>Position</TableHead>
-                  <TableHead>Unternehmen</TableHead>
+                  <TableHead className="hidden lg:table-cell">E-Mail</TableHead>
+                  <TableHead className="hidden lg:table-cell">Position</TableHead>
+                  <TableHead className="hidden lg:table-cell">Unternehmen</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Deals</TableHead>
+                  <TableHead className="hidden lg:table-cell">Deals</TableHead>
                   <TableHead className="text-right">Wert</TableHead>
                   <TableHead className="w-10"></TableHead>
                 </TableRow>
@@ -339,17 +339,43 @@ export function ContactsTable({
                   filteredContacts.map((contact) => (
                     <TableRow key={contact.id} className="hover:bg-muted/50">
                       <TableCell>
-                        <div className="space-y-1">
-                          <div className="font-medium">{contact.firstName} {contact.lastName}</div>
+                        <div className="space-y-1 min-w-0">
+                          <div className="font-medium truncate">{contact.firstName} {contact.lastName}</div>
                           {contact.phone && (
-                            <div className="flex items-center text-sm text-muted-foreground">
-                              <Phone className="h-3 w-3 mr-1" />
+                            <div className="flex items-center text-xs sm:text-sm text-muted-foreground">
+                              <Phone className="h-3 w-3 mr-1 flex-shrink-0" />
                               {contact.phone}
                             </div>
                           )}
+                          {/* Mobile/tablet condensed details */}
+                          <div className="lg:hidden space-y-1 text-[11px] text-muted-foreground">
+                            <div className="flex items-center gap-1 min-w-0">
+                              <Mail className="h-3 w-3 flex-shrink-0" />
+                              <a href={`mailto:${contact.email}`} className="hover:underline truncate">
+                                {contact.email}
+                              </a>
+                            </div>
+                            {contact.position ? (
+                              <div className="truncate">{contact.position}</div>
+                            ) : null}
+                            {contact.company?.name ? (
+                              <div className="flex items-center gap-1 min-w-0">
+                                <Building2 className="h-3 w-3 flex-shrink-0" />
+                                <span className="truncate">{contact.company.name}</span>
+                              </div>
+                            ) : null}
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <span className="inline-flex items-center gap-1">
+                                <DollarSign className="h-3 w-3" /> {contact.dealsCount}
+                              </span>
+                              <span className="inline-flex items-center gap-1">
+                                Wert: {formatCurrency(contact.totalValue)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden lg:table-cell">
                         <div className="flex items-center">
                           <Mail className="h-3 w-3 mr-1 text-muted-foreground" />
                           <a 
@@ -360,8 +386,8 @@ export function ContactsTable({
                           </a>
                         </div>
                       </TableCell>
-                      <TableCell>{contact.position || '-'}</TableCell>
-                      <TableCell>
+                      <TableCell className="hidden lg:table-cell">{contact.position || '-'}</TableCell>
+                      <TableCell className="hidden lg:table-cell">
                         {contact.company ? (
                           <div className="flex items-center text-sm">
                             <Building2 className="h-3 w-3 mr-1 text-muted-foreground" />
@@ -379,7 +405,7 @@ export function ContactsTable({
                           {STATUS_LABELS[contact.status]}
                         </Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden lg:table-cell">
                         <div className="flex items-center">
                           <DollarSign className="h-3 w-3 mr-1 text-muted-foreground" />
                           {contact.dealsCount}
@@ -425,7 +451,7 @@ export function ContactsTable({
 
       {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[min(92vw,600px)] sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Neuen Kontakt hinzufügen</DialogTitle>
             <DialogDescription>
@@ -434,7 +460,7 @@ export function ContactsTable({
           </DialogHeader>
           <div className="grid gap-4 py-4">
             {/* Basic Info */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">Vorname *</Label>
                 <Input
@@ -455,7 +481,7 @@ export function ContactsTable({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="email">E-Mail *</Label>
                 <Input
@@ -477,7 +503,7 @@ export function ContactsTable({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="position">Position</Label>
                 <Select value={formData.position} onValueChange={(value) => setFormData(prev => ({ ...prev, position: value }))}>
@@ -508,7 +534,7 @@ export function ContactsTable({
             </div>
 
             {/* Company Info */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="companyName">Unternehmen</Label>
                 <Input
@@ -572,7 +598,7 @@ export function ContactsTable({
 
       {/* Edit Dialog */}
       <Dialog open={!!editingContact} onOpenChange={() => { setEditingContact(null); resetForm(); }}>
-        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[min(92vw,600px)] sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Kontakt bearbeiten</DialogTitle>
             <DialogDescription>
@@ -581,7 +607,7 @@ export function ContactsTable({
           </DialogHeader>
           <div className="grid gap-4 py-4">
             {/* Same form fields as create dialog */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-firstName">Vorname *</Label>
                 <Input
@@ -602,7 +628,7 @@ export function ContactsTable({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-email">E-Mail *</Label>
                 <Input
@@ -624,7 +650,7 @@ export function ContactsTable({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-position">Position</Label>
                 <Select value={formData.position} onValueChange={(value) => setFormData(prev => ({ ...prev, position: value }))}>
@@ -654,7 +680,7 @@ export function ContactsTable({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-companyName">Unternehmen</Label>
                 <Input
@@ -718,7 +744,7 @@ export function ContactsTable({
 
       {/* View Dialog */}
       <Dialog open={!!viewingContact} onOpenChange={() => setViewingContact(null)}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="w-[min(92vw,500px)] sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>
               <span className="flex items-center gap-2">
@@ -729,7 +755,7 @@ export function ContactsTable({
           </DialogHeader>
           {viewingContact && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-muted-foreground">E-Mail</Label>
                   <p>
@@ -788,7 +814,7 @@ export function ContactsTable({
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-muted-foreground">Deals</Label>
                   <p className="text-2xl font-bold">{viewingContact.dealsCount}</p>

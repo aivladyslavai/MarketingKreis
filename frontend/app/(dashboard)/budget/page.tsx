@@ -52,7 +52,7 @@ export default function BudgetPage() {
 
   if (loading || !budgetData) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16]">
+      <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16] overflow-x-hidden">
         <div className="p-6 sm:p-8 space-y-6">
           <Card className="glass-card">
             <CardHeader>
@@ -111,7 +111,7 @@ export default function BudgetPage() {
   const elFill = Math.round(((elasticity - 0) / (1.5 - 0)) * 100)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16]">
+    <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16] overflow-x-hidden">
       <div className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
       {/* Hero */}
       <motion.div
@@ -122,7 +122,7 @@ export default function BudgetPage() {
       >
         <div className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl animate-gradient-shift" />
         <div className="pointer-events-none absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-gradient-to-tr from-cyan-500/30 to-emerald-500/30 blur-3xl animate-gradient-shift" />
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-kaboom-red/30 to-blue-500/30 flex items-center justify-center border border-white/20 shadow-lg">
               <Wallet className="h-6 w-6 text-white" />
@@ -132,9 +132,17 @@ export default function BudgetPage() {
               <p className="text-slate-300 text-sm">Ziele, Verlauf und Verteilung über Kategorien</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="glass-card" onClick={refetch}><RefreshCw className="h-4 w-4 mr-2" /> Aktualisieren</Button>
-            <Button variant="outline" className="glass-card" onClick={()=> alert('Bearbeitung der Ziele – kommt bald')}>Ziele bearbeiten</Button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+            <Button variant="outline" className="glass-card w-full sm:w-auto" onClick={refetch}>
+              <RefreshCw className="h-4 w-4 mr-2" /> Aktualisieren
+            </Button>
+            <Button
+              variant="outline"
+              className="glass-card w-full sm:w-auto"
+              onClick={() => alert('Bearbeitung der Ziele – kommt bald')}
+            >
+              Ziele bearbeiten
+            </Button>
           </div>
         </div>
       </motion.div>
