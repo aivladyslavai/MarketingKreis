@@ -931,30 +931,67 @@ export default function UploadsPage() {
                   </Button>
                 )}
               </div>
-              <div className="overflow-auto mk-no-scrollbar rounded-lg border border-slate-200/60 dark:border-slate-800">
-                <table className="min-w-full text-xs">
-                  <thead className="bg-slate-50/70 dark:bg-slate-900/60">
-                    <tr>
-                      {preview.headers.slice(0, previewCols).map((h) => (
-                        <th key={h} className="px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-200">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800">
-                    {preview.samples.map((row, idx) => (
-                      <tr key={idx}>
+              {/* Mobile: cards (no horizontal table scroll). Desktop: table. */}
+              {isSmall ? (
+                <div className="space-y-2">
+                  {preview.samples.map((row, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 p-3"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                          Zeile {idx + 1}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {Math.min(previewCols, preview.headers.length)} Felder
+                        </div>
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {preview.headers.slice(0, previewCols).map((h) => {
+                          const raw = row?.[h]
+                          const v = raw != null ? String(raw).slice(0, 220) : ""
+                          return (
+                            <div key={h} className="flex items-start justify-between gap-3">
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 w-[44%] shrink-0 truncate">
+                                {h}
+                              </div>
+                              <div className="text-[11px] text-slate-800 dark:text-slate-200 flex-1 text-right break-words">
+                                {v || "—"}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="overflow-auto mk-no-scrollbar rounded-lg border border-slate-200/60 dark:border-slate-800">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-slate-50/70 dark:bg-slate-900/60">
+                      <tr>
                         {preview.headers.slice(0, previewCols).map((h) => (
-                          <td key={h} className="px-4 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                            {row?.[h] != null ? String(row[h]).slice(0, 120) : ""}
-                          </td>
+                          <th key={h} className="px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-200">
+                            {h}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800">
+                      {preview.samples.map((row, idx) => (
+                        <tr key={idx}>
+                          {preview.headers.slice(0, previewCols).map((h) => (
+                            <td key={h} className="px-4 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                              {row?.[h] != null ? String(row[h]).slice(0, 120) : ""}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Circle preview */}

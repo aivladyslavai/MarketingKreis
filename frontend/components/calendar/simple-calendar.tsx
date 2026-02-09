@@ -20,7 +20,9 @@ import {
 } from "lucide-react"
 import { 
   format, 
+  addDays,
   addMonths, 
+  subDays,
   subMonths, 
   startOfMonth, 
   endOfMonth,
@@ -35,6 +37,7 @@ import { getCategoryColor, type CategoryType } from "@/lib/colors"
 import { apiBase } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { type Activity } from "@/components/circle/radial-circle"
 // custom delayed tooltip implemented locally (no external popover)
 
@@ -62,6 +65,13 @@ export default function SimpleCalendarView({
   onDuplicateActivity,
 }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = React.useState(new Date())
+  const [isSmall, setIsSmall] = React.useState(false)
+  const [view, setView] = React.useState<"agenda" | "grid">(() => {
+    try {
+      if (typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches) return "agenda"
+    } catch {}
+    return "grid"
+  })
   const [selectedActivity, setSelectedActivity] = React.useState<Activity | null>(null)
   const [isEditing, setIsEditing] = React.useState(false)
   const [draft, setDraft] = React.useState<Activity | null>(null)
@@ -75,14 +85,55 @@ export default function SimpleCalendarView({
   const hoverTimerRef = React.useRef<NodeJS.Timeout | null>(null)
   const [openDayIso, setOpenDayIso] = React.useState<string | null>(null)
 
+  // Responsive helpers
+  React.useEffect(() => {
+    try {
+      const mql = window.matchMedia("(max-width: 640px)")
+      const apply = () => setIsSmall(mql.matches)
+      apply()
+      mql.addEventListener?.("change", apply)
+      return () => mql.removeEventListener?.("change", apply)
+    } catch {
+      return
+    }
+  }, [])
+
   const monthStart = startOfMonth(currentDate)
   const monthEnd = endOfMonth(currentDate)
   const calendarDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
+  const isoToDate = (iso: string) => {
+    const [y, m, d] = String(iso || "").split("-").map((x) => parseInt(x, 10))
+    return new Date(y || 1970, Math.max(0, (m || 1) - 1), d || 1)
+  }
+
+  const activitiesByIso = React.useMemo(() => {
+    const m = new Map<string, Activity[]>()
+    for (const a of activities || []) {
+      if (!(a as any)?.start) continue
+      const dt = (a.start instanceof Date ? a.start : new Date(a.start as any)) as Date
+      if (!Number.isFinite(dt.getTime())) continue
+      const iso = format(dt, "yyyy-MM-dd")
+      const list = m.get(iso)
+      if (list) list.push(a)
+      else m.set(iso, [a])
+    }
+    for (const list of m.values()) {
+      list.sort((aa, bb) => {
+        const ad = aa.start instanceof Date ? aa.start : new Date(aa.start as any)
+        const bd = bb.start instanceof Date ? bb.start : new Date(bb.start as any)
+        return (ad?.getTime?.() || 0) - (bd?.getTime?.() || 0)
+      })
+    }
+    return m
+  }, [activities])
+
   const getActivitiesForDate = (date: Date) => {
-    return activities.filter(activity => 
-      activity.start && isSameDay(new Date(activity.start), date)
-    )
+    try {
+      return activitiesByIso.get(format(date, "yyyy-MM-dd")) || []
+    } catch {
+      return []
+    }
   }
 
   const handlePrevMonth = () => {
@@ -101,6 +152,14 @@ export default function SimpleCalendarView({
     setAiSuggestion(null)
     setScope((activity as any).sourceId ? 'series' : 'series')
     onActivityClick?.(activity)
+  }
+
+  const closeDetails = () => {
+    setSelectedActivity(null)
+    setIsEditing(false)
+    setDraft(null)
+    setAiEnabled(false)
+    setAiSuggestion(null)
   }
 
   const handleCreateClick = (date: Date) => {
@@ -133,6 +192,20 @@ export default function SimpleCalendarView({
     })
   }
 
+  const agendaStart = React.useMemo(() => {
+    const d = new Date(currentDate)
+    d.setHours(0, 0, 0, 0)
+    return d
+  }, [currentDate])
+
+  const agendaDays = React.useMemo(() => {
+    // 7-day agenda window (mobile-friendly).
+    return Array.from({ length: 7 }, (_, i) => addDays(agendaStart, i))
+  }, [agendaStart])
+
+  const openDayDate = openDayIso ? isoToDate(openDayIso) : null
+  const openDayActivities = openDayDate ? getActivitiesForDate(openDayDate) : []
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -141,25 +214,63 @@ export default function SimpleCalendarView({
           <Button
             variant="outline"
             size="sm"
-            onClick={handlePrevMonth}
+            onClick={() => (view === "grid" ? handlePrevMonth() : setCurrentDate(subDays(currentDate, 1)))}
             className="w-7 h-7 sm:w-8 sm:h-8 p-0 shrink-0 glass-card"
+            aria-label={view === "grid" ? "Vorheriger Monat" : "Vorheriger Tag"}
           >
             <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
           </Button>
           <h2 className="text-lg sm:text-xl font-semibold text-center sm:text-left min-w-0">
-            {format(currentDate, 'MMMM yyyy', { locale: de })}
+            {view === "grid"
+              ? format(currentDate, "MMMM yyyy", { locale: de })
+              : format(currentDate, "EEE, dd.MM.yyyy", { locale: de })}
           </h2>
           <Button
             variant="outline"
             size="sm"
-            onClick={handleNextMonth}
+            onClick={() => (view === "grid" ? handleNextMonth() : setCurrentDate(addDays(currentDate, 1)))}
             className="w-7 h-7 sm:w-8 sm:h-8 p-0 shrink-0 glass-card"
+            aria-label={view === "grid" ? "Nächster Monat" : "Nächster Tag"}
           >
             <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
           </Button>
         </div>
         
         <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 shrink-0">
+          <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1 w-full xs:w-auto">
+            <button
+              type="button"
+              onClick={() => setView("agenda")}
+              className={cn(
+                "h-9 xs:h-9 flex-1 xs:flex-none px-3 rounded-lg text-xs font-semibold transition-colors",
+                view === "agenda" ? "bg-white/15 text-white" : "text-slate-300 hover:text-white"
+              )}
+              aria-pressed={view === "agenda"}
+            >
+              Agenda
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("grid")}
+              className={cn(
+                "h-9 xs:h-9 flex-1 xs:flex-none px-3 rounded-lg text-xs font-semibold transition-colors",
+                view === "grid" ? "bg-white/15 text-white" : "text-slate-300 hover:text-white"
+              )}
+              aria-pressed={view === "grid"}
+            >
+              Monat
+            </button>
+          </div>
+          {view === "agenda" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full xs:w-auto text-xs sm:text-sm glass-card"
+              onClick={() => setCurrentDate(new Date())}
+            >
+              Heute
+            </Button>
+          )}
           <Button 
             variant="outline" 
             size="sm" 
@@ -191,7 +302,135 @@ export default function SimpleCalendarView({
         </div>
       </div>
 
+      {/* Agenda (mobile-first) */}
+      {view === "agenda" && (
+        <Card className="glass-card">
+          <CardHeader className="p-3 sm:p-4 lg:p-6">
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <ActivityIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+              Agenda
+              <span className="ml-auto text-xs text-slate-400">
+                {format(agendaDays[0] || currentDate, "dd.MM")} –{" "}
+                {format(agendaDays[agendaDays.length - 1] || currentDate, "dd.MM", { locale: de })}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-2 sm:p-4 lg:p-6">
+            <div className="space-y-3">
+              {agendaDays.map((day) => {
+                const iso = format(day, "yyyy-MM-dd")
+                const dayActivities = getActivitiesForDate(day)
+                const dayLabel = format(day, "EEEE, dd.MM", { locale: de })
+                const today = isToday(day)
+
+                return (
+                  <div
+                    key={iso}
+                    className={cn(
+                      "rounded-2xl border border-white/10 bg-white/5 overflow-hidden",
+                      today && "ring-1 ring-blue-500/30"
+                    )}
+                  >
+                    <div
+                      className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-white/10 bg-slate-950/30"
+                      onClick={() => {
+                        setCurrentDate(day)
+                        setOpenDayIso(iso)
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-100 truncate">
+                          {dayLabel}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {today ? "Heute" : "Tippen für Details"}
+                          {dayActivities.length > 0 ? ` · ${dayActivities.length} Aktivitäten` : ""}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-9 p-0 glass-card flex-shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onCreateActivity?.(day)
+                        }}
+                        aria-label="Neue Aktivität"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="p-2 space-y-2">
+                      {dayActivities.length === 0 ? (
+                        <div className="rounded-xl border border-white/10 bg-slate-950/30 px-3 py-2 text-xs text-slate-400">
+                          Keine Aktivitäten
+                        </div>
+                      ) : (
+                        dayActivities.map((activity) => {
+                          const customColor = (activity as any).color as string | undefined
+                          const baseColor = customColor || getCategoryColor(activity.category as any)
+                          const primaryColor = baseColor
+                          const dt = activity.start instanceof Date ? activity.start : new Date(activity.start as any)
+                          const t = Number.isFinite(dt.getTime()) ? format(dt, "HH:mm") : ""
+                          const timeLabel = t && t !== "00:00" ? t : "Ganztägig"
+
+                          return (
+                            <button
+                              key={`agenda-${iso}-${activity.id}`}
+                              type="button"
+                              className="w-full text-left rounded-xl border border-white/10 bg-slate-950/30 hover:bg-slate-950/40 transition-colors px-3 py-2.5"
+                              style={{ borderLeft: `4px solid ${primaryColor}` }}
+                              onClick={() => handleActivityClick(activity)}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-block h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: primaryColor }} />
+                                    <span className="font-semibold text-sm text-slate-100 truncate">
+                                      {activity.title}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 text-[11px] text-slate-400 flex flex-wrap gap-x-2 gap-y-1">
+                                    <span className="text-slate-300">{timeLabel}</span>
+                                    <span className="opacity-60">·</span>
+                                    <span className="truncate">{String(activity.category || "").replace(/_/g, " ")}</span>
+                                    {activity.owner?.name ? (
+                                      <>
+                                        <span className="opacity-60">·</span>
+                                        <span className="truncate">{activity.owner.name}</span>
+                                      </>
+                                    ) : null}
+                                  </div>
+                                  {(activity as any)?.companyName && (
+                                    <div className="mt-1 text-[11px] text-slate-400 truncate">
+                                      {(activity as any).companyName}
+                                      {(activity as any).projectName ? ` · ${(activity as any).projectName}` : ""}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="text-[10px] rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-slate-200 flex-shrink-0">
+                                  {String((activity as any).status || "PLANNED")}
+                                </span>
+                              </div>
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Calendar Grid */}
+      {view === "grid" && (
       <Card className="glass-card">
         <CardHeader className="p-3 sm:p-4 lg:p-6">
           <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
@@ -234,7 +473,9 @@ export default function SimpleCalendarView({
                   )}
                   onClick={() => {
                     // Open inline day details popover instead of create form
-                    setOpenDayIso(format(day, 'yyyy-MM-dd'))
+                    const iso = format(day, "yyyy-MM-dd")
+                    setCurrentDate(day)
+                    setOpenDayIso(iso)
                   }}
                 >
                   <div className="flex items-center justify-between mb-1 sm:mb-2">
@@ -313,7 +554,7 @@ export default function SimpleCalendarView({
                   </div>
 
                   {/* Inline day details popover (opens on day click) */}
-                    {openDayIso === format(day, 'yyyy-MM-dd') && (
+                    {!isSmall && openDayIso === format(day, 'yyyy-MM-dd') && (
                     <div className="absolute inset-0 z-20 rounded-md sm:rounded-lg border border-white/10 bg-slate-900/90 p-2 flex flex-col backdrop-blur-md">
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-xs sm:text-sm font-semibold">
@@ -372,18 +613,153 @@ export default function SimpleCalendarView({
           </div>
         </CardContent>
       </Card>
+      )}
+
+      {/* Day sheet (mobile: replaces inline cell popover; agenda view: details) */}
+      {(isSmall || view === "agenda") && (
+        <Dialog
+          open={!!openDayIso}
+          onOpenChange={(o) => {
+            if (!o) setOpenDayIso(null)
+          }}
+        >
+          <DialogContent className="bg-slate-950/95 border-white/10 text-slate-100 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-base font-semibold truncate">
+                  {openDayDate ? format(openDayDate, "EEEE, dd.MM.yyyy", { locale: de }) : "Tag"}
+                </div>
+                <div className="text-xs text-slate-400">
+                  {openDayActivities.length > 0 ? `${openDayActivities.length} Aktivitäten` : "Keine Aktivitäten"}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-10 w-10 p-0 glass-card"
+                  onClick={() => {
+                    if (openDayDate) onCreateActivity?.(openDayDate)
+                  }}
+                  aria-label="Neue Aktivität"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-10 w-10 p-0 glass-card"
+                  onClick={() => setOpenDayIso(null)}
+                  aria-label="Schließen"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {openDayActivities.length === 0 ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-slate-300">
+                  Keine Aktivitäten an diesem Tag.
+                </div>
+              ) : (
+                openDayActivities.map((activity) => {
+                  const customColor = (activity as any).color as string | undefined
+                  const baseColor = customColor || getCategoryColor(activity.category as any)
+                  const primaryColor = baseColor
+                  const dt = activity.start instanceof Date ? activity.start : new Date(activity.start as any)
+                  const t = Number.isFinite(dt.getTime()) ? format(dt, "HH:mm") : ""
+                  const timeLabel = t && t !== "00:00" ? t : "Ganztägig"
+
+                  return (
+                    <button
+                      key={`day-${activity.id}`}
+                      type="button"
+                      className="w-full text-left rounded-xl border border-white/10 bg-white/5 hover:bg-white/8 transition-colors px-3 py-3"
+                      style={{ borderLeft: `4px solid ${primaryColor}` }}
+                      onClick={() => {
+                        setOpenDayIso(null)
+                        handleActivityClick(activity)
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-block h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: primaryColor }} />
+                            <span className="font-semibold text-sm text-slate-100 truncate">{activity.title}</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-400 flex flex-wrap gap-x-2 gap-y-1">
+                            <span className="text-slate-300">{timeLabel}</span>
+                            <span className="opacity-60">·</span>
+                            <span className="truncate">{String(activity.category || "").replace(/_/g, " ")}</span>
+                            {(activity as any)?.companyName ? (
+                              <>
+                                <span className="opacity-60">·</span>
+                                <span className="truncate">{(activity as any).companyName}</span>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                        <span className="text-[10px] rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-slate-200 flex-shrink-0">
+                          {String((activity as any).status || "PLANNED")}
+                        </span>
+                      </div>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Activity Details Panel */}
       {selectedActivity && (
-        <Card className="relative overflow-hidden rounded-2xl border-white/10 bg-gradient-to-br from-slate-950/70 via-slate-900/60 to-slate-950/70 shadow-[0_0_40px_-10px_rgba(59,130,246,.45)] ring-1 ring-white/10">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(600px_200px_at_0%_0%,rgba(59,130,246,.12),transparent_60%)]" />
-          <CardHeader className="relative p-5 md:p-6 pb-3 md:pb-4">
-            <CardTitle className="flex items-center gap-2 text-slate-100">
-              <Sparkles className="h-4 w-4 text-blue-400" />
-              Aktivität Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="relative p-5 md:p-8 pt-2 md:pt-3">
+        <>
+          {/* Mobile: backdrop + bottom-sheet details */}
+          {isSmall && (
+            <div className="fixed inset-0 z-[110] bg-black/50" onClick={closeDetails} />
+          )}
+          <Card
+            className={cn(
+              "relative overflow-hidden rounded-2xl border-white/10 bg-gradient-to-br from-slate-950/70 via-slate-900/60 to-slate-950/70 shadow-[0_0_40px_-10px_rgba(59,130,246,.45)] ring-1 ring-white/10 flex flex-col",
+              isSmall
+                ? "fixed inset-x-0 bottom-0 z-[120] max-h-[75dvh] rounded-t-2xl rounded-b-none border-b-0"
+                : ""
+            )}
+          >
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(600px_200px_at_0%_0%,rgba(59,130,246,.12),transparent_60%)]" />
+            <CardHeader
+              className={cn(
+                "relative p-5 md:p-6 pb-3 md:pb-4",
+                isSmall && "shrink-0 border-b border-white/10 bg-slate-950/80 backdrop-blur"
+              )}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="flex items-center gap-2 text-slate-100">
+                  <Sparkles className="h-4 w-4 text-blue-400" />
+                  Aktivität Details
+                </CardTitle>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-10 w-10 p-0 glass-card border-white/15 bg-white/5"
+                  onClick={closeDetails}
+                  aria-label="Schließen"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent
+              className={cn(
+                "relative p-5 md:p-8 pt-2 md:pt-3",
+                isSmall && "flex-1 overflow-auto pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+              )}
+            >
             <div className="space-y-6">
               <div>
                 {isEditing ? (
@@ -734,8 +1110,9 @@ export default function SimpleCalendarView({
                 )}
               </div>
             </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   )

@@ -50,6 +50,7 @@ export default function AdminPage() {
   const [deletingUserId, setDeletingUserId] = React.useState<number | null>(null)
   const [viewport, setViewport] = React.useState<{ w: number; h: number; dpr: number; online: boolean }>({ w: 0, h: 0, dpr: 1, online: true })
   const prefersDark = typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : false
+  const isMobile = viewport.w > 0 && viewport.w < 640
 
   // Redirect non-admins away from this page
   React.useEffect(() => {
@@ -669,18 +670,10 @@ export default function AdminPage() {
               ) : jobs.length === 0 ? (
                 <div className="py-6 sm:py-8 text-xs sm:text-sm text-slate-500">Keine Jobs</div>
               ) : (
-                <div className="overflow-x-auto rounded-xl sm:rounded-2xl border border-white/10 -mx-1 sm:mx-0">
-                  <table className="w-full text-xs sm:text-sm min-w-[500px]">
-                    <thead className="bg-white/5">
-                      <tr className="text-left text-slate-400 uppercase text-[10px] sm:text-xs tracking-wider">
-                        <th className="py-2 sm:py-4 px-2 sm:px-5 font-medium">ID</th>
-                        <th className="py-2 sm:py-4 px-2 sm:px-5 font-medium">Typ</th>
-                        <th className="py-2 sm:py-4 px-2 sm:px-5 font-medium">Status</th>
-                        <th className="py-2 sm:py-4 px-2 sm:px-5 font-medium hidden sm:table-cell">Fortschritt</th>
-                        <th className="py-2 sm:py-4 px-2 sm:px-5 font-medium">Erstellt</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/10">
+                <>
+                  {/* Mobile: cards (no horizontal scroll) */}
+                  {isMobile ? (
+                    <div className="space-y-2">
                       {jobs.map((j) => {
                         const status = String(j.status || "").toLowerCase()
                         const statusClass =
@@ -689,36 +682,90 @@ export default function AdminPage() {
                           status === "failed" ? "bg-red-500/15 text-red-300 border-red-500/30" :
                           "bg-slate-500/15 text-slate-300 border-slate-500/30"
                         return (
-                          <tr key={j.id} className="hover:bg-white/5 even:bg-white/5 transition-colors">
-                            <td className="py-2 sm:py-5 px-2 sm:px-5 font-mono text-[10px] sm:text-xs text-slate-400">{j.id}</td>
-                            <td className="py-2 sm:py-5 px-2 sm:px-5">
-                              <span className="inline-flex items-center gap-1 sm:gap-2 rounded-full border border-white/10 bg-white/5 px-1.5 sm:px-3 py-0.5 sm:py-1">
-                                <span className="h-1 w-1 sm:h-1.5 sm:w-1.5 rounded-full bg-slate-400" />
-                                <span className="text-slate-200 text-[10px] sm:text-sm truncate max-w-[60px] sm:max-w-none">{j.type}</span>
-                              </span>
-                            </td>
-                            <td className="py-2 sm:py-5 px-2 sm:px-5">
-                              <span className={`inline-flex items-center gap-0.5 sm:gap-1 rounded-full border px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs font-medium capitalize ${statusClass}`}>
-                                {status === "processing" && <span className="h-1 w-1 sm:h-1.5 sm:w-1.5 rounded-full bg-blue-400 animate-pulse" />}
-                                {j.status}
-                              </span>
-                            </td>
-                            <td className="py-2 sm:py-5 px-2 sm:px-5 hidden sm:table-cell">
-                              {typeof j.progress === "number" && status === "processing" ? (
-                                <div className="w-24 sm:w-48 h-1.5 sm:h-2 rounded-full bg-white/10 overflow-hidden">
+                          <div key={j.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="font-mono text-[10px] text-slate-400">#{j.id}</div>
+                                <div className="mt-1 flex items-center gap-2 min-w-0">
+                                  <span className="text-sm font-semibold text-slate-100 truncate">{j.type}</span>
+                                  <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize ${statusClass}`}>
+                                    {status === "processing" && <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />}
+                                    {j.status}
+                                  </span>
+                                </div>
+                                <div className="mt-1 text-[11px] text-slate-400">
+                                  Erstellt: {j.created_at ? new Date(j.created_at).toLocaleDateString("de-DE") : "—"}
+                                </div>
+                              </div>
+                            </div>
+                            {typeof j.progress === "number" && status === "processing" && (
+                              <div className="mt-3">
+                                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                                  <span>Fortschritt</span>
+                                  <span>{Math.round(j.progress)}%</span>
+                                </div>
+                                <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
                                   <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500" style={{ width: `${j.progress}%` }} />
                                 </div>
-                              ) : (
-                                <span className="text-slate-500">—</span>
-                              )}
-                            </td>
-                            <td className="py-2 sm:py-5 px-2 sm:px-5 text-slate-400 text-[10px] sm:text-sm whitespace-nowrap">{new Date(j.created_at).toLocaleDateString("de-DE")}</td>
-                          </tr>
+                              </div>
+                            )}
+                          </div>
                         )
                       })}
-                    </tbody>
-                  </table>
-                </div>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl sm:rounded-2xl border border-white/10 -mx-1 sm:mx-0">
+                      <table className="w-full text-xs sm:text-sm min-w-[500px]">
+                        <thead className="bg-white/5">
+                          <tr className="text-left text-slate-400 uppercase text-[10px] sm:text-xs tracking-wider">
+                            <th className="py-2 sm:py-4 px-2 sm:px-5 font-medium">ID</th>
+                            <th className="py-2 sm:py-4 px-2 sm:px-5 font-medium">Typ</th>
+                            <th className="py-2 sm:py-4 px-2 sm:px-5 font-medium">Status</th>
+                            <th className="py-2 sm:py-4 px-2 sm:px-5 font-medium hidden sm:table-cell">Fortschritt</th>
+                            <th className="py-2 sm:py-4 px-2 sm:px-5 font-medium">Erstellt</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {jobs.map((j) => {
+                            const status = String(j.status || "").toLowerCase()
+                            const statusClass =
+                              status === "completed" ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" :
+                              status === "processing" ? "bg-blue-500/15 text-blue-300 border-blue-500/30" :
+                              status === "failed" ? "bg-red-500/15 text-red-300 border-red-500/30" :
+                              "bg-slate-500/15 text-slate-300 border-slate-500/30"
+                            return (
+                              <tr key={j.id} className="hover:bg-white/5 even:bg-white/5 transition-colors">
+                                <td className="py-2 sm:py-5 px-2 sm:px-5 font-mono text-[10px] sm:text-xs text-slate-400">{j.id}</td>
+                                <td className="py-2 sm:py-5 px-2 sm:px-5">
+                                  <span className="inline-flex items-center gap-1 sm:gap-2 rounded-full border border-white/10 bg-white/5 px-1.5 sm:px-3 py-0.5 sm:py-1">
+                                    <span className="h-1 w-1 sm:h-1.5 sm:w-1.5 rounded-full bg-slate-400" />
+                                    <span className="text-slate-200 text-[10px] sm:text-sm truncate max-w-[60px] sm:max-w-none">{j.type}</span>
+                                  </span>
+                                </td>
+                                <td className="py-2 sm:py-5 px-2 sm:px-5">
+                                  <span className={`inline-flex items-center gap-0.5 sm:gap-1 rounded-full border px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs font-medium capitalize ${statusClass}`}>
+                                    {status === "processing" && <span className="h-1 w-1 sm:h-1.5 sm:w-1.5 rounded-full bg-blue-400 animate-pulse" />}
+                                    {j.status}
+                                  </span>
+                                </td>
+                                <td className="py-2 sm:py-5 px-2 sm:px-5 hidden sm:table-cell">
+                                  {typeof j.progress === "number" && status === "processing" ? (
+                                    <div className="w-24 sm:w-48 h-1.5 sm:h-2 rounded-full bg-white/10 overflow-hidden">
+                                      <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500" style={{ width: `${j.progress}%` }} />
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-500">—</span>
+                                  )}
+                                </td>
+                                <td className="py-2 sm:py-5 px-2 sm:px-5 text-slate-400 text-[10px] sm:text-sm whitespace-nowrap">{new Date(j.created_at).toLocaleDateString("de-DE")}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
@@ -935,107 +982,205 @@ export default function AdminPage() {
                   Keine Benutzer gefunden. Passe Filter oder Suche an.
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-lg sm:rounded-2xl border border-white/10 -mx-1 sm:mx-0">
-                  <table className="w-full text-xs sm:text-sm min-w-[600px]">
-                    <thead className="bg-white/5">
-                      <tr className="text-left text-slate-400 uppercase text-[10px] sm:text-xs tracking-wider">
-                        <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium">ID</th>
-                        <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium">E‑Mail</th>
-                        <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium">Rolle</th>
-                        <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium hidden sm:table-cell">Verifiziert</th>
-                        <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium hidden sm:table-cell">Erstellt</th>
-                        <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium text-right">Aktionen</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/10">
-                      {adminUsers.map((u) => (
-                        <tr key={u.id} className="hover:bg-white/5 transition-colors">
-                          <td className="py-2 sm:py-3.5 px-2 sm:px-5 font-mono text-[10px] sm:text-xs text-slate-400">{u.id}</td>
-                          <td className="py-2 sm:py-3.5 px-2 sm:px-5">
-                            <div className="text-[10px] sm:text-sm text-slate-100 truncate max-w-[100px] sm:max-w-xs">{u.email}</div>
-                          </td>
-                          <td className="py-2 sm:py-3.5 px-2 sm:px-5">
-                            <select
-                              className="bg-transparent border border-white/15 rounded-md px-1 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs text-slate-100"
-                              value={u.role}
-                              onChange={(e) =>
-                                handleChangeRole(
-                                  u,
-                                  e.target.value as "user" | "editor" | "admin"
-                                )
-                              }
-                              disabled={updatingUserId === u.id || deletingUserId === u.id}
-                            >
-                              <option value="user">user</option>
-                              <option value="editor">editor</option>
-                              <option value="admin">admin</option>
-                            </select>
-                          </td>
-                          <td className="py-2 sm:py-3.5 px-2 sm:px-5 hidden sm:table-cell">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleVerified(u)}
-                              disabled={updatingUserId === u.id || deletingUserId === u.id}
-                              className={`inline-flex items-center gap-1.5 sm:gap-2 rounded-full border px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs font-medium ${
-                                u.isVerified
-                                  ? "bg-emerald-500/15 text-emerald-200 border-emerald-400/40"
-                                  : "bg-slate-500/10 text-slate-200 border-slate-500/40"
-                              }`}
-                            >
-                              <span
-                                className={`h-1 w-1 sm:h-1.5 sm:w-1.5 rounded-full ${
-                                  u.isVerified ? "bg-emerald-400" : "bg-slate-400"
+                <>
+                  {/* Mobile: cards (no horizontal scroll) */}
+                  {isMobile ? (
+                    <div className="space-y-2">
+                      {adminUsers.map((u) => {
+                        const busy = updatingUserId === u.id || deletingUserId === u.id
+                        return (
+                          <div key={u.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="font-mono text-[10px] text-slate-400">#{u.id}</div>
+                                <div className="mt-0.5 text-sm font-semibold text-slate-100 break-words">
+                                  {u.email}
+                                </div>
+                                <div className="mt-1 text-[11px] text-slate-400">
+                                  Erstellt: {u.createdAt ? new Date(u.createdAt).toLocaleDateString("de-DE") : "—"}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleVerified(u)}
+                                disabled={busy}
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-medium ${
+                                  u.isVerified
+                                    ? "bg-emerald-500/15 text-emerald-200 border-emerald-400/40"
+                                    : "bg-slate-500/10 text-slate-200 border-slate-500/40"
                                 }`}
-                              />
-                              {u.isVerified ? "Verifiziert" : "Unbestätigt"}
-                            </button>
-                          </td>
-                          <td className="py-2 sm:py-3.5 px-2 sm:px-5 text-[10px] sm:text-xs text-slate-400 hidden sm:table-cell">
-                            {u.createdAt ? new Date(u.createdAt).toLocaleDateString("de-DE") : "—"}
-                          </td>
-                          <td className="py-2 sm:py-3.5 px-2 sm:px-5">
-                            <div className="flex justify-end gap-1 sm:gap-2">
+                              >
+                                <span
+                                  className={`h-1.5 w-1.5 rounded-full ${
+                                    u.isVerified ? "bg-emerald-400" : "bg-slate-400"
+                                  }`}
+                                />
+                                {u.isVerified ? "Verifiziert" : "Unbestätigt"}
+                              </button>
+                            </div>
+
+                            <div className="mt-3">
+                              <div className="text-[10px] text-slate-400 mb-1">Rolle</div>
+                              <select
+                                className="h-11 w-full bg-transparent border border-white/15 rounded-lg px-3 text-xs text-slate-100"
+                                value={u.role}
+                                onChange={(e) =>
+                                  handleChangeRole(
+                                    u,
+                                    e.target.value as "user" | "editor" | "admin"
+                                  )
+                                }
+                                disabled={busy}
+                              >
+                                <option value="user">user</option>
+                                <option value="editor">editor</option>
+                                <option value="admin">admin</option>
+                              </select>
+                            </div>
+
+                            <div className="mt-3 flex items-center gap-2">
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="text-[10px] sm:text-xs h-6 sm:h-8 px-1.5 sm:px-2"
+                                className="flex-1 h-11 text-xs"
                                 onClick={() => handleResetPassword(u)}
-                                disabled={updatingUserId === u.id || deletingUserId === u.id}
+                                disabled={busy}
                               >
-                                <span className="hidden sm:inline">Passwort</span>
-                                <span className="sm:hidden">PW</span>
+                                Passwort
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="text-[10px] sm:text-xs h-6 sm:h-8 px-1.5 sm:px-2 border-red-500/40 text-red-300 hover:bg-red-500/10"
+                                className="flex-1 h-11 text-xs border-red-500/40 text-red-300 hover:bg-red-500/10"
                                 onClick={() => handleDeleteUser(u)}
-                                disabled={updatingUserId === u.id || deletingUserId === u.id}
+                                disabled={busy}
                               >
-                                <span className="hidden sm:inline">Löschen</span>
-                                <span className="sm:hidden">×</span>
+                                Löschen
                               </Button>
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div className="flex items-center justify-between px-2 sm:px-5 py-2 sm:py-3 text-[10px] sm:text-xs text-slate-400">
-                    <span>
-                      Zeigt {adminUsers.length} von {usersTotal}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="glass-card h-6 sm:h-8 text-[10px] sm:text-xs"
-                      onClick={() => loadUsers()}
-                      disabled={usersLoading}
-                    >
-                      <RefreshCw className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1" /> <span className="hidden sm:inline">Neu laden</span>
-                    </Button>
-                  </div>
-                </div>
+                          </div>
+                        )
+                      })}
+
+                      <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-slate-400">
+                        <span>
+                          {adminUsers.length} / {usersTotal}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="glass-card h-8 text-[11px]"
+                          onClick={() => loadUsers()}
+                          disabled={usersLoading}
+                        >
+                          <RefreshCw className="h-3 w-3 mr-1" /> Neu laden
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg sm:rounded-2xl border border-white/10 -mx-1 sm:mx-0">
+                      <table className="w-full text-xs sm:text-sm min-w-[600px]">
+                        <thead className="bg-white/5">
+                          <tr className="text-left text-slate-400 uppercase text-[10px] sm:text-xs tracking-wider">
+                            <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium">ID</th>
+                            <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium">E‑Mail</th>
+                            <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium">Rolle</th>
+                            <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium hidden sm:table-cell">Verifiziert</th>
+                            <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium hidden sm:table-cell">Erstellt</th>
+                            <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium text-right">Aktionen</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {adminUsers.map((u) => (
+                            <tr key={u.id} className="hover:bg-white/5 transition-colors">
+                              <td className="py-2 sm:py-3.5 px-2 sm:px-5 font-mono text-[10px] sm:text-xs text-slate-400">{u.id}</td>
+                              <td className="py-2 sm:py-3.5 px-2 sm:px-5">
+                                <div className="text-[10px] sm:text-sm text-slate-100 truncate max-w-[100px] sm:max-w-xs">{u.email}</div>
+                              </td>
+                              <td className="py-2 sm:py-3.5 px-2 sm:px-5">
+                                <select
+                                  className="bg-transparent border border-white/15 rounded-md px-1 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs text-slate-100"
+                                  value={u.role}
+                                  onChange={(e) =>
+                                    handleChangeRole(
+                                      u,
+                                      e.target.value as "user" | "editor" | "admin"
+                                    )
+                                  }
+                                  disabled={updatingUserId === u.id || deletingUserId === u.id}
+                                >
+                                  <option value="user">user</option>
+                                  <option value="editor">editor</option>
+                                  <option value="admin">admin</option>
+                                </select>
+                              </td>
+                              <td className="py-2 sm:py-3.5 px-2 sm:px-5 hidden sm:table-cell">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleVerified(u)}
+                                  disabled={updatingUserId === u.id || deletingUserId === u.id}
+                                  className={`inline-flex items-center gap-1.5 sm:gap-2 rounded-full border px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs font-medium ${
+                                    u.isVerified
+                                      ? "bg-emerald-500/15 text-emerald-200 border-emerald-400/40"
+                                      : "bg-slate-500/10 text-slate-200 border-slate-500/40"
+                                  }`}
+                                >
+                                  <span
+                                    className={`h-1 w-1 sm:h-1.5 sm:w-1.5 rounded-full ${
+                                      u.isVerified ? "bg-emerald-400" : "bg-slate-400"
+                                    }`}
+                                  />
+                                  {u.isVerified ? "Verifiziert" : "Unbestätigt"}
+                                </button>
+                              </td>
+                              <td className="py-2 sm:py-3.5 px-2 sm:px-5 text-[10px] sm:text-xs text-slate-400 hidden sm:table-cell">
+                                {u.createdAt ? new Date(u.createdAt).toLocaleDateString("de-DE") : "—"}
+                              </td>
+                              <td className="py-2 sm:py-3.5 px-2 sm:px-5">
+                                <div className="flex justify-end gap-1 sm:gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-[10px] sm:text-xs h-6 sm:h-8 px-1.5 sm:px-2"
+                                    onClick={() => handleResetPassword(u)}
+                                    disabled={updatingUserId === u.id || deletingUserId === u.id}
+                                  >
+                                    <span className="hidden sm:inline">Passwort</span>
+                                    <span className="sm:hidden">PW</span>
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-[10px] sm:text-xs h-6 sm:h-8 px-1.5 sm:px-2 border-red-500/40 text-red-300 hover:bg-red-500/10"
+                                    onClick={() => handleDeleteUser(u)}
+                                    disabled={updatingUserId === u.id || deletingUserId === u.id}
+                                  >
+                                    <span className="hidden sm:inline">Löschen</span>
+                                    <span className="sm:hidden">×</span>
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div className="flex items-center justify-between px-2 sm:px-5 py-2 sm:py-3 text-[10px] sm:text-xs text-slate-400">
+                        <span>
+                          Zeigt {adminUsers.length} von {usersTotal}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="glass-card h-6 sm:h-8 text-[10px] sm:text-xs"
+                          onClick={() => loadUsers()}
+                          disabled={usersLoading}
+                        >
+                          <RefreshCw className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-1" /> <span className="hidden sm:inline">Neu laden</span>
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

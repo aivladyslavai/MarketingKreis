@@ -64,7 +64,7 @@ export default function MobileMenuSheet({
             style={{ paddingTop: "max(env(safe-area-inset-top), 12px)" }}
           >
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-white">Menu</div>
+              <div className="text-sm font-semibold text-white">Menü</div>
               <div className="text-[11px] text-slate-400 truncate">Navigation & Bereiche</div>
             </div>
             <Button
@@ -115,7 +115,7 @@ export default function MobileMenuSheet({
 
             {/* Secondary list */}
             <div className="space-y-1">
-              <div className="px-1 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">More</div>
+              <div className="px-1 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Mehr</div>
               <div className="rounded-xl border border-white/10 bg-white/5 overflow-hidden">
                 {visibleSecondary.map(({ href, label, Icon }) => {
                   const active = pathname === href || pathname.startsWith(`${href}/`)

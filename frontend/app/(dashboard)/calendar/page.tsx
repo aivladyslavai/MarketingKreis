@@ -25,6 +25,8 @@ export default function CalendarPage() {
   const { openModal } = useModal()
   const [companies, setCompanies] = useState<any[]>([])
   const [projects, setProjects] = useState<any[]>([])
+  const [isSmall, setIsSmall] = useState(false)
+  const [insightsOpen, setInsightsOpen] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -41,6 +43,21 @@ export default function CalendarPage() {
         setProjects(Array.isArray(projectsData) ? projectsData : (projectsData?.items ?? []))
       } catch {}
     })()
+  }, [])
+
+  // Mobile UX: collapse heavy charts by default on phones
+  useEffect(() => {
+    try {
+      const mql = window.matchMedia("(max-width: 640px)")
+      const apply = () => {
+        const small = mql.matches
+        setIsSmall(small)
+        if (!small) setInsightsOpen(true)
+      }
+      apply()
+      mql.addEventListener?.("change", apply)
+      return () => mql.removeEventListener?.("change", apply)
+    } catch {}
   }, [])
   
   if (isLoading) {
@@ -324,37 +341,57 @@ export default function CalendarPage() {
           />
       </div>
 
-      {/* Reports */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="glass-card">
-          <CardHeader><CardTitle className="text-white">Verteilung nach Typ</CardTitle></CardHeader>
-          <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={3} stroke="#0f172a">
-                  {byCategory.map((c:any, i:number) => <Cell key={i} fill={['#3b82f6','#a78bfa','#10b981','#f59e0b','#ef4444','#06b6d4'][i%6]} />)}
-                </Pie>
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255,255,255,0.95)', border: 'none', borderRadius: 12, color: '#0f172a' }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-        <Card className="glass-card lg:col-span-2">
-          <CardHeader><CardTitle className="text-white">Plan vs Done</CardTitle></CardHeader>
-          <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={byMonth}>
-                <CartesianGrid stroke="rgba(148,163,184,.15)" vertical={false} />
-                <XAxis dataKey="month" tick={{ fill: '#a3b1c6' }} />
-                <YAxis tick={{ fill: '#a3b1c6' }} />
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255,255,255,0.95)', border: 'none', borderRadius: 12, color: '#0f172a' }} />
-                <Line dataKey="planned" stroke="#a3b1c6" strokeWidth={2} />
-                <Line dataKey="done" stroke="#10b981" strokeWidth={3} />
-              </LineChart>
-            </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      {/* Insights / Charts (collapsed by default on phones) */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-white">Insights</div>
+        {isSmall && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="glass-card"
+            onClick={() => setInsightsOpen((v) => !v)}
+          >
+            {insightsOpen ? "Ausblenden" : "Anzeigen"}
+          </Button>
+        )}
       </div>
+
+      {(!isSmall || insightsOpen) && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="text-white">Verteilung nach Typ</CardTitle>
+            </CardHeader>
+            <CardContent className="h-56 sm:h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={3} stroke="#0f172a">
+                    {byCategory.map((c:any, i:number) => <Cell key={i} fill={['#3b82f6','#a78bfa','#10b981','#f59e0b','#ef4444','#06b6d4'][i%6]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ backgroundColor: 'rgba(255,255,255,0.95)', border: 'none', borderRadius: 12, color: '#0f172a' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+          <Card className="glass-card lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-white">Plan vs Done</CardTitle>
+            </CardHeader>
+            <CardContent className="h-56 sm:h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={byMonth}>
+                  <CartesianGrid stroke="rgba(148,163,184,.15)" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fill: '#a3b1c6' }} />
+                  <YAxis tick={{ fill: '#a3b1c6' }} />
+                  <Tooltip contentStyle={{ backgroundColor: 'rgba(255,255,255,0.95)', border: 'none', borderRadius: 12, color: '#0f172a' }} />
+                  <Line dataKey="planned" stroke="#a3b1c6" strokeWidth={2} />
+                  <Line dataKey="done" stroke="#10b981" strokeWidth={3} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

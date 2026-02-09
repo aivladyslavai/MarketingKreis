@@ -5,11 +5,11 @@ import { usePathname } from "next/navigation"
 import { LayoutDashboard, Building2, CalendarDays, ActivitySquare, Menu } from "lucide-react"
 
 const items = [
-  { href: "/dashboard", label: "Home", Icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { href: "/crm", label: "CRM", Icon: Building2 },
   { href: "/calendar", label: "Kalender", Icon: CalendarDays },
-  { href: "/activities", label: "Aktivität", Icon: ActivitySquare },
-  { href: "#menu", label: "Menu", Icon: Menu },
+  { href: "/activities", label: "Aktivitäten", Icon: ActivitySquare },
+  { href: "#menu", label: "Mehr", Icon: Menu },
 ]
 
 export default function MobileNav() {
