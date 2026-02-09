@@ -831,7 +831,7 @@ export default function ContentPage() {
           {/* Top row: back + title */}
           <div className="flex items-center gap-3">
             <Link href="/dashboard">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 h-8 px-2 sm:px-3">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 h-11 sm:h-8 px-2 sm:px-3">
                 <ArrowLeft className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Dashboard</span>
               </Button>
@@ -852,21 +852,21 @@ export default function ContentPage() {
             <Button
               variant="ghost"
               size="sm"
-              className="bg-white/10 text-white hover:bg-white/20 h-8 text-xs sm:text-sm"
+              className="bg-white/10 text-white hover:bg-white/20 h-11 sm:h-8 text-xs sm:text-sm"
               onClick={() => setShowPlanner((v) => !v)}
             >
               <Filter className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
               <span className="hidden sm:inline">{showPlanner ? "Planner ausblenden" : "Planner anzeigen"}</span>
               <span className="sm:hidden">{showPlanner ? "Planner" : "Planner"}</span>
             </Button>
-            <Button variant="ghost" size="sm" className="bg-white/10 text-white hover:bg-white/20 h-8 text-xs sm:text-sm">
+            <Button variant="ghost" size="sm" className="bg-white/10 text-white hover:bg-white/20 h-11 sm:h-8 text-xs sm:text-sm">
               <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
               <span className="hidden sm:inline">Export</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="bg-white/10 text-white hover:bg-white/20 h-8 text-xs sm:text-sm"
+              className="bg-white/10 text-white hover:bg-white/20 h-11 sm:h-8 text-xs sm:text-sm"
               onClick={() => openContentItem()}
             >
               <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
@@ -875,7 +875,7 @@ export default function ContentPage() {
             </Button>
             <Button
               size="sm"
-              className="bg-white text-slate-900 hover:bg-white/90 h-8 text-xs sm:text-sm ml-auto"
+              className="bg-white text-slate-900 hover:bg-white/90 h-11 sm:h-8 text-xs sm:text-sm w-full sm:w-auto sm:ml-auto"
               onClick={() =>
                 openModal({
                   type: "custom",
@@ -1000,13 +1000,22 @@ export default function ContentPage() {
                       { value: "unassigned", label: "Unassigned" },
                       ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
                     ]}
-                    className="sm:w-64 min-w-0"
+                    className="w-full sm:w-64 min-w-0"
                   />
                 )}
-                <Button variant="outline" size="sm" className="sm:ml-auto glass-card shrink-0 whitespace-nowrap" onClick={() => refetchItems()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="sm:ml-auto glass-card shrink-0 whitespace-nowrap h-11 sm:h-9"
+                  onClick={() => refetchItems()}
+                >
                   Refresh
                 </Button>
-                <Button size="sm" className="bg-white text-slate-900 hover:bg-white/90 shrink-0 whitespace-nowrap" onClick={() => openContentItem()}>
+                <Button
+                  size="sm"
+                  className="bg-white text-slate-900 hover:bg-white/90 shrink-0 whitespace-nowrap h-11 sm:h-9"
+                  onClick={() => openContentItem()}
+                >
                   <Plus className="h-4 w-4 mr-2" /> New Item
                 </Button>
               </div>
@@ -1127,7 +1136,7 @@ export default function ContentPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Suche Titel oder Tags..."
-            className="h-9 sm:h-10 w-full sm:w-56 lg:w-64 rounded-xl px-3 text-xs sm:text-sm bg-white/10 dark:bg-slate-900/50 text-white placeholder:text-white/60 border border-white/20 dark:border-slate-700 focus:ring-blue-500/40"
+            className="h-11 sm:h-10 w-full sm:w-56 lg:w-64 rounded-xl px-3 text-xs sm:text-sm bg-white/10 dark:bg-slate-900/50 text-white placeholder:text-white/60 border border-white/20 dark:border-slate-700 focus:ring-blue-500/40"
           />
           <div className="flex items-center gap-2 flex-1 sm:flex-none">
             <GlassSelect
@@ -1150,9 +1159,19 @@ export default function ContentPage() {
               className="flex-1 sm:flex-none sm:w-40 lg:w-56"
             />
           </div>
-          <div className="inline-flex rounded-lg overflow-hidden border border-white/20 self-start">
-            <button onClick={() => setView("grid")} className={`px-2.5 sm:px-3 h-8 sm:h-9 text-xs sm:text-sm ${view === "grid" ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}>Grid</button>
-            <button onClick={() => setView("kanban")} className={`px-2.5 sm:px-3 h-8 sm:h-9 text-xs sm:text-sm ${view === "kanban" ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}>Kanban</button>
+          <div className="inline-flex rounded-lg overflow-hidden border border-white/20 self-stretch sm:self-start w-full sm:w-auto">
+            <button
+              onClick={() => setView("grid")}
+              className={`flex-1 sm:flex-none px-2.5 sm:px-3 h-11 sm:h-9 text-xs sm:text-sm ${view === "grid" ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
+            >
+              Grid
+            </button>
+            <button
+              onClick={() => setView("kanban")}
+              className={`flex-1 sm:flex-none px-2.5 sm:px-3 h-11 sm:h-9 text-xs sm:text-sm ${view === "kanban" ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
+            >
+              Kanban
+            </button>
           </div>
         </div>
       </div>
@@ -1178,7 +1197,7 @@ export default function ContentPage() {
             </CardHeader>
             <CardContent className="pt-0 px-3 sm:px-4 pb-3 sm:pb-4">
               <div className="text-lg sm:text-2xl font-semibold text-white mt-1">{k.value}</div>
-              <div className="mt-2 sm:mt-3 h-10 sm:h-12">
+              <div className="mt-2 sm:mt-3 h-10 sm:h-12 hidden sm:block">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={makeSeries(k.value)}>
                     <defs>

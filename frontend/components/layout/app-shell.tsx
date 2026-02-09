@@ -15,6 +15,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [flags, setFlags] = useState<Record<string, boolean>>({})
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [keyboardActive, setKeyboardActive] = useState(false)
   const toggleSidebar = () => setSidebarCollapsed((v) => !v)
 
   // Swipe-to-open for mobile sidebar
@@ -118,6 +119,46 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [mobileMenuOpen])
 
+  // Mobile UX: hide bottom nav when keyboard is active (inputs focused).
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const isFormEl = (el: Element | null) => {
+      if (!el) return false
+      const tag = (el as HTMLElement).tagName
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true
+      return (el as HTMLElement).isContentEditable === true
+    }
+
+    const update = () => {
+      try {
+        // Only relevant on mobile where MobileNav exists.
+        if (window.innerWidth >= 768) {
+          setKeyboardActive(false)
+          return
+        }
+        const active = document.activeElement
+        setKeyboardActive(isFormEl(active))
+      } catch {
+        setKeyboardActive(false)
+      }
+    }
+
+    const onFocusIn = () => update()
+    const onFocusOut = () => setTimeout(update, 50)
+    const onResize = () => update()
+    update()
+
+    window.addEventListener("focusin", onFocusIn)
+    window.addEventListener("focusout", onFocusOut)
+    window.addEventListener("resize", onResize)
+    return () => {
+      window.removeEventListener("focusin", onFocusIn)
+      window.removeEventListener("focusout", onFocusOut)
+      window.removeEventListener("resize", onResize)
+    }
+  }, [])
+
   const bgStyle = useMemo(() => {
     if (!flags.gridBackground) return undefined
     const line = 'rgba(148,163,184,0.12)'
@@ -174,7 +215,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <OnboardingTour />
           <ChatWidget />
           <div data-tour="mobile-nav">
-            {!mobileMenuOpen && <MobileNav />}
+            {!mobileMenuOpen && !keyboardActive && <MobileNav />}
           </div>
           <CommandPalette />
         </div>

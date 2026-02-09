@@ -436,33 +436,68 @@ export default function ReportsPage() {
             <CardTitle className="text-white">Aktivitäten</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-auto max-h-[520px] pr-2">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-slate-400 border-b border-white/10">
-                    <th className="py-2 pr-2">Typ</th>
-                    <th className="py-2 pr-2">Titel</th>
-                    <th className="py-2 pr-2">Datum</th>
-                    <th className="py-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="text-slate-200">
-                  {activities
-                    .filter(a => a.start)
-                    .sort((a:any,b:any)=> new Date(b.start as any).getTime() - new Date(a.start as any).getTime())
-                    .map(a => (
-                      <tr key={a.id} className="border-b border-white/5">
-                        <td className="py-2 pr-2">Aktivität</td>
-                        <td className="py-2 pr-2 truncate max-w-[240px]">{a.title}</td>
-                        <td className="py-2 pr-2 whitespace-nowrap">{new Date(a.start as any).toLocaleDateString('de-DE')}</td>
-                        <td className="py-2">{renderStatus(a.status || 'PLANNED')}</td>
+            <div className="overflow-auto mk-no-scrollbar max-h-[520px] pr-1 sm:pr-2">
+              {/* Mobile: cards */}
+              <div className="sm:hidden space-y-2">
+                {activities
+                  .filter((a: any) => a.start)
+                  .sort((a: any, b: any) => new Date(b.start as any).getTime() - new Date(a.start as any).getTime())
+                  .map((a: any) => (
+                    <div key={a.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[11px] text-slate-400">Aktivität</div>
+                          <div className="mt-0.5 text-sm font-semibold text-slate-100 truncate">
+                            {a.title}
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-400">
+                            {new Date(a.start as any).toLocaleDateString("de-DE")}
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0">{renderStatus(a.status || "PLANNED")}</div>
+                      </div>
+                    </div>
+                  ))}
+                {activities.length === 0 && (
+                  <div className="py-10 text-center text-sm text-slate-400">Keine Aktivitäten</div>
+                )}
+              </div>
+
+              {/* Desktop/tablet: table */}
+              <div className="hidden sm:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-slate-400 border-b border-white/10">
+                      <th className="py-2 pr-2">Typ</th>
+                      <th className="py-2 pr-2">Titel</th>
+                      <th className="py-2 pr-2">Datum</th>
+                      <th className="py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-200">
+                    {activities
+                      .filter((a: any) => a.start)
+                      .sort((a: any, b: any) => new Date(b.start as any).getTime() - new Date(a.start as any).getTime())
+                      .map((a: any) => (
+                        <tr key={a.id} className="border-b border-white/5">
+                          <td className="py-2 pr-2">Aktivität</td>
+                          <td className="py-2 pr-2 truncate max-w-[240px]">{a.title}</td>
+                          <td className="py-2 pr-2 whitespace-nowrap">
+                            {new Date(a.start as any).toLocaleDateString("de-DE")}
+                          </td>
+                          <td className="py-2">{renderStatus(a.status || "PLANNED")}</td>
+                        </tr>
+                      ))}
+                    {activities.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-6 text-center text-slate-400">
+                          Keine Aktivitäten
+                        </td>
                       </tr>
-                    ))}
-                  {activities.length === 0 && (
-                    <tr><td colSpan={4} className="py-6 text-center text-slate-400">Keine Aktivitäten</td></tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -473,37 +508,74 @@ export default function ReportsPage() {
             <CardTitle className="text-white">Kalender Events</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-auto max-h-[520px] pr-2">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-slate-400 border-b border-white/10">
-                    <th className="py-2 pr-2">Typ</th>
-                    <th className="py-2 pr-2">Titel</th>
-                    <th className="py-2 pr-2">Datum</th>
-                    <th className="py-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="text-slate-200">
-                  {events
-                    .filter(e => e.start)
-                    .sort((a:any,b:any)=> new Date(b.start as any).getTime() - new Date(a.start as any).getTime())
-                    .map(e => {
-                      const date = new Date(e.start as any)
-                      const status = date >= new Date() ? 'UPCOMING' : 'PAST'
-                      return (
-                        <tr key={e.id} className="border-b border-white/5">
-                          <td className="py-2 pr-2">Event</td>
-                          <td className="py-2 pr-2 truncate max-w-[240px]">{e.title}</td>
-                          <td className="py-2 pr-2 whitespace-nowrap">{date.toLocaleDateString('de-DE')}</td>
-                          <td className="py-2">{renderStatus(status)}</td>
-                        </tr>
-                      )
-                    })}
-                  {events.length === 0 && (
-                    <tr><td colSpan={4} className="py-6 text-center text-slate-400">Keine Events</td></tr>
-                  )}
-                </tbody>
-              </table>
+            <div className="overflow-auto mk-no-scrollbar max-h-[520px] pr-1 sm:pr-2">
+              {/* Mobile: cards */}
+              <div className="sm:hidden space-y-2">
+                {events
+                  .filter((e: any) => e.start)
+                  .sort((a: any, b: any) => new Date(b.start as any).getTime() - new Date(a.start as any).getTime())
+                  .map((e: any) => {
+                    const date = new Date(e.start as any)
+                    const status = date >= new Date() ? "UPCOMING" : "PAST"
+                    return (
+                      <div key={e.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[11px] text-slate-400">Event</div>
+                            <div className="mt-0.5 text-sm font-semibold text-slate-100 truncate">
+                              {e.title}
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-400">
+                              {date.toLocaleDateString("de-DE")}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0">{renderStatus(status)}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                {events.length === 0 && (
+                  <div className="py-10 text-center text-sm text-slate-400">Keine Events</div>
+                )}
+              </div>
+
+              {/* Desktop/tablet: table */}
+              <div className="hidden sm:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-slate-400 border-b border-white/10">
+                      <th className="py-2 pr-2">Typ</th>
+                      <th className="py-2 pr-2">Titel</th>
+                      <th className="py-2 pr-2">Datum</th>
+                      <th className="py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-200">
+                    {events
+                      .filter((e: any) => e.start)
+                      .sort((a: any, b: any) => new Date(b.start as any).getTime() - new Date(a.start as any).getTime())
+                      .map((e: any) => {
+                        const date = new Date(e.start as any)
+                        const status = date >= new Date() ? "UPCOMING" : "PAST"
+                        return (
+                          <tr key={e.id} className="border-b border-white/5">
+                            <td className="py-2 pr-2">Event</td>
+                            <td className="py-2 pr-2 truncate max-w-[240px]">{e.title}</td>
+                            <td className="py-2 pr-2 whitespace-nowrap">{date.toLocaleDateString("de-DE")}</td>
+                            <td className="py-2">{renderStatus(status)}</td>
+                          </tr>
+                        )
+                      })}
+                    {events.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-6 text-center text-slate-400">
+                          Keine Events
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -533,11 +605,19 @@ export default function ReportsPage() {
             <CardTitle className="text-white">Schnelle Aktionen</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" className="border-white/20 text-slate-200">🔄 Global Refresh</Button>
-              <Button size="sm" variant="outline" className="border-white/20 text-slate-200" onClick={()=> { refetchActivities(); }}>📋 Reload Aktivitäten</Button>
-              <Button size="sm" variant="outline" className="border-white/20 text-slate-200" onClick={()=> { refreshCalendar(); }}>📅 Reload Kalender</Button>
-              <Button size="sm" variant="outline" className="border-white/20 text-slate-200" onClick={()=> { refreshUploads(); refreshJobs(); }}>📂 Reload Uploads</Button>
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+              <Button size="sm" variant="outline" className="border-white/20 text-slate-200 h-11 sm:h-9 w-full sm:w-auto">
+                🔄 Global Refresh
+              </Button>
+              <Button size="sm" variant="outline" className="border-white/20 text-slate-200 h-11 sm:h-9 w-full sm:w-auto" onClick={()=> { refetchActivities(); }}>
+                📋 Reload Aktivitäten
+              </Button>
+              <Button size="sm" variant="outline" className="border-white/20 text-slate-200 h-11 sm:h-9 w-full sm:w-auto" onClick={()=> { refreshCalendar(); }}>
+                📅 Reload Kalender
+              </Button>
+              <Button size="sm" variant="outline" className="border-white/20 text-slate-200 h-11 sm:h-9 w-full sm:w-auto" onClick={()=> { refreshUploads(); refreshJobs(); }}>
+                📂 Reload Uploads
+              </Button>
             </div>
           </CardContent>
         </Card>

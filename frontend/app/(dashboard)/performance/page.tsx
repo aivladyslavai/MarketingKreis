@@ -18,6 +18,25 @@ export default function PerformancePage() {
   const [loading, setLoading] = useState(true)
   const [metrics, setMetrics] = useState<any | null>(null)
   const { categories } = useUserCategories()
+  const [isSmall, setIsSmall] = useState(false)
+  const [chartsOpen, setChartsOpen] = useState(false)
+
+  // Mobile UX: collapse heavy charts by default on phones.
+  useEffect(() => {
+    try {
+      const mql = window.matchMedia("(max-width: 640px)")
+      const apply = () => {
+        const small = mql.matches
+        setIsSmall(small)
+        if (!small) setChartsOpen(true)
+      }
+      apply()
+      mql.addEventListener?.("change", apply)
+      return () => mql.removeEventListener?.("change", apply)
+    } catch {
+      /* noop */
+    }
+  }, [])
 
   // Simple micro-sparkline SVG for KPI cards
   const Sparkline = ({ data, stroke, fillFrom, fillTo }: { data: number[]; stroke: string; fillFrom: string; fillTo: string }) => {
@@ -178,7 +197,19 @@ export default function PerformancePage() {
               <p className="text-slate-600 dark:text-slate-400 mt-1 text-sm sm:text-base">Umsatz, Pipeline, Leads und Aktivitäten im Überblick</p>
             </div>
           </div>
-          <Badge className="glass-card px-4 py-2 text-sm font-medium self-start sm:self-auto">KABOOM</Badge>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {isSmall && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="glass-card h-11 sm:h-9 text-xs"
+                onClick={() => setChartsOpen((v) => !v)}
+              >
+                {chartsOpen ? "Charts ausblenden" : "Charts anzeigen"}
+              </Button>
+            )}
+            <Badge className="glass-card px-4 py-2 text-sm font-medium">KABOOM</Badge>
+          </div>
         </div>
 
         {/* KPI Grid */}
@@ -207,6 +238,8 @@ export default function PerformancePage() {
         </div>
       </motion.div>
 
+      {(!isSmall || chartsOpen) && (
+        <>
       {/* Charts Row 1 */}
       <motion.div variants={itemVariants}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
@@ -373,6 +406,8 @@ export default function PerformancePage() {
           </CardContent>
         </Card>
       </motion.div>
+        </>
+      )}
     </motion.div>
   )
 }
