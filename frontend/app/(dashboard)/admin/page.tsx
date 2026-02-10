@@ -66,6 +66,9 @@ export default function AdminPage() {
   const [sessionsError, setSessionsError] = React.useState<string | null>(null)
   const [sessionsActiveOnly, setSessionsActiveOnly] = React.useState(true)
   const [sessionsSearch, setSessionsSearch] = React.useState("")
+  // Ops
+  const [readyz, setReadyz] = React.useState<any | null>(null)
+  const [readyzLoading, setReadyzLoading] = React.useState(false)
   const [viewport, setViewport] = React.useState<{ w: number; h: number; dpr: number; online: boolean }>({ w: 0, h: 0, dpr: 1, online: true })
   const prefersDark = typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : false
   const isMobile = viewport.w > 0 && viewport.w < 640
@@ -361,6 +364,25 @@ export default function AdminPage() {
     }
   }, [activeTab, authLoading, user, sessionsActiveOnly])
 
+  const loadReady = async () => {
+    setReadyzLoading(true)
+    try {
+      const res = await fetch(`${apiBase}/readyz`, { credentials: "include", cache: "no-store" })
+      const j = await res.json().catch(() => ({}))
+      setReadyz({ ok: res.ok, status: res.status, ...j })
+    } catch {
+      setReadyz({ ok: false })
+    } finally {
+      setReadyzLoading(false)
+    }
+  }
+
+  React.useEffect(() => {
+    if (activeTab === "ops" && !authLoading && user && user.role === "admin") {
+      loadReady()
+    }
+  }, [activeTab, authLoading, user])
+
   const setSectionAllowed = async (u: AdminUser, section: string, allowed: boolean) => {
     const perms = (u as any)?.section_permissions && typeof (u as any).section_permissions === "object" ? { ...(u as any).section_permissions } : {}
     if (allowed) {
@@ -550,6 +572,7 @@ export default function AdminPage() {
           <TabsTrigger value="users" className="text-xs sm:text-sm px-2 sm:px-4">Benutzer</TabsTrigger>
           <TabsTrigger value="sessions" className="text-xs sm:text-sm px-2 sm:px-4">Sessions</TabsTrigger>
           <TabsTrigger value="flags" className="text-xs sm:text-sm px-2 sm:px-4">Flags</TabsTrigger>
+          <TabsTrigger value="ops" className="text-xs sm:text-sm px-2 sm:px-4">Ops</TabsTrigger>
           <TabsTrigger value="system" className="text-xs sm:text-sm px-2 sm:px-4">System</TabsTrigger>
         </TabsList>
 
@@ -1089,6 +1112,43 @@ export default function AdminPage() {
                               </select>
                             </div>
 
+                            <div className="mt-3">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full h-10 text-[11px]"
+                                disabled={busy}
+                                onClick={() => setExpandedPermsUserId((prev) => (prev === u.id ? null : u.id))}
+                              >
+                                Permissions {expandedPermsUserId === u.id ? "▾" : "▸"}
+                              </Button>
+                              {expandedPermsUserId === u.id && (
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                  {SECTION_KEYS.map((s) => {
+                                    const allowed = !((u as any)?.section_permissions && (u as any).section_permissions[s.key] === false)
+                                    return (
+                                      <label key={s.key} className="flex items-center gap-2 text-[11px] text-slate-200">
+                                        <input
+                                          type="checkbox"
+                                          checked={allowed}
+                                          disabled={busy}
+                                          onChange={async (e) => {
+                                            try {
+                                              setUpdatingUserId(u.id)
+                                              await setSectionAllowed(u, s.key, e.target.checked)
+                                            } finally {
+                                              setUpdatingUserId(null)
+                                            }
+                                          }}
+                                        />
+                                        <span className="truncate">{s.label}</span>
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
                             <div className="mt-3 flex items-center gap-2">
                               <Button
                                 variant="outline"
@@ -1138,12 +1198,14 @@ export default function AdminPage() {
                             <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium">Rolle</th>
                             <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium hidden sm:table-cell">Verifiziert</th>
                             <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium hidden sm:table-cell">Erstellt</th>
+                            <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium hidden lg:table-cell">Perms</th>
                             <th className="py-2 sm:py-3.5 px-2 sm:px-5 font-medium text-right">Aktionen</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/10">
                           {adminUsers.map((u) => (
-                            <tr key={u.id} className="hover:bg-white/5 transition-colors">
+                            <React.Fragment key={u.id}>
+                            <tr className="hover:bg-white/5 transition-colors">
                               <td className="py-2 sm:py-3.5 px-2 sm:px-5 font-mono text-[10px] sm:text-xs text-slate-400">{u.id}</td>
                               <td className="py-2 sm:py-3.5 px-2 sm:px-5">
                                 <div className="text-[10px] sm:text-sm text-slate-100 truncate max-w-[100px] sm:max-w-xs">{u.email}</div>
@@ -1187,6 +1249,17 @@ export default function AdminPage() {
                               <td className="py-2 sm:py-3.5 px-2 sm:px-5 text-[10px] sm:text-xs text-slate-400 hidden sm:table-cell">
                                 {u.createdAt ? new Date(u.createdAt).toLocaleDateString("de-DE") : "—"}
                               </td>
+                              <td className="py-2 sm:py-3.5 px-2 sm:px-5 hidden lg:table-cell">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[10px]"
+                                  onClick={() => setExpandedPermsUserId((prev) => (prev === u.id ? null : u.id))}
+                                  disabled={updatingUserId === u.id || deletingUserId === u.id}
+                                >
+                                  {expandedPermsUserId === u.id ? "Hide" : "Edit"}
+                                </Button>
+                              </td>
                               <td className="py-2 sm:py-3.5 px-2 sm:px-5">
                                 <div className="flex justify-end gap-1 sm:gap-2">
                                   <Button
@@ -1212,6 +1285,42 @@ export default function AdminPage() {
                                 </div>
                               </td>
                             </tr>
+                            {expandedPermsUserId === u.id && (
+                              <tr className="bg-white/2">
+                                <td colSpan={7} className="px-2 sm:px-5 py-3">
+                                  <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3">
+                                    <div className="text-[11px] text-slate-400 mb-2">
+                                      Wenn angehakt = erlaubt. Backend blockiert nur explizites <span className="text-slate-200 font-semibold">deny</span>.
+                                    </div>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                      {SECTION_KEYS.map((s) => {
+                                        const busy = updatingUserId === u.id || deletingUserId === u.id
+                                        const allowed = !((u as any)?.section_permissions && (u as any).section_permissions[s.key] === false)
+                                        return (
+                                          <label key={s.key} className="flex items-center gap-2 text-[11px] text-slate-200">
+                                            <input
+                                              type="checkbox"
+                                              checked={allowed}
+                                              disabled={busy}
+                                              onChange={async (e) => {
+                                                try {
+                                                  setUpdatingUserId(u.id)
+                                                  await setSectionAllowed(u, s.key, e.target.checked)
+                                                } finally {
+                                                  setUpdatingUserId(null)
+                                                }
+                                              }}
+                                            />
+                                            <span>{s.label}</span>
+                                          </label>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            </React.Fragment>
                           ))}
                         </tbody>
                       </table>
@@ -1232,6 +1341,110 @@ export default function AdminPage() {
                     </div>
                   )}
                 </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* SESSIONS */}
+        <TabsContent value="sessions" className="space-y-4 sm:space-y-8">
+          <Card className="glass-card">
+            <CardHeader className="p-3 sm:p-6 pb-2 sm:pb-4 flex flex-col gap-3 sm:gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-blue-500/30 to-purple-500/30 border border-white/20 flex items-center justify-center flex-shrink-0">
+                  <Monitor className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <CardTitle className="text-sm sm:text-base">Sessions</CardTitle>
+                  <div className="text-[10px] sm:text-xs text-slate-400 mt-0.5 truncate">
+                    Aktive Geräte sehen und Sessions beenden
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                <label className="flex items-center gap-2 text-[11px] text-slate-200">
+                  <input type="checkbox" checked={sessionsActiveOnly} onChange={(e)=>setSessionsActiveOnly(e.target.checked)} />
+                  Active only
+                </label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="glass-card h-7 sm:h-9 text-[10px] sm:text-sm"
+                  onClick={loadAdminSessions}
+                  disabled={sessionsLoading}
+                >
+                  <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" /> Reload
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-3 sm:p-6 pt-0 space-y-3">
+              {sessionsError && (
+                <div className="text-[10px] sm:text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg sm:rounded-xl px-2 sm:px-3 py-1.5 sm:py-2">
+                  {sessionsError}
+                </div>
+              )}
+              <Input
+                placeholder="Filter by user email…"
+                className="h-9 sm:h-10 text-xs sm:text-sm"
+                value={sessionsSearch}
+                onChange={(e)=>setSessionsSearch(e.target.value)}
+              />
+              {sessionsLoading ? (
+                <div className="py-8 text-xs sm:text-sm text-slate-400">Loading…</div>
+              ) : adminSessions.length === 0 ? (
+                <div className="py-8 text-xs sm:text-sm text-slate-400">No sessions.</div>
+              ) : (
+                <div className="space-y-2">
+                  {adminSessions
+                    .filter((s: any) => !sessionsSearch || String(s.user_email || "").toLowerCase().includes(sessionsSearch.toLowerCase()))
+                    .slice(0, 250)
+                    .map((s: any) => (
+                      <div key={s.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold text-slate-100 truncate">
+                              {s.user_email} <span className="text-slate-400">({s.user_role})</span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-400 break-words">IP: {s.ip || "—"}</div>
+                            <div className="mt-1 text-[11px] text-slate-400 break-words">UA: {s.user_agent || "—"}</div>
+                            <div className="mt-2 text-[11px] text-slate-400">
+                              Last seen: <span className="text-slate-200">{s.last_seen_at ? new Date(s.last_seen_at).toLocaleString() : "—"}</span>{" "}
+                              · Status:{" "}
+                              {s.revoked_at ? <span className="text-rose-200">revoked</span> : <span className="text-emerald-200">active</span>}
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2 flex-shrink-0">
+                            {!s.revoked_at && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-[10px] sm:text-xs"
+                                onClick={async () => {
+                                  await adminAPI.sessions.revoke(String(s.id))
+                                  await loadAdminSessions()
+                                }}
+                              >
+                                Revoke
+                              </Button>
+                            )}
+                            {!s.revoked_at && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-[10px] sm:text-xs border-red-500/40 text-red-300 hover:bg-red-500/10"
+                                onClick={async () => {
+                                  await adminAPI.sessions.revokeAllForUser(Number(s.user_id))
+                                  await loadAdminSessions()
+                                }}
+                              >
+                                Revoke all
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
               )}
             </CardContent>
           </Card>
@@ -1291,6 +1504,72 @@ export default function AdminPage() {
                   </div>
                 )
               })}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* OPS */}
+        <TabsContent value="ops" className="space-y-4 sm:space-y-8">
+          <Card className="glass-card">
+            <CardHeader className="p-3 sm:p-6 pb-2 sm:pb-4 flex flex-col gap-3 sm:gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-amber-500/30 to-rose-500/30 border border-white/20 flex items-center justify-center flex-shrink-0">
+                  <Server className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <CardTitle className="text-sm sm:text-base">Ops</CardTitle>
+                  <div className="text-[10px] sm:text-xs text-slate-400 mt-0.5 truncate">
+                    Health/Readiness + Hinweise zu Metrics/Alerts
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="glass-card h-7 sm:h-9 text-[10px] sm:text-sm"
+                onClick={loadReady}
+                disabled={readyzLoading}
+              >
+                <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" /> Refresh
+              </Button>
+            </CardHeader>
+            <CardContent className="p-3 sm:p-6 pt-0 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs font-semibold text-slate-200">Health</div>
+                  <div className="mt-2 text-[11px] text-slate-400">
+                    <span className="font-mono">{apiBase}/health</span>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs font-semibold text-slate-200">Readiness</div>
+                  <div className="mt-2 text-[11px] text-slate-400">
+                    Status:{" "}
+                    {readyz?.ok ? <span className="text-emerald-200 font-semibold">OK</span> : <span className="text-rose-200 font-semibold">NOT READY</span>}
+                    {readyz?.status ? <span className="text-slate-500"> (HTTP {readyz.status})</span> : null}
+                  </div>
+                  <pre className="mt-2 text-[10px] text-slate-300 whitespace-pre-wrap break-words">
+                    {JSON.stringify(readyz || {}, null, 2)}
+                  </pre>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs font-semibold text-slate-200">Metrics (Prometheus)</div>
+                <div className="mt-2 text-[11px] text-slate-400">
+                  In prod ist <span className="font-mono">/metrics</span> geschützt через <span className="font-mono">METRICS_TOKEN</span>.
+                </div>
+                <pre className="mt-2 text-[10px] text-slate-300 whitespace-pre-wrap break-words">{`curl -H \"Authorization: Bearer $METRICS_TOKEN\" ${apiBase}/metrics`}</pre>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs font-semibold text-slate-200">Alerts</div>
+                <div className="mt-2 text-[11px] text-slate-400">
+                  Cron endpoint: <span className="font-mono">POST /admin/alerts/run/system</span> с header{" "}
+                  <span className="font-mono">X-Ops-Token</span>. Env: <span className="font-mono">OPS_ALERTS_ENABLED</span>,{" "}
+                  <span className="font-mono">OPS_ALERT_EMAILS</span>.
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
