@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260121_0009"
+    target_revision = "20260210_0011"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:
@@ -383,6 +383,99 @@ def bootstrap_production_schema() -> None:
         )
         conn.execute(text("create index if not exists ix_content_item_audit_log_item_id on content_item_audit_log (item_id);"))
         conn.execute(text("create index if not exists ix_content_item_audit_log_actor_id on content_item_audit_log (actor_id);"))
+
+        # Review decisions (approve/reject tracking)
+        conn.execute(
+            text(
+                "create table if not exists content_item_review_decisions (\n"
+                "  id serial primary key,\n"
+                "  item_id integer not null,\n"
+                "  reviewer_id integer not null,\n"
+                "  decision varchar(20) not null,\n"
+                "  note text,\n"
+                "  created_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_content_item_review_decisions_item_id on content_item_review_decisions (item_id);"))
+        conn.execute(text("create index if not exists ix_content_item_review_decisions_reviewer_id on content_item_review_decisions (reviewer_id);"))
+        # Unique constraint (best-effort)
+        conn.execute(
+            text(
+                "do $$\n"
+                "begin\n"
+                "  if not exists (\n"
+                "    select 1 from pg_indexes where schemaname='public' and indexname='ux_content_item_review_decisions_item_reviewer'\n"
+                "  ) then\n"
+                "    create unique index ux_content_item_review_decisions_item_reviewer on content_item_review_decisions (item_id, reviewer_id);\n"
+                "  end if;\n"
+                "end $$;"
+            )
+        )
+
+        # Reports: templates + runs + schedules
+        conn.execute(
+            text(
+                "create table if not exists report_templates (\n"
+                "  id serial primary key,\n"
+                "  organization_id integer,\n"
+                "  name varchar(160) not null,\n"
+                "  description varchar(1024),\n"
+                "  config jsonb,\n"
+                "  is_default boolean not null default false,\n"
+                "  created_by integer,\n"
+                "  created_at timestamptz not null default now(),\n"
+                "  updated_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_report_templates_organization_id on report_templates (organization_id);"))
+        conn.execute(text("create index if not exists ix_report_templates_created_by on report_templates (created_by);"))
+
+        conn.execute(
+            text(
+                "create table if not exists report_runs (\n"
+                "  id serial primary key,\n"
+                "  organization_id integer,\n"
+                "  template_id integer,\n"
+                "  created_by integer,\n"
+                "  created_at timestamptz not null default now(),\n"
+                "  params jsonb,\n"
+                "  kpi_snapshot jsonb,\n"
+                "  html text,\n"
+                "  status varchar(32) not null default 'ok',\n"
+                "  error varchar(2000)\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_report_runs_organization_id on report_runs (organization_id);"))
+        conn.execute(text("create index if not exists ix_report_runs_template_id on report_runs (template_id);"))
+        conn.execute(text("create index if not exists ix_report_runs_created_by on report_runs (created_by);"))
+
+        conn.execute(
+            text(
+                "create table if not exists report_schedules (\n"
+                "  id serial primary key,\n"
+                "  organization_id integer,\n"
+                "  template_id integer,\n"
+                "  name varchar(160) not null,\n"
+                "  is_active boolean not null default true,\n"
+                "  weekday integer not null default 0,\n"
+                "  hour integer not null default 8,\n"
+                "  minute integer not null default 0,\n"
+                "  timezone varchar(64) not null default 'Europe/Zurich',\n"
+                "  recipients jsonb,\n"
+                "  last_run_at timestamptz,\n"
+                "  next_run_at timestamptz,\n"
+                "  created_by integer,\n"
+                "  created_at timestamptz not null default now(),\n"
+                "  updated_at timestamptz not null default now()\n"
+                ");"
+            )
+        )
+        conn.execute(text("create index if not exists ix_report_schedules_organization_id on report_schedules (organization_id);"))
+        conn.execute(text("create index if not exists ix_report_schedules_template_id on report_schedules (template_id);"))
+        conn.execute(text("create index if not exists ix_report_schedules_next_run_at on report_schedules (next_run_at);"))
 
         # Templates + automation rules
         conn.execute(

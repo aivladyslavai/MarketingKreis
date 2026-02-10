@@ -12,6 +12,8 @@ import { useUploadsApi, useJobsApi } from "@/hooks/use-uploads-api"
 import { sync } from "@/lib/sync"
 import { ResponsiveContainer, AreaChart, Area } from "recharts"
 import { useModal } from "@/components/ui/modal/ModalProvider"
+import { reportsAPI } from "@/lib/api"
+import { useAuth } from "@/hooks/use-auth"
 
 export default function ReportsPage() {
   const toYMD = (d: Date) => {
@@ -31,7 +33,9 @@ export default function ReportsPage() {
   const [to, setTo] = useState<string>(() => toYMD(new Date()))
   const [genLoading, setGenLoading] = useState(false)
   const [reportHtml, setReportHtml] = useState<string>("")
-  const { openModal } = useModal()
+  const { openModal, closeModal } = useModal()
+  const { user } = useAuth()
+  const canManageReports = user?.role === "admin" || user?.role === "editor"
   const [compare, setCompare] = useState<"none" | "prev" | "yoy">("none")
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sections, setSections] = useState({
@@ -46,6 +50,25 @@ export default function ReportsPage() {
   const [language, setLanguage] = useState<"de" | "en">("de")
   const [tone, setTone] = useState<"executive" | "neutral" | "marketing">("executive")
   const [brand, setBrand] = useState<{ company?: string; logoUrl?: string }>({ company: "", logoUrl: "" })
+
+  // Saved templates + history
+  const [templates, setTemplates] = useState<any[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("")
+  const [templateName, setTemplateName] = useState<string>("")
+  const [templateDesc, setTemplateDesc] = useState<string>("")
+  const [runs, setRuns] = useState<any[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [runsLoading, setRunsLoading] = useState(false)
+
+  // Weekly email schedules (admin/editor)
+  const [schedules, setSchedules] = useState<any[]>([])
+  const [schedulesLoading, setSchedulesLoading] = useState(false)
+  const [scheduleName, setScheduleName] = useState<string>("Weekly Executive")
+  const [scheduleRecipients, setScheduleRecipients] = useState<string>("")
+  const [scheduleWeekday, setScheduleWeekday] = useState<number>(0)
+  const [scheduleHour, setScheduleHour] = useState<number>(8)
+  const [scheduleMinute, setScheduleMinute] = useState<number>(0)
+  const [scheduleActive, setScheduleActive] = useState<boolean>(true)
 
   const ReportIFrame = ({ html, height }: { html: string; height: number }) => {
     // IMPORTANT: viewport meta makes the report readable on phones (otherwise iOS renders at ~980px and scales down).
@@ -137,8 +160,32 @@ export default function ReportsPage() {
     } finally { setLoading(false) }
   }
 
+  const loadTemplatesAndRuns = async () => {
+    try {
+      setTemplatesLoading(true)
+      setRunsLoading(true)
+      const [tpls, rs] = await Promise.all([reportsAPI.templates.list().catch(() => []), reportsAPI.runs.list({ limit: 30 }).catch(() => [])])
+      setTemplates(Array.isArray(tpls) ? tpls : [])
+      setRuns(Array.isArray(rs) ? rs : [])
+    } finally {
+      setTemplatesLoading(false)
+      setRunsLoading(false)
+    }
+  }
+
+  const loadSchedules = async () => {
+    try {
+      setSchedulesLoading(true)
+      const rows = await reportsAPI.schedules.list().catch(() => [])
+      setSchedules(Array.isArray(rows) ? rows : [])
+    } finally {
+      setSchedulesLoading(false)
+    }
+  }
+
   useEffect(() => {
     load()
+    loadTemplatesAndRuns()
     const unsub = [
       sync.on('global:refresh', () => { load(); refetchActivities(); refreshCalendar(); refreshUploads(); refreshJobs(); }),
       sync.on('activities:changed', () => { refetchActivities() }),
@@ -149,6 +196,11 @@ export default function ReportsPage() {
     ]
     return () => { unsub.forEach(fn => fn && (fn as any)()) }
   }, [])
+
+  useEffect(() => {
+    if (!canManageReports) return
+    loadSchedules()
+  }, [canManageReports])
 
   const kpis = useMemo(() => {
     const pipelineValue = crmStats?.pipelineValue || 0
@@ -175,6 +227,32 @@ export default function ReportsPage() {
       { key: 'upcoming', title: 'Upcoming', value: upcomingEvents, icon: CalendarDays, color: 'text-purple-500', stroke: '#a855f7', fillFrom: 'rgba(168,85,247,0.25)', fillTo: 'rgba(168,85,247,0.06)', border: 'rgba(168,85,247,0.25)', data: mkSeries(upcomingEvents || 4) },
     ]
   }, [crmStats, events])
+
+  const kpiSnapshot = useMemo(() => {
+    return {
+      pipelineValue: crmStats?.pipelineValue || 0,
+      wonValue: crmStats?.wonValue || 0,
+      totalDeals: crmStats?.totalDeals || 0,
+      upcomingEvents: events.filter((e: any) => e.start && new Date(e.start as any) >= new Date()).length,
+      sources: {
+        pipeline: { endpoint: "/crm/stats", formula: "Pipeline = sum(value) of deals where stage != lost" },
+        won: { endpoint: "/crm/stats", formula: "Won = sum(value) of deals where stage == won" },
+        deals: { endpoint: "/crm/stats", formula: "Deals = count(all deals)" },
+        upcoming: { endpoint: "/calendar", formula: "Upcoming = count(events where start >= now)" },
+      },
+    }
+  }, [crmStats, events])
+
+  const applyTemplateConfig = (cfg: any) => {
+    const c = cfg || {}
+    if (typeof c.from === "string") setFrom(c.from)
+    if (typeof c.to === "string") setTo(c.to)
+    if (typeof c.compare === "string") setCompare(c.compare)
+    if (c.sections && typeof c.sections === "object") setSections((s) => ({ ...s, ...c.sections }))
+    if (c.language) setLanguage(c.language)
+    if (c.tone) setTone(c.tone)
+    if (c.brand && typeof c.brand === "object") setBrand((b) => ({ ...b, ...c.brand }))
+  }
 
   const renderStatus = (raw: string) => {
     const v = String(raw || '').toUpperCase()
@@ -288,6 +366,96 @@ export default function ReportsPage() {
           </div>
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2" data-tour="reports-actions">
+          {/* Templates: select + save */}
+          <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-1">
+            <div className="flex-1 min-w-0">
+              <StyledSelect
+                value={selectedTemplateId}
+                onChange={(e: any) => {
+                  const v = String(e.target.value || "")
+                  setSelectedTemplateId(v)
+                  const tpl = templates.find((t: any) => String(t.id) === v)
+                  if (tpl?.config) applyTemplateConfig(tpl.config)
+                }}
+              >
+                <option value="">Template auswählen…</option>
+                {templates.map((t: any) => (
+                  <option key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </option>
+                ))}
+              </StyledSelect>
+            </div>
+            {canManageReports && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm"
+                disabled={templatesLoading}
+                onClick={() => {
+                  openModal({
+                    type: "custom",
+                    title: "Report Template speichern",
+                    content: (
+                      <div className="space-y-3">
+                        <div className="text-xs text-slate-300">
+                          Speichert Einstellungen (Zeitraum, Sektionen, Sprache/Ton, Branding) als wiederverwendbares Template.
+                        </div>
+                        <input
+                          value={templateName}
+                          onChange={(e) => setTemplateName(e.target.value)}
+                          placeholder="Name (z.B. Weekly Executive)"
+                          className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                        />
+                        <input
+                          value={templateDesc}
+                          onChange={(e) => setTemplateDesc(e.target.value)}
+                          placeholder="Beschreibung (optional)"
+                          className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button
+                            className="h-11"
+                            onClick={async () => {
+                              const payload: any = {
+                                name: templateName || `Template ${new Date().toISOString().slice(0, 10)}`,
+                                description: templateDesc || undefined,
+                                config: {
+                                  from,
+                                  to,
+                                  compare,
+                                  sections,
+                                  language,
+                                  tone,
+                                  brand,
+                                },
+                              }
+                              await reportsAPI.templates.create(payload)
+                              setTemplateName("")
+                              setTemplateDesc("")
+                              await loadTemplatesAndRuns()
+                              try {
+                                sync.emit("global:refresh")
+                              } catch {}
+                              closeModal()
+                            }}
+                          >
+                            Speichern
+                          </Button>
+                          <Button variant="outline" className="h-11" onClick={closeModal}>
+                            Schließen
+                          </Button>
+                        </div>
+                      </div>
+                    ),
+                  })
+                }}
+              >
+                Template speichern
+              </Button>
+            )}
+          </div>
+
           <Button disabled={genLoading} size="sm" className="bg-blue-600 hover:bg-blue-500 h-8 sm:h-9 text-xs sm:text-sm" onClick={async()=>{
             try {
               setGenLoading(true)
@@ -311,6 +479,20 @@ export default function ReportsPage() {
               const j = await res.json()
               if (!res.ok) throw new Error(j?.error || res.statusText)
               setReportHtml(String(j?.html || ''))
+              // Persist run history for audit/executive repeatability
+              try {
+                const tplId = selectedTemplateId ? Number(selectedTemplateId) : null
+                await reportsAPI.runs.create({
+                  template_id: Number.isFinite(tplId as any) ? (tplId as any) : null,
+                  params: { from, to, options: { compare, sections, language, tone, brand } },
+                  kpi_snapshot: { ...kpiSnapshot, generatedAt: new Date().toISOString() },
+                  html: String(j?.html || ""),
+                  status: "ok",
+                })
+                await loadTemplatesAndRuns()
+              } catch {
+                // best-effort; do not block UX
+              }
             } catch (e) {
               alert((e as any)?.message || 'Report generation failed')
             } finally { setGenLoading(false) }
@@ -355,6 +537,216 @@ export default function ReportsPage() {
           )}
           </div>
         </div>
+
+        {/* History */}
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-slate-200">Historie (Generierungen)</div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-white/20 text-slate-200 h-9 text-xs"
+              onClick={loadTemplatesAndRuns}
+              disabled={runsLoading}
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-2" /> Neu laden
+            </Button>
+          </div>
+          <div className="mt-3 space-y-2">
+            {runs.length === 0 ? (
+              <div className="text-xs text-slate-400">Noch keine gespeicherten Generierungen.</div>
+            ) : (
+              runs.slice(0, 12).map((r: any) => {
+                const dt = r.created_at ? new Date(r.created_at) : null
+                const when = dt && Number.isFinite(dt.getTime()) ? dt.toLocaleString("de-DE") : String(r.created_at || "")
+                const tplName = r.template_id ? templates.find((t: any) => t.id === r.template_id)?.name : null
+                return (
+                  <div key={r.id} className="rounded-xl border border-white/10 bg-slate-950/30 p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs text-slate-300 truncate">
+                        <span className="font-semibold text-slate-100">#{r.id}</span> · {when}
+                        {tplName ? <span className="text-slate-400"> · {tplName}</span> : null}
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-400 truncate">
+                        {r.status === "ok" ? "OK" : `Error: ${r.error || "unknown"}`}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 text-xs border-white/20 text-slate-200"
+                        onClick={async () => {
+                          const full = await reportsAPI.runs.get(r.id)
+                          const html = String((full as any)?.html || "")
+                          if (html) setReportHtml(html)
+                          const params = (full as any)?.params
+                          if (params?.from) setFrom(params.from)
+                          if (params?.to) setTo(params.to)
+                          if (params?.options?.compare) setCompare(params.options.compare)
+                          if (params?.options?.sections) setSections((s) => ({ ...s, ...params.options.sections }))
+                          if (params?.options?.language) setLanguage(params.options.language)
+                          if (params?.options?.tone) setTone(params.options.tone)
+                          if (params?.options?.brand) setBrand((b) => ({ ...b, ...params.options.brand }))
+                        }}
+                      >
+                        Laden
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 text-xs border-white/20 text-slate-200"
+                        disabled={!r.id}
+                        onClick={async () => {
+                          const full = await reportsAPI.runs.get(r.id)
+                          const html = String((full as any)?.html || "")
+                          if (!html) return
+                          openModal({
+                            type: "custom",
+                            title: `Report Run #${r.id}`,
+                            content: (
+                              <div className="px-1">
+                                <ReportIFrame html={html} height={window.innerHeight ? Math.round(window.innerHeight * 0.8) : 700} />
+                              </div>
+                            ),
+                          })
+                        }}
+                      >
+                        Preview
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Weekly email schedule */}
+        {canManageReports && (
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-slate-200">Рассылка (еженедельно на email)</div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/20 text-slate-200 h-9 text-xs"
+                onClick={loadSchedules}
+                disabled={schedulesLoading}
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-2" /> Neu laden
+              </Button>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3 space-y-2">
+                <div className="text-xs font-semibold text-slate-200">Neuen Schedule anlegen</div>
+                <input
+                  value={scheduleName}
+                  onChange={(e) => setScheduleName(e.target.value)}
+                  placeholder="Name"
+                  className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                />
+                <input
+                  value={scheduleRecipients}
+                  onChange={(e) => setScheduleRecipients(e.target.value)}
+                  placeholder="Empfänger (comma/semicolon getrennt)"
+                  className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                />
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                  <span>Wochentag:</span>
+                  <StyledSelect value={String(scheduleWeekday)} onChange={(e: any) => setScheduleWeekday(Number(e.target.value))}>
+                    <option value="0">Mo</option>
+                    <option value="1">Di</option>
+                    <option value="2">Mi</option>
+                    <option value="3">Do</option>
+                    <option value="4">Fr</option>
+                    <option value="5">Sa</option>
+                    <option value="6">So</option>
+                  </StyledSelect>
+                  <span>Uhrzeit:</span>
+                  <input
+                    type="number"
+                    value={scheduleHour}
+                    onChange={(e) => setScheduleHour(Math.max(0, Math.min(23, Number(e.target.value))))}
+                    className="h-11 sm:h-9 w-20 rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200"
+                  />
+                  <span>:</span>
+                  <input
+                    type="number"
+                    value={scheduleMinute}
+                    onChange={(e) => setScheduleMinute(Math.max(0, Math.min(59, Number(e.target.value))))}
+                    className="h-11 sm:h-9 w-20 rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-slate-200">
+                  <input type="checkbox" checked={scheduleActive} onChange={(e) => setScheduleActive(e.target.checked)} />
+                  Aktiv
+                </label>
+                <Button
+                  className="h-11 w-full"
+                  onClick={async () => {
+                    const recipients = scheduleRecipients
+                      .split(/[,;\\s]+/g)
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                    await reportsAPI.schedules.create({
+                      name: scheduleName || "Weekly Executive",
+                      template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
+                      is_active: scheduleActive,
+                      weekday: scheduleWeekday,
+                      hour: scheduleHour,
+                      minute: scheduleMinute,
+                      timezone: "Europe/Zurich",
+                      recipients,
+                    } as any)
+                    setScheduleRecipients("")
+                    await loadSchedules()
+                  }}
+                >
+                  Schedule speichern
+                </Button>
+                <div className="text-[11px] text-slate-400">
+                  Hinweis: Versand passiert über einen cron-call an Backend: <span className="font-mono">POST /reports/schedules/run/system</span> mit Header{" "}
+                  <span className="font-mono">X-Reports-Token</span>.
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3">
+                <div className="text-xs font-semibold text-slate-200">Aktive Schedules</div>
+                <div className="mt-2 space-y-2">
+                  {schedules.length === 0 ? (
+                    <div className="text-xs text-slate-400">Noch keine Schedules.</div>
+                  ) : (
+                    schedules.slice(0, 10).map((s: any) => (
+                      <div key={s.id} className="rounded-xl border border-white/10 bg-white/5 p-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-100 truncate">{s.name}</div>
+                          <div className="mt-1 text-[11px] text-slate-400 truncate">
+                            {s.is_active ? "Aktiv" : "Pausiert"} · {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][s.weekday] || "—"} ·{" "}
+                            {String(s.hour).padStart(2, "0")}:{String(s.minute).padStart(2, "0")} · {Array.isArray(s.recipients) ? s.recipients.join(", ") : ""}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-9 text-xs border-white/20 text-slate-200"
+                          onClick={async () => {
+                            await reportsAPI.schedules.delete(s.id)
+                            await loadSchedules()
+                          }}
+                        >
+                          Löschen
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {settingsOpen && (
           <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
             <div className="flex flex-wrap items-center gap-3">
@@ -405,7 +797,39 @@ export default function ReportsPage() {
             <CardHeader className="pt-3 sm:pt-4 px-3 sm:px-4 pb-1 sm:pb-2">
               <CardTitle className={`${k.color} flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm`}>
                 <k.icon className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${k.color}`} />
-                {k.title}
+                <span className="flex-1 min-w-0 truncate">{k.title}</span>
+                <button
+                  type="button"
+                  className="ml-auto inline-flex items-center justify-center h-7 w-7 rounded-md border border-white/15 bg-white/5 text-slate-200 hover:bg-white/10"
+                  title="Wie wird das berechnet?"
+                  aria-label="Wie wird das berechnet?"
+                  onClick={() => {
+                    const src = (kpiSnapshot as any)?.sources?.[k.key]
+                    openModal({
+                      type: "custom",
+                      title: `${k.title} – Wie wird das berechnet?`,
+                      content: (
+                        <div className="space-y-2 text-sm">
+                          <div className="text-slate-300">
+                            <div className="font-semibold text-white">Quelle</div>
+                            <div className="mt-1 text-slate-300">
+                              Endpoint: <span className="font-mono text-slate-200">{src?.endpoint || "—"}</span>
+                            </div>
+                          </div>
+                          <div className="text-slate-300">
+                            <div className="font-semibold text-white">Berechnung</div>
+                            <div className="mt-1 text-slate-300">{src?.formula || "—"}</div>
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            Tipp: Für Audit/Transparenz wird bei jeder Generierung ein KPI-Snapshot in der Historie gespeichert.
+                          </div>
+                        </div>
+                      ),
+                    })
+                  }}
+                >
+                  i
+                </button>
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0 px-3 sm:px-4 pb-3 sm:pb-4">

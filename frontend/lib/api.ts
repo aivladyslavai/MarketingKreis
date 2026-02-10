@@ -5,10 +5,38 @@
 const envBase = process.env.NEXT_PUBLIC_API_URL
 export const apiBase = envBase && envBase.startsWith("/") ? envBase : "/api"
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null
+  const raw = document.cookie || ""
+  const parts = raw.split(";").map((p) => p.trim())
+  for (const p of parts) {
+    if (!p) continue
+    const idx = p.indexOf("=")
+    if (idx < 0) continue
+    const k = p.slice(0, idx).trim()
+    if (k !== name) continue
+    return decodeURIComponent(p.slice(idx + 1))
+  }
+  return null
+}
+
+function withCsrf(init: RequestInit = {}): RequestInit {
+  const method = String(init.method || "GET").toUpperCase()
+  const unsafe = ["POST", "PUT", "PATCH", "DELETE"].includes(method)
+  if (!unsafe) return init
+  const token = readCookie("csrf_token")
+  if (!token) return init
+  return {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers || {}) },
+    headers: { ...(init.headers || {}), "X-CSRF-Token": token },
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const req = withCsrf(init)
+  const res = await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
+    ...req,
+    headers: { "Content-Type": "application/json", ...(req.headers || {}) },
     credentials: "include",
     cache: "no-store",
   })
@@ -33,9 +61,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 // server-side proxies, avoiding 401 "Not authenticated" errors.
 export async function requestLocal<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = path.startsWith("/") ? path : "/" + path
+  const req = withCsrf(init)
   const res = await fetch(url, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers || {}) },
+    ...req,
+    headers: { "Content-Type": "application/json", ...(req.headers || {}) },
     credentials: "include",
     cache: "no-store",
   })
@@ -55,9 +84,10 @@ export async function requestLocal<T>(path: string, init: RequestInit = {}): Pro
 }
 
 export const authFetch = async (path: string, init: RequestInit = {}): Promise<Response> => {
+  const req = withCsrf(init)
   const res = await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers || {}) },
+    ...req,
+    headers: { "Content-Type": "application/json", ...(req.headers || {}) },
     credentials: "include",
     cache: "no-store",
   })
@@ -291,6 +321,16 @@ export type ContentReviewerDTO = {
   created_at: string
 }
 
+export type ContentReviewDecisionDTO = {
+  id: number
+  item_id: number
+  reviewer_id: number
+  decision: string
+  note?: string | null
+  reviewer?: { id: number; email: string; role: string } | null
+  created_at: string
+}
+
 export type ContentTemplateDTO = {
   id: number
   name: string
@@ -326,6 +366,47 @@ export type NotificationDTO = {
   url?: string | null
   read_at?: string | null
   created_at: string
+}
+
+export type ReportTemplateDTO = {
+  id: number
+  name: string
+  description?: string | null
+  config?: any | null
+  is_default?: boolean
+  created_by?: number | null
+  created_at: string
+  updated_at: string
+}
+
+export type ReportRunDTO = {
+  id: number
+  template_id?: number | null
+  created_by?: number | null
+  created_at: string
+  params?: any | null
+  kpi_snapshot?: any | null
+  status: string
+  error?: string | null
+}
+
+export type ReportRunWithHtmlDTO = ReportRunDTO & { html?: string | null }
+
+export type ReportScheduleDTO = {
+  id: number
+  name: string
+  template_id?: number | null
+  is_active: boolean
+  weekday: number
+  hour: number
+  minute: number
+  timezone: string
+  recipients: string[]
+  last_run_at?: string | null
+  next_run_at?: string | null
+  created_by?: number | null
+  created_at: string
+  updated_at: string
 }
 
 export const contentItemsAPI = {
@@ -400,6 +481,32 @@ export const contentItemsAPI = {
       method: "POST",
       body: JSON.stringify({ template_id: templateId }),
     }),
+  review: {
+    request: (itemId: number, note?: string) =>
+      request<{ ok: boolean; id: number; status: string }>(`/content/items/${itemId}/review/request`, {
+        method: "POST",
+        body: JSON.stringify({ note }),
+      }),
+    approve: (itemId: number, note?: string) =>
+      request<{ ok: boolean; id: number; status: string }>(`/content/items/${itemId}/review/approve`, {
+        method: "POST",
+        body: JSON.stringify({ note }),
+      }),
+    forceApprove: (itemId: number, note?: string) =>
+      request<{ ok: boolean; id: number; status: string }>(`/content/items/${itemId}/review/approve`, {
+        method: "POST",
+        body: JSON.stringify({ note, force: true }),
+      }),
+    reject: (itemId: number, reason?: string) =>
+      request<{ ok: boolean; id: number; status: string }>(`/content/items/${itemId}/review/reject`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+    decisions: (itemId: number) => request<ContentReviewDecisionDTO[]>(`/content/items/${itemId}/review/decisions`),
+  },
+  users: {
+    list: () => request<Array<{ id: number; email: string; role: string }>>(`/content/users`),
+  },
   generateFromDeal: (dealId: number, templateId?: number) =>
     request<{ ok: boolean; item_id: number; template_id?: number | null }>(`/content/generate/from-deal/${dealId}`, {
       method: "POST",
@@ -434,6 +541,37 @@ export const notificationsAPI = {
   },
   read: (id: number) => request<{ ok: boolean; id: number }>(`/content/notifications/${id}/read`, { method: "POST" }),
   readAll: () => request<{ ok: boolean }>(`/content/notifications/read-all`, { method: "POST" }),
+}
+
+export const reportsAPI = {
+  templates: {
+    list: () => request<ReportTemplateDTO[]>(`/reports/templates`),
+    create: (payload: Partial<ReportTemplateDTO>) =>
+      request<ReportTemplateDTO>(`/reports/templates`, { method: "POST", body: JSON.stringify(payload) }),
+    update: (id: number, payload: Partial<ReportTemplateDTO>) =>
+      request<ReportTemplateDTO>(`/reports/templates/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    delete: (id: number) => request<{ ok: boolean; id: number }>(`/reports/templates/${id}`, { method: "DELETE" }),
+  },
+  runs: {
+    list: (params?: { template_id?: number; limit?: number }) => {
+      const sp = new URLSearchParams()
+      if (params?.template_id != null) sp.set("template_id", String(params.template_id))
+      if (params?.limit != null) sp.set("limit", String(params.limit))
+      const qs = sp.toString()
+      return request<ReportRunDTO[]>(`/reports/runs${qs ? `?${qs}` : ""}`)
+    },
+    get: (id: number) => request<ReportRunWithHtmlDTO>(`/reports/runs/${id}`),
+    create: (payload: Partial<{ template_id: number | null; params: any; kpi_snapshot: any; html: string; status: string; error: string }>) =>
+      request<ReportRunDTO>(`/reports/runs`, { method: "POST", body: JSON.stringify(payload) }),
+  },
+  schedules: {
+    list: () => request<ReportScheduleDTO[]>(`/reports/schedules`),
+    create: (payload: Partial<ReportScheduleDTO>) =>
+      request<ReportScheduleDTO>(`/reports/schedules`, { method: "POST", body: JSON.stringify(payload) }),
+    update: (id: number, payload: Partial<ReportScheduleDTO>) =>
+      request<ReportScheduleDTO>(`/reports/schedules/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    delete: (id: number) => request<{ ok: boolean; id: number }>(`/reports/schedules/${id}`, { method: "DELETE" }),
+  },
 }
 
 export const contentAI = {

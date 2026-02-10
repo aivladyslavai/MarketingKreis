@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     cookie_samesite: str = Field(default="lax", env="COOKIE_SAMESITE")
     cookie_access_name: str = Field(default="access_token", env="COOKIE_ACCESS_NAME")
     cookie_refresh_name: str = Field(default="refresh_token", env="COOKIE_REFRESH_NAME")
+    cookie_csrf_name: str = Field(default="csrf_token", env="COOKIE_CSRF_NAME")
 
     # Redis / RQ
     redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
@@ -80,6 +81,14 @@ class Settings(BaseSettings):
     admin_bootstrap_token: Optional[str] = Field(default=None, env="ADMIN_BOOTSTRAP_TOKEN")
     # Feature flags
     skip_email_verify: bool = Field(default=False, env="SKIP_EMAIL_VERIFY")
+
+    # Content reminders (cron-safe)
+    reminders_cron_token: Optional[str] = Field(default=None, env="REMINDERS_CRON_TOKEN")
+    reminders_email_enabled: bool = Field(default=False, env="REMINDERS_EMAIL_ENABLED")
+
+    # Reports scheduling (cron-safe)
+    reports_cron_token: Optional[str] = Field(default=None, env="REPORTS_CRON_TOKEN")
+    reports_email_enabled: bool = Field(default=False, env="REPORTS_EMAIL_ENABLED")
 
     # Auth hardening
     auth_rate_limit_enabled: bool = Field(default=True, env="AUTH_RATE_LIMIT_ENABLED")

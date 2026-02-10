@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from jose import jwt
 from typing import Callable
+from datetime import datetime, timezone, timedelta
 
 from app.core.config import get_settings
 from app.db.session import get_db_session  # re-exported for convenience
@@ -34,6 +35,17 @@ def get_current_user(
         session = db.get(AuthSession, str(sid))
         if not session or session.revoked_at is not None:
             raise HTTPException(status_code=401, detail="Session revoked")
+        # Best-effort session activity tracking (throttle updates)
+        try:
+            now = datetime.now(timezone.utc)
+            last = session.last_seen_at
+            if not last or (now - last) > timedelta(minutes=5):
+                session.last_seen_at = now
+                db.add(session)
+                db.commit()
+        except Exception:
+            # Never block auth on activity tracking failures
+            pass
     except HTTPException:
         raise
     except Exception:

@@ -222,6 +222,7 @@ REQUIREMENTS
   5) CRM – Companies & Contacts (top items by recent changes)
   6) Uploads & Jobs (counts + latest items)
   7) Risks & Recommendations (bullets)
+  8) KPI Transparency / Data Sources (small table: KPI, how calculated, data source endpoint, assumptions)
 
 STYLE
 - Use CSS variables, fonts: system-ui; colors tuned for dark background; subtle dividers; cards with rounded corners. Provide :root variables and print @media.
@@ -267,6 +268,18 @@ OUTPUT
             uploads: up.length,
             jobs: jb.length,
           },
+          kpi_sources: {
+            pipelineValue: { endpoint: "/crm/stats", howCalculated: "sum(value) of deals where stage != lost" },
+            wonValue: { endpoint: "/crm/stats", howCalculated: "sum(value) of deals where stage == won" },
+            totalDeals: { endpoint: "/crm/stats", howCalculated: "count(all deals)" },
+            uploads: { endpoint: "/uploads", howCalculated: "count(uploads within selected period)" },
+            jobs: { endpoint: "/jobs", howCalculated: "count(jobs within selected period)" },
+          },
+          assumptions: [
+            "`to` date is treated as inclusive end-of-day for date inputs",
+            "Pipeline excludes stage=lost; Won includes stage=won",
+            "Uploads/Jobs/Calendar/Activities are filtered by created/start timestamps when available",
+          ],
           compare: compareBlock,
           totals: {
             activities: act.length, events: ev.length, uploads: up.length, jobs: jb.length,

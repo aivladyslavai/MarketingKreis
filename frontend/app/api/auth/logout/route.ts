@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
   try {
     const apiUrl = getBackendUrl()
     const cookie = req.headers.get("cookie") || ""
+    const csrf = req.headers.get("x-csrf-token") || ""
 
     const controller = new AbortController()
     const t = setTimeout(() => controller.abort(), 9000)
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         cookie,
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
       },
       credentials: "include",
       cache: "no-store",

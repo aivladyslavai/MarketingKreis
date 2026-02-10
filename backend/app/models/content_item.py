@@ -28,6 +28,11 @@ class ContentItemStatus(str, enum.Enum):
     BLOCKED = "BLOCKED"
 
 
+class ContentReviewDecision(str, enum.Enum):
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 class ContentAssetKind(str, enum.Enum):
     LINK = "LINK"
     UPLOAD = "UPLOAD"
@@ -85,6 +90,7 @@ class ContentItem(Base):
     versions = relationship("ContentItemVersion", back_populates="item", cascade="all, delete-orphan")
     audit_logs = relationship("ContentItemAuditLog", back_populates="item", cascade="all, delete-orphan")
     reviewers = relationship("ContentItemReviewer", back_populates="item", cascade="all, delete-orphan")
+    review_decisions = relationship("ContentItemReviewDecision", back_populates="item", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<ContentItem id={self.id} title={self.title!r} status={self.status}>"
@@ -101,6 +107,21 @@ class ContentItemReviewer(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     item = relationship("ContentItem", back_populates="reviewers")
+    reviewer = relationship("User", foreign_keys=[reviewer_id])
+
+
+class ContentItemReviewDecision(Base):
+    __tablename__ = "content_item_review_decisions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    reviewer_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    decision = Column(String(20), nullable=False)  # APPROVED|REJECTED
+    note = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    item = relationship("ContentItem", back_populates="review_decisions")
     reviewer = relationship("User", foreign_keys=[reviewer_id])
 
 

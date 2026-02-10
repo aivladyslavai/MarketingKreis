@@ -30,10 +30,18 @@ frontend/e2e-run.json
 #
 # Local runtime logs and PIDs
 #
+*.pid
+**/*.pid
 backend-dev.log
 frontend-dev.log
 backend_dev.pid
 frontend_dev.pid
+
+# Duplicate lockfiles / backups (never commit)
+package-lock *.json
+**/package-lock *.json
+*.backup
+**/*.backup
 
 #
 # SQLite databases (do not commit local DBs)

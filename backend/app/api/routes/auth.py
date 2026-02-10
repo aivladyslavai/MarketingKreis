@@ -8,6 +8,7 @@ from app.db.session import get_db_session
 from app.core.config import get_settings
 from datetime import timedelta, datetime, timezone
 import uuid
+import secrets
 from jose import jwt
 from app.api.deps import get_org_id, require_role
 from app.models.organization import Organization
@@ -22,6 +23,7 @@ from app.core.rate_limit import (
     record_login_success,
     get_client_ip,
 )
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -62,6 +64,19 @@ def _set_auth_cookies(response: Response, *, access_token: str, refresh_token: s
     cookie_secure = settings.cookie_secure
     cookie_samesite = settings.cookie_samesite
 
+    # Double-submit CSRF token (non-HttpOnly so frontend can read it and mirror to header)
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key=getattr(settings, "cookie_csrf_name", "csrf_token"),
+        value=csrf_token,
+        httponly=False,
+        secure=cookie_secure,
+        samesite=cookie_samesite,
+        path="/",
+        domain=cookie_domain,
+        max_age=max(settings.refresh_token_expire_minutes * 60, settings.access_token_expire_minutes * 60),
+    )
+
     response.set_cookie(
         key=settings.cookie_access_name,
         value=access_token,
@@ -91,6 +106,8 @@ def _clear_auth_cookies(response: Response, settings) -> None:
     # Refresh cookie is restricted to /auth, but older deployments used path="/"
     response.delete_cookie(settings.cookie_refresh_name, path="/auth", domain=settings.cookie_domain)
     response.delete_cookie(settings.cookie_refresh_name, path="/", domain=settings.cookie_domain)
+    # CSRF cookie is global
+    response.delete_cookie(getattr(settings, "cookie_csrf_name", "csrf_token"), path="/", domain=settings.cookie_domain)
 
 
 @router.post("/login")
@@ -589,6 +606,94 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db_se
     # Clear cookies
     _clear_auth_cookies(response, settings)
     return {"message": "ok"}
+
+
+class SessionOut(BaseModel):
+    id: str
+    user_agent: str | None = None
+    ip: str | None = None
+    created_at: datetime
+    last_seen_at: datetime | None = None
+    revoked_at: datetime | None = None
+    revoked_reason: str | None = None
+    is_current: bool = False
+
+
+def _current_sid_from_access(request: Request, settings) -> str | None:
+    raw_access = request.cookies.get(settings.cookie_access_name)
+    if not raw_access:
+        return None
+    try:
+        payload = jwt.decode(raw_access, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        if payload.get("typ") != "access":
+            return None
+        return str(payload.get("sid") or "") or None
+    except Exception:
+        return None
+
+
+@router.get("/sessions", response_model=list[SessionOut])
+def list_sessions(request: Request, db: Session = Depends(get_db_session)):
+    settings = get_settings()
+    user = get_current_user(request, db)
+    current_sid = _current_sid_from_access(request, settings)
+    rows = (
+        db.query(AuthSession)
+        .filter(AuthSession.user_id == user.id)
+        .order_by(AuthSession.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    out: list[SessionOut] = []
+    for s in rows:
+        out.append(
+            SessionOut(
+                id=str(s.id),
+                user_agent=s.user_agent,
+                ip=s.ip,
+                created_at=s.created_at,
+                last_seen_at=s.last_seen_at,
+                revoked_at=s.revoked_at,
+                revoked_reason=s.revoked_reason,
+                is_current=bool(current_sid and str(s.id) == current_sid),
+            )
+        )
+    return out
+
+
+@router.post("/sessions/{session_id}/revoke")
+def revoke_session(session_id: str, request: Request, response: Response, db: Session = Depends(get_db_session)):
+    settings = get_settings()
+    user = get_current_user(request, db)
+    sess = db.get(AuthSession, str(session_id))
+    if not sess or int(sess.user_id) != int(user.id):
+        raise HTTPException(status_code=404, detail="Session not found")
+    if sess.revoked_at is None:
+        sess.revoked_at = _utcnow()
+        sess.revoked_reason = "user_revoke"
+        db.add(sess)
+        db.commit()
+
+    # If the current session is revoked, also clear cookies.
+    current_sid = _current_sid_from_access(request, settings)
+    if current_sid and current_sid == str(session_id):
+        _clear_auth_cookies(response, settings)
+    return {"ok": True, "id": str(session_id)}
+
+
+@router.post("/sessions/revoke-all")
+def revoke_all_sessions(request: Request, response: Response, db: Session = Depends(get_db_session)):
+    settings = get_settings()
+    user = get_current_user(request, db)
+    now = _utcnow()
+    (
+        db.query(AuthSession)
+        .filter(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
+        .update({"revoked_at": now, "revoked_reason": "logout_all"}, synchronize_session=False)
+    )
+    db.commit()
+    _clear_auth_cookies(response, settings)
+    return {"ok": True}
 
 class InviteRequest(BaseModel):
     email: str

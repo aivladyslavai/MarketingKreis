@@ -11,6 +11,19 @@ from app.models.job import Job  # noqa
 from app.models.upload import Upload  # noqa
 from app.models.user_category import UserCategory  # noqa
 from app.models.content_task import ContentTask  # noqa
+from app.models.content_item import (  # noqa
+    ContentItem,
+    ContentItemReviewer,
+    ContentItemComment,
+    ContentItemChecklistItem,
+    ContentItemAsset,
+    ContentItemVersion,
+    ContentItemAuditLog,
+    ContentTemplate,
+    ContentAutomationRule,
+    Notification,
+)
+from app.models.report import ReportTemplate, ReportRun, ReportSchedule  # noqa
 from app.models.auth_session import AuthSession, AuthRefreshToken  # noqa
 
 

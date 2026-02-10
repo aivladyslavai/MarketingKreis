@@ -28,7 +28,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     environment:
-      NEXT_PUBLIC_API_URL: http://backend:8000
+      # Frontend should stay same-origin in production (browser sends cookies to this domain).
+      # All API calls go to /api on the frontend domain, then Next.js proxies to the backend.
+      NEXT_PUBLIC_API_URL: /api
+      BACKEND_URL: http://backend:8000
     depends_on:
       - backend
 

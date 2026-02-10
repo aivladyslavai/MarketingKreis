@@ -7,10 +7,14 @@ import re
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):
-    """Very lightweight CSRF check for state-changing requests in production.
+    """CSRF protection for cookie-authenticated requests.
 
-    - Allows only requests with Origin/Referer matching allowed CORS origins
-    - Skips GET/HEAD/OPTIONS
+    Defense-in-depth:
+    - For unsafe methods (POST/PUT/PATCH/DELETE), if auth cookies are present,
+      require a double-submit CSRF token: header `X-CSRF-Token` must equal a
+      non-HttpOnly CSRF cookie.
+    - Additionally (optional) validate Origin/Referer when present.
+    - Skips GET/HEAD/OPTIONS.
     """
 
     def __init__(self, app, allowed_origins: Iterable[str], allowed_origin_regex: Optional[str] = None):
@@ -21,6 +25,20 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.method in ("GET", "HEAD", "OPTIONS"):
             return await call_next(request)
+
+        settings = get_settings()
+
+        # Double-submit CSRF: only enforce when cookie-auth is in play.
+        # This covers browser->Next proxy->backend flows where Origin/Referer
+        # may be missing on the backend request.
+        has_auth_cookie = bool(
+            request.cookies.get(settings.cookie_access_name) or request.cookies.get(settings.cookie_refresh_name)
+        )
+        if has_auth_cookie:
+            csrf_cookie = (request.cookies.get(settings.cookie_csrf_name) or "").strip()
+            csrf_header = (request.headers.get("x-csrf-token") or "").strip()
+            if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+                return Response("Forbidden (CSRF token)", status_code=403)
 
         origin = request.headers.get("origin") or ""
         referer = request.headers.get("referer") or ""

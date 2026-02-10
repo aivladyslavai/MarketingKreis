@@ -90,6 +90,19 @@ class ContentItemReviewerOut(BaseModel):
         from_attributes = True
 
 
+class ContentReviewDecisionOut(BaseModel):
+    id: int
+    item_id: int
+    reviewer_id: int
+    decision: str
+    note: Optional[str] = None
+    reviewer: Optional[UserOut] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class ContentItemCommentCreate(BaseModel):
     body: str = Field(..., min_length=1, max_length=10000)
 

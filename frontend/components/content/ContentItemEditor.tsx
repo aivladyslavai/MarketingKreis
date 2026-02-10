@@ -6,7 +6,15 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GlassSelect } from "@/components/ui/glass-select"
 import { Badge } from "@/components/ui/badge"
-import { contentAI, contentItemsAPI, type ContentItemDTO, type ContentItemStatus, type ContentReviewerDTO } from "@/lib/api"
+import {
+  contentAI,
+  contentItemsAPI,
+  contentTemplatesAPI,
+  type ContentItemDTO,
+  type ContentItemStatus,
+  type ContentReviewerDTO,
+  type ContentReviewDecisionDTO,
+} from "@/lib/api"
 import { sync } from "@/lib/sync"
 import { useAuth } from "@/hooks/use-auth"
 import { AlertCircle, Check, FileText, Link2, Loader2, Plus, Sparkles, Trash2, Upload } from "lucide-react"
@@ -93,7 +101,11 @@ export function ContentItemEditor({
   const [versions, setVersions] = React.useState<any[]>([])
   const [audit, setAudit] = React.useState<any[]>([])
   const [reviewers, setReviewers] = React.useState<ContentReviewerDTO[]>([])
-  const [reviewerIdInput, setReviewerIdInput] = React.useState<string>("")
+  const [reviewDecisions, setReviewDecisions] = React.useState<ContentReviewDecisionDTO[]>([])
+  const [orgUsers, setOrgUsers] = React.useState<Array<{ id: number; email: string; role: string }>>([])
+  const [reviewerPick, setReviewerPick] = React.useState<string>("")
+  const [templates, setTemplates] = React.useState<any[]>([])
+  const [templatePick, setTemplatePick] = React.useState<string>("")
   const [tab, setTab] = React.useState<
     "details" | "workflow" | "checklist" | "assets" | "comments" | "ai"
   >("details")
@@ -103,6 +115,8 @@ export function ContentItemEditor({
   const [newChecklist, setNewChecklist] = React.useState("")
   const [newAssetUrl, setNewAssetUrl] = React.useState("")
   const [newAssetName, setNewAssetName] = React.useState("")
+  const [reviewNote, setReviewNote] = React.useState("")
+  const [reviewBusy, setReviewBusy] = React.useState(false)
 
   // AI
   const [aiLoading, setAiLoading] = React.useState(false)
@@ -112,7 +126,7 @@ export function ContentItemEditor({
 
   const loadAll = React.useCallback(
     async (id: number) => {
-      const [it, cs, cl, as, vs, au, rv] = await Promise.all([
+      const [it, cs, cl, as, vs, au, rv, rd] = await Promise.all([
         contentItemsAPI.get(id),
         contentItemsAPI.comments.list(id).catch(() => []),
         contentItemsAPI.checklist.list(id).catch(() => []),
@@ -120,6 +134,7 @@ export function ContentItemEditor({
         contentItemsAPI.versions.list(id).catch(() => []),
         contentItemsAPI.audit.list(id).catch(() => []),
         contentItemsAPI.reviewers.list(id).catch(() => []),
+        contentItemsAPI.review.decisions(id).catch(() => []),
       ])
       setItem(it)
       setTagsInput(Array.isArray(it.tags) ? it.tags.join(", ") : "")
@@ -129,6 +144,7 @@ export function ContentItemEditor({
       setVersions(vs as any[])
       setAudit(au as any[])
       setReviewers(rv as any)
+      setReviewDecisions(rd as any)
     },
     []
   )
@@ -148,6 +164,25 @@ export function ContentItemEditor({
       cancelled = true
     }
   }, [itemId, loadAll])
+
+  // Load picklists for workflow (admins/editors only)
+  React.useEffect(() => {
+    if (!isAdmin) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [users, tpls] = await Promise.all([contentItemsAPI.users.list().catch(() => []), contentTemplatesAPI.list().catch(() => [])])
+        if (cancelled) return
+        setOrgUsers(Array.isArray(users) ? (users as any) : [])
+        setTemplates(Array.isArray(tpls) ? (tpls as any) : [])
+      } catch {
+        /* noop */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin])
 
   const save = async (opts?: { createVersion?: boolean }) => {
     const tags = tagsInput
@@ -309,6 +344,78 @@ export function ContentItemEditor({
     setReviewers((prev) => prev.filter((r) => r.id !== rowId))
   }
 
+  const applyTemplate = async () => {
+    if (!itemId || !isAdmin) return
+    const tid = Number(templatePick)
+    if (!Number.isFinite(tid) || tid <= 0) return
+    await contentItemsAPI.applyTemplate(itemId, tid)
+    await loadAll(itemId)
+  }
+
+  const isReviewer = Boolean(user?.id && reviewers.some((r) => r.reviewer_id === user.id))
+
+  const requestReview = async () => {
+    if (!itemId) return
+    setReviewBusy(true)
+    try {
+      const res = await contentItemsAPI.review.request(itemId, reviewNote || undefined)
+      setItem((p) => ({ ...p, status: res.status as any }))
+      await loadAll(itemId)
+      setReviewNote("")
+    } finally {
+      setReviewBusy(false)
+    }
+  }
+
+  const approve = async () => {
+    if (!itemId) return
+    setReviewBusy(true)
+    try {
+      const res = await contentItemsAPI.review.approve(itemId, reviewNote || undefined)
+      setItem((p) => ({ ...p, status: res.status as any }))
+      await loadAll(itemId)
+      setReviewNote("")
+    } finally {
+      setReviewBusy(false)
+    }
+  }
+
+  const forceApprove = async () => {
+    if (!itemId || !isAdmin) return
+    setReviewBusy(true)
+    try {
+      const res = await contentItemsAPI.review.forceApprove(itemId, reviewNote || undefined)
+      setItem((p) => ({ ...p, status: res.status as any }))
+      await loadAll(itemId)
+      setReviewNote("")
+    } finally {
+      setReviewBusy(false)
+    }
+  }
+
+  const reject = async () => {
+    if (!itemId) return
+    setReviewBusy(true)
+    try {
+      const res = await contentItemsAPI.review.reject(itemId, reviewNote || undefined)
+      setItem((p) => ({ ...p, status: res.status as any }))
+      await loadAll(itemId)
+      setReviewNote("")
+    } finally {
+      setReviewBusy(false)
+    }
+  }
+
+  const reviewerStatus = React.useMemo(() => {
+    const m = new Map<number, ContentReviewDecisionDTO>()
+    for (const d of reviewDecisions || []) {
+      if (!d?.reviewer_id) continue
+      // latest wins (API returns desc by created_at)
+      if (!m.has(d.reviewer_id)) m.set(d.reviewer_id, d)
+    }
+    return m
+  }, [reviewDecisions])
+
   if (loading) {
     return (
       <div className="py-8 flex items-center justify-center text-slate-300">
@@ -409,6 +516,118 @@ export function ContentItemEditor({
         </TabsContent>
 
         <TabsContent value="workflow" className="space-y-3">
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-200">Review / Approval</div>
+                <div className="mt-0.5 text-[11px] text-slate-400">
+                  Reviewer können “approve / reject”. Owner kann “Review anfragen”.
+                </div>
+              </div>
+              <Badge className="bg-white/10 text-slate-200 border-white/10">{item.status}</Badge>
+            </div>
+            {/* Pending approvals */}
+            <div className="mt-3 rounded-xl border border-white/10 bg-slate-950/30 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-semibold text-slate-200">Pending approvals</div>
+                <div className="text-[11px] text-slate-400">
+                  {reviewers.length} Reviewer
+                </div>
+              </div>
+              <div className="mt-2 space-y-2">
+                {reviewers.length === 0 ? (
+                  <div className="text-xs text-slate-400">Keine Reviewer zugewiesen.</div>
+                ) : (
+                  reviewers.map((r) => {
+                    const rid = r.reviewer_id || 0
+                    const d = rid ? reviewerStatus.get(rid) : undefined
+                    const decision = String(d?.decision || "").toUpperCase()
+                    const pill =
+                      decision === "APPROVED"
+                        ? "bg-emerald-500/15 text-emerald-200 border-emerald-400/30"
+                        : decision === "REJECTED"
+                        ? "bg-red-500/15 text-red-200 border-red-400/30"
+                        : "bg-slate-500/10 text-slate-200 border-white/10"
+                    const label = decision === "APPROVED" ? "Approved" : decision === "REJECTED" ? "Rejected" : "Pending"
+                    return (
+                      <div key={r.id} className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-slate-100 truncate">
+                            {r.reviewer?.email || (r.reviewer_id ? `#${r.reviewer_id}` : "—")}
+                          </div>
+                          {d?.note ? <div className="mt-0.5 text-[11px] text-slate-400 line-clamp-2">{d.note}</div> : null}
+                        </div>
+                        <div className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold ${pill}`}>{label}</div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+              {reviewers.length > 0 && (
+                <div className="mt-2 text-[11px] text-slate-400">
+                  Item wird erst automatisch <span className="text-slate-200 font-semibold">APPROVED</span>, wenn alle Reviewer approved haben.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <Input
+                value={reviewNote}
+                onChange={(e) => setReviewNote(e.target.value)}
+                placeholder="Kommentar / Grund (optional)"
+                className="sm:col-span-2"
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 h-11 sm:h-9"
+                  disabled={!itemId || reviewBusy}
+                  onClick={requestReview}
+                  title="Setzt Status auf REVIEW und benachrichtigt Reviewer"
+                >
+                  Review anfragen
+                </Button>
+              </div>
+            </div>
+            <div className="mt-2 flex flex-col sm:flex-row gap-2">
+              <Button
+                type="button"
+                className="h-11 sm:h-9"
+                disabled={!itemId || reviewBusy || (!isAdmin && !isReviewer)}
+                onClick={approve}
+              >
+                Approve
+              </Button>
+              {isAdmin && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 sm:h-9"
+                  disabled={!itemId || reviewBusy}
+                  onClick={forceApprove}
+                  title="Admin override: sofort APPROVED"
+                >
+                  Force approve
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 sm:h-9 border-red-500/40 text-red-300 hover:bg-red-500/10"
+                disabled={!itemId || reviewBusy || (!isAdmin && !isReviewer)}
+                onClick={reject}
+              >
+                Reject
+              </Button>
+              {!isAdmin && !isReviewer && (
+                <div className="text-[11px] text-slate-400 self-center">
+                  (Nur Reviewer / Admin)
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-xs text-slate-300">Blocked reason</label>
@@ -473,32 +692,60 @@ export function ContentItemEditor({
             </div>
             {isAdmin && (
               <div className="mt-3 flex items-center gap-2">
-                <Input
-                  value={reviewerIdInput}
-                  onChange={(e) => setReviewerIdInput(e.target.value)}
-                  placeholder="User ID (z.B. 1)"
-                  className="max-w-[180px]"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    const v = Number(reviewerIdInput)
-                    if (!Number.isFinite(v) || v <= 0) return
-                    addReviewer(v)
-                    setReviewerIdInput("")
-                  }}
-                  disabled={!itemId}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-                <div className="text-[11px] text-slate-400 truncate">
-                  Tipp: IDs findest du im Admin Panel → Users.
+                <div className="flex flex-col sm:flex-row w-full gap-2">
+                  <div className="flex-1 min-w-0">
+                    <GlassSelect
+                      value={reviewerPick}
+                      onChange={(v) => setReviewerPick(String(v))}
+                      options={[
+                        { value: "", label: "Reviewer auswählen…" },
+                        ...orgUsers.map((u) => ({ value: String(u.id), label: `${u.email} (#${u.id})` })),
+                      ]}
+                      className="w-full"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 sm:h-9"
+                    onClick={() => {
+                      const v = Number(reviewerPick)
+                      if (!Number.isFinite(v) || v <= 0) return
+                      addReviewer(v)
+                      setReviewerPick("")
+                    }}
+                    disabled={!itemId}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add
+                  </Button>
                 </div>
               </div>
             )}
           </div>
+
+          {isAdmin && (
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-semibold text-slate-200">Template anwenden</div>
+                <div className="text-[11px] text-slate-400">Erstellt Checklist/Tasks/Reviewer aus dem Template</div>
+              </div>
+              <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                <GlassSelect
+                  value={templatePick}
+                  onChange={(v) => setTemplatePick(String(v))}
+                  options={[
+                    { value: "", label: "Template auswählen…" },
+                    ...templates.map((t: any) => ({ value: String(t.id), label: `${t.name} (#${t.id})` })),
+                  ]}
+                  className="flex-1"
+                />
+                <Button type="button" variant="outline" className="h-11 sm:h-9" onClick={applyTemplate} disabled={!itemId || !templatePick}>
+                  Anwenden
+                </Button>
+              </div>
+            </div>
+          )}
 
           <Tabs value={workflowTab} onValueChange={(v) => setWorkflowTab(v as any)} className="space-y-2">
             <TabsList className="w-full bg-slate-900/40 border-white/10">

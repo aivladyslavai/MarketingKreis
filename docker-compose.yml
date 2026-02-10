@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: mk
       POSTGRES_PASSWORD: mkpassword
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
 
@@ -32,7 +32,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      # Frontend talks same-origin to Next.js API routes (/api/*).
+      # Those routes proxy to the backend and require BACKEND_URL in production mode.
+      NEXT_PUBLIC_API_URL: /api
+      BACKEND_URL: http://backend:8000
     ports:
       - "3000:3000"
 

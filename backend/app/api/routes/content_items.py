@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -22,6 +22,7 @@ from app.models.content_item import (
     ContentItemChecklistItem,
     ContentItemComment,
     ContentItemReviewer,
+    ContentItemReviewDecision,
     ContentItemStatus,
     ContentItemVersion,
     ContentTemplate,
@@ -31,7 +32,9 @@ from app.models.content_task import ContentTask, ContentTaskPriority, ContentTas
 from app.models.deal import Deal
 from app.models.upload import Upload
 from app.models.user import User, UserRole
+from app.utils.mailer import send_email
 from app.schemas.content_item import (
+    UserOut,
     ContentAuditOut,
     ContentAssetCreate,
     ContentAssetOut,
@@ -48,6 +51,7 @@ from app.schemas.content_item import (
     ContentItemOut,
     ContentItemReviewerCreate,
     ContentItemReviewerOut,
+    ContentReviewDecisionOut,
     ContentItemUpdate,
     ContentTemplateCreate,
     ContentTemplateOut,
@@ -94,7 +98,13 @@ def _require_item_access(db: Session, *, item_id: int, user: User) -> ContentIte
     if is_demo_user(user):
         q = q.filter(ContentItem.owner_id == user.id)
     elif not _can_manage_all(user):
-        q = q.filter(or_(ContentItem.owner_id == user.id, ContentItem.owner_id.is_(None)))
+        # Regular users: own items + unassigned + items where they're explicitly a reviewer
+        reviewer_exists = (
+            db.query(ContentItemReviewer.id)
+            .filter(ContentItemReviewer.item_id == ContentItem.id, ContentItemReviewer.reviewer_id == user.id)
+            .exists()
+        )
+        q = q.filter(or_(ContentItem.owner_id == user.id, ContentItem.owner_id.is_(None), reviewer_exists))
     item = q.first()
     if not item:
         raise HTTPException(status_code=404, detail="Content item not found")
@@ -107,6 +117,127 @@ def _audit(db: Session, *, item_id: int, actor_id: Optional[int], action: str, d
         db.commit()
     except Exception:
         db.rollback()
+
+
+def _pick_template_for_item(db: Session, *, org: int, channel: str, fmt: Optional[str]) -> Optional[ContentTemplate]:
+    """
+    Pick best matching template for a content item.
+    Priority:
+    - channel+format exact
+    - channel only (template.format is NULL)
+    - most recently updated template
+    """
+    ch = (channel or "").strip()
+    f = (fmt or "").strip() or None
+
+    if ch and f:
+        exact = (
+            db.query(ContentTemplate)
+            .filter(ContentTemplate.organization_id == org, ContentTemplate.channel == ch, ContentTemplate.format == f)
+            .order_by(ContentTemplate.updated_at.desc())
+            .first()
+        )
+        if exact:
+            return exact
+
+    if ch:
+        by_channel = (
+            db.query(ContentTemplate)
+            .filter(ContentTemplate.organization_id == org, ContentTemplate.channel == ch, ContentTemplate.format.is_(None))
+            .order_by(ContentTemplate.updated_at.desc())
+            .first()
+        )
+        if by_channel:
+            return by_channel
+
+    return None
+
+
+def _apply_template_to_item(db: Session, *, item: ContentItem, tpl: ContentTemplate, org: int) -> Dict[str, int]:
+    """Apply a template to an item (checklist + tasks + reviewers)."""
+    created = {"checklist": 0, "tasks": 0, "reviewers": 0}
+
+    # Checklist items (append)
+    checklist = tpl.checklist if isinstance(tpl.checklist, list) else []
+    if checklist:
+        existing_max = (
+            db.query(ContentItemChecklistItem)
+            .filter(ContentItemChecklistItem.item_id == item.id)
+            .order_by(ContentItemChecklistItem.position.desc())
+            .first()
+        )
+        base_pos = int(getattr(existing_max, "position", 0) or 0) + 1
+        for idx, title in enumerate(checklist):
+            s = str(title or "").strip()
+            if not s:
+                continue
+            db.add(ContentItemChecklistItem(item_id=item.id, title=s, position=base_pos + idx))
+            created["checklist"] += 1
+
+    # Reviewer assignments (safe: restrict to org users, avoid duplicates)
+    reviewers = tpl.reviewers if isinstance(tpl.reviewers, list) else []
+    if reviewers:
+        for uid in reviewers:
+            try:
+                rid = int(uid)
+            except Exception:
+                continue
+            exists = db.query(User).filter(User.id == rid, User.organization_id == org).first()
+            if not exists:
+                continue
+            dup = (
+                db.query(ContentItemReviewer)
+                .filter(ContentItemReviewer.item_id == item.id, ContentItemReviewer.reviewer_id == rid)
+                .first()
+            )
+            if dup:
+                continue
+            db.add(ContentItemReviewer(item_id=item.id, reviewer_id=rid, role="reviewer"))
+            created["reviewers"] += 1
+
+    # Task templates (deadlines relative to item.due_at when available)
+    tasks_tpl = tpl.tasks if isinstance(tpl.tasks, list) else []
+    now = _now_utc()
+    for row in tasks_tpl:
+        if not isinstance(row, dict):
+            continue
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        status = row.get("status") or ContentTaskStatus.TODO
+        priority = row.get("priority") or ContentTaskPriority.MEDIUM
+        try:
+            offset_days = int(row.get("offset_days") or 0)
+        except Exception:
+            offset_days = 0
+
+        deadline = None
+        if item.due_at:
+            # offset=days before due date (0 => due_at)
+            deadline = item.due_at - timedelta(days=offset_days) if offset_days else item.due_at
+        else:
+            deadline = now + timedelta(days=offset_days) if offset_days else None
+
+        recurrence = row.get("recurrence") if isinstance(row.get("recurrence"), dict) else None
+        db.add(
+            ContentTask(
+                title=title,
+                channel=(tpl.channel or item.channel or "Website"),
+                format=(tpl.format or item.format),
+                status=status,
+                priority=priority,
+                notes=str(row.get("notes") or "").strip() or None,
+                deadline=deadline,
+                activity_id=item.activity_id,
+                content_item_id=item.id,
+                recurrence=recurrence,
+                owner_id=item.owner_id,
+                organization_id=org,
+            )
+        )
+        created["tasks"] += 1
+
+    return created
 
 
 def _sync_calendar_for_item(db: Session, *, item: ContentItem, actor: User) -> None:
@@ -230,7 +361,12 @@ def list_content_items(
         elif owner_id is not None:
             query = query.filter(ContentItem.owner_id == owner_id)
     else:
-        query = query.filter((ContentItem.owner_id == current_user.id) | (ContentItem.owner_id.is_(None)))
+        reviewer_exists = (
+            db.query(ContentItemReviewer.id)
+            .filter(ContentItemReviewer.item_id == ContentItem.id, ContentItemReviewer.reviewer_id == current_user.id)
+            .exists()
+        )
+        query = query.filter((ContentItem.owner_id == current_user.id) | (ContentItem.owner_id.is_(None)) | reviewer_exists)
 
     if status is not None:
         query = query.filter(ContentItem.status == status)
@@ -319,6 +455,23 @@ def create_content_item(
     db.refresh(item)
 
     _audit(db, item_id=item.id, actor_id=current_user.id, action="content_item.created", data={"id": item.id})
+
+    # Auto-apply best matching template for this channel/format (workflow).
+    try:
+        tpl = _pick_template_for_item(db, org=org, channel=item.channel, fmt=item.format)
+        if tpl:
+            created = _apply_template_to_item(db, item=item, tpl=tpl, org=org)
+            db.commit()
+            _audit(
+                db,
+                item_id=item.id,
+                actor_id=current_user.id,
+                action="content_item.template_auto_applied",
+                data={"template_id": tpl.id, "created": created},
+            )
+    except Exception:
+        db.rollback()
+
     _sync_calendar_for_item(db, item=item, actor=current_user)
     db.refresh(item)
     return item
@@ -1082,78 +1235,261 @@ def apply_template(
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    created = {"checklist": 0, "tasks": 0, "reviewers": 0}
-
-    # Checklist items
-    checklist = tpl.checklist if isinstance(tpl.checklist, list) else []
-    if checklist:
-        # keep existing order stable by appending after max position
-        existing_max = (
-            db.query(ContentItemChecklistItem)
-            .filter(ContentItemChecklistItem.item_id == item.id)
-            .order_by(ContentItemChecklistItem.position.desc())
-            .first()
-        )
-        base_pos = int(getattr(existing_max, "position", 0) or 0) + 1
-        for idx, title in enumerate(checklist):
-            s = str(title or "").strip()
-            if not s:
-                continue
-            db.add(ContentItemChecklistItem(item_id=item.id, title=s, position=base_pos + idx))
-            created["checklist"] += 1
-
-    # Reviewer assignments
-    reviewers = tpl.reviewers if isinstance(tpl.reviewers, list) else []
-    if reviewers and _can_manage_all(current_user):
-        for uid in reviewers:
-            try:
-                rid = int(uid)
-            except Exception:
-                continue
-            exists = db.query(User).filter(User.id == rid, User.organization_id == org).first()
-            if not exists:
-                continue
-            db.add(ContentItemReviewer(item_id=item.id, reviewer_id=rid, role="reviewer"))
-            created["reviewers"] += 1
-
-    # Task templates
-    tasks_tpl = tpl.tasks if isinstance(tpl.tasks, list) else []
-    now = _now_utc()
-    for row in tasks_tpl:
-        if not isinstance(row, dict):
-            continue
-        title = str(row.get("title") or "").strip()
-        if not title:
-            continue
-        status = row.get("status") or ContentTaskStatus.TODO
-        priority = row.get("priority") or ContentTaskPriority.MEDIUM
-        try:
-            offset_days = int(row.get("offset_days") or 0)
-        except Exception:
-            offset_days = 0
-        deadline = now + timedelta(days=offset_days) if offset_days else None
-        recurrence = row.get("recurrence") if isinstance(row.get("recurrence"), dict) else None
-        db.add(
-            ContentTask(
-                title=title,
-                channel=(tpl.channel or item.channel or "Website"),
-                format=(tpl.format or item.format),
-                status=status,
-                priority=priority,
-                notes=str(row.get("notes") or "").strip() or None,
-                deadline=deadline,
-                activity_id=item.activity_id,
-                content_item_id=item.id,
-                recurrence=recurrence,
-                owner_id=item.owner_id,
-                organization_id=org,
-            )
-        )
-        created["tasks"] += 1
-
+    created = _apply_template_to_item(db, item=item, tpl=tpl, org=org)
     db.commit()
     _audit(db, item_id=item.id, actor_id=current_user.id, action="content_item.template_applied", data={"template_id": tpl.id, "created": created})
     return {"ok": True, "template_id": tpl.id, "created": created}
+
+
+# --- Review / approval workflow ---
+
+
+def _is_reviewer(db: Session, *, item_id: int, user_id: int) -> bool:
+    return (
+        db.query(ContentItemReviewer)
+        .filter(ContentItemReviewer.item_id == item_id, ContentItemReviewer.reviewer_id == user_id)
+        .first()
+        is not None
+    )
+
+
+def _upsert_review_decision(
+    db: Session,
+    *,
+    org: int,
+    item_id: int,
+    reviewer_id: int,
+    decision: str,
+    note: Optional[str],
+) -> None:
+    # Ensure reviewer belongs to org
+    u = db.query(User).filter(User.id == int(reviewer_id), User.organization_id == org).first()
+    if not u:
+        return
+    existing = (
+        db.query(ContentItemReviewDecision)
+        .filter(ContentItemReviewDecision.item_id == item_id, ContentItemReviewDecision.reviewer_id == reviewer_id)
+        .first()
+    )
+    if existing:
+        existing.decision = decision
+        existing.note = note
+        existing.created_at = _now_utc()
+        db.add(existing)
+        return
+    db.add(
+        ContentItemReviewDecision(
+            item_id=item_id,
+            reviewer_id=reviewer_id,
+            decision=decision,
+            note=note,
+        )
+    )
+
+
+def _clear_review_decisions(db: Session, *, item_id: int) -> None:
+    db.query(ContentItemReviewDecision).filter(ContentItemReviewDecision.item_id == item_id).delete()
+
+
+def _all_reviewers_approved(db: Session, *, item_id: int) -> bool:
+    reviewers = db.query(ContentItemReviewer).filter(ContentItemReviewer.item_id == item_id).all()
+    reviewer_ids = [int(r.reviewer_id) for r in reviewers if r.reviewer_id]
+    if not reviewer_ids:
+        return True
+    decisions = (
+        db.query(ContentItemReviewDecision)
+        .filter(ContentItemReviewDecision.item_id == item_id, ContentItemReviewDecision.reviewer_id.in_(reviewer_ids))
+        .all()
+    )
+    approved_ids = {int(d.reviewer_id) for d in decisions if str(d.decision).upper() == "APPROVED"}
+    return all(rid in approved_ids for rid in reviewer_ids)
+
+
+@router.post("/items/{item_id}/review/request")
+def request_review(
+    item_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    item = _require_item_access(db, item_id=item_id, user=current_user)
+    org = get_org_id(current_user)
+
+    note = str(payload.get("note") or "").strip() or None
+    item.status = ContentItemStatus.REVIEW
+    item.updated_at = datetime.utcnow()
+    db.add(item)
+    db.commit()
+
+    # Reset prior decisions for a new review cycle
+    try:
+        _clear_review_decisions(db, item_id=item.id)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    # Optional: persist note as a comment for traceability
+    if note:
+        try:
+            db.add(ContentItemComment(item_id=item.id, author_id=current_user.id, body=f"[REVIEW REQUEST]\n{note}"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    # Notify reviewers (in-app)
+    reviewers = db.query(ContentItemReviewer).filter(ContentItemReviewer.item_id == item.id).all()
+    for r in reviewers:
+        if not r.reviewer_id:
+            continue
+        dedupe = f"content_item:review_request:{item.id}:{item.updated_at.isoformat()}:{r.reviewer_id}"
+        db.add(
+            Notification(
+                user_id=int(r.reviewer_id),
+                organization_id=org,
+                type="review",
+                title="Review angefragt",
+                body=f"'{item.title}' wartet auf Review." + (f" Hinweis: {note}" if note else ""),
+                url=f"/content?item={item.id}",
+                dedupe_key=dedupe,
+            )
+        )
+    db.commit()
+    _audit(db, item_id=item.id, actor_id=current_user.id, action="content_item.review_requested", data={"note": note})
+    return {"ok": True, "id": item.id, "status": item.status}
+
+
+@router.post("/items/{item_id}/review/approve")
+def approve_review(
+    item_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    item = _require_item_access(db, item_id=item_id, user=current_user)
+    org = get_org_id(current_user)
+
+    if not (_can_manage_all(current_user) or _is_reviewer(db, item_id=item.id, user_id=current_user.id)):
+        raise HTTPException(status_code=403, detail="Not allowed to approve this item")
+
+    note = str(payload.get("note") or "").strip() or None
+    force = bool(payload.get("force"))
+    if force and not _can_manage_all(current_user):
+        raise HTTPException(status_code=403, detail="Only admins/editors can force approve")
+
+    # Record decision
+    try:
+        _upsert_review_decision(db, org=org, item_id=item.id, reviewer_id=current_user.id, decision="APPROVED", note=note)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    # Status transitions: approve only when all reviewers approved (unless forced)
+    if force or _all_reviewers_approved(db, item_id=item.id):
+        item.status = ContentItemStatus.APPROVED
+    else:
+        item.status = ContentItemStatus.REVIEW
+    item.updated_at = datetime.utcnow()
+    db.add(item)
+    db.commit()
+
+    if note:
+        try:
+            db.add(ContentItemComment(item_id=item.id, author_id=current_user.id, body=f"[APPROVED]\n{note}"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    # Notify owner only when fully approved (or forced)
+    if item.owner_id and item.status == ContentItemStatus.APPROVED:
+        dedupe = f"content_item:approved:{item.id}:{item.updated_at.isoformat()}"
+        db.add(
+            Notification(
+                user_id=int(item.owner_id),
+                organization_id=org,
+                type="review",
+                title="Content approved",
+                body=f"'{item.title}' wurde approved." + (f" Notiz: {note}" if note else ""),
+                url=f"/content?item={item.id}",
+                dedupe_key=dedupe,
+            )
+        )
+        db.commit()
+
+    _audit(db, item_id=item.id, actor_id=current_user.id, action="content_item.approved", data={"note": note})
+    return {"ok": True, "id": item.id, "status": item.status}
+
+
+@router.post("/items/{item_id}/review/reject")
+def reject_review(
+    item_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    item = _require_item_access(db, item_id=item_id, user=current_user)
+    org = get_org_id(current_user)
+
+    if not (_can_manage_all(current_user) or _is_reviewer(db, item_id=item.id, user_id=current_user.id)):
+        raise HTTPException(status_code=403, detail="Not allowed to reject this item")
+
+    reason = str(payload.get("reason") or payload.get("note") or "").strip() or None
+    item.status = ContentItemStatus.DRAFT
+    if reason:
+        item.blocked_reason = reason[:255]
+    item.updated_at = datetime.utcnow()
+    db.add(item)
+    db.commit()
+
+    # Record decision
+    try:
+        _upsert_review_decision(db, org=org, item_id=item.id, reviewer_id=current_user.id, decision="REJECTED", note=reason)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    if reason:
+        try:
+            db.add(ContentItemComment(item_id=item.id, author_id=current_user.id, body=f"[CHANGES REQUESTED]\n{reason}"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    # Notify owner (in-app)
+    if item.owner_id:
+        dedupe = f"content_item:rejected:{item.id}:{item.updated_at.isoformat()}"
+        db.add(
+            Notification(
+                user_id=int(item.owner_id),
+                organization_id=org,
+                type="review",
+                title="Changes requested",
+                body=f"'{item.title}' benötigt Änderungen." + (f" Grund: {reason}" if reason else ""),
+                url=f"/content?item={item.id}",
+                dedupe_key=dedupe,
+            )
+        )
+        db.commit()
+
+    _audit(db, item_id=item.id, actor_id=current_user.id, action="content_item.rejected", data={"reason": reason})
+    return {"ok": True, "id": item.id, "status": item.status}
+
+
+@router.get("/items/{item_id}/review/decisions", response_model=List[ContentReviewDecisionOut])
+def list_review_decisions(
+    item_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    item = _require_item_access(db, item_id=item_id, user=current_user)
+    org = get_org_id(current_user)
+    return (
+        db.query(ContentItemReviewDecision)
+        .filter(ContentItemReviewDecision.item_id == item.id)
+        .join(User, User.id == ContentItemReviewDecision.reviewer_id)
+        .filter(User.organization_id == org)
+        .order_by(ContentItemReviewDecision.created_at.desc())
+        .all()
+    )
 
 
 # --- Automation rules ---
@@ -1349,6 +1685,27 @@ def list_notifications(
     return q.order_by(Notification.created_at.desc()).limit(max(1, min(200, int(limit)))).all()
 
 
+@router.get("/users", response_model=List[UserOut])
+def list_content_users(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Helper endpoint for Content UI to pick reviewers/owners without using raw IDs.
+    Only admins/editors can list users.
+    """
+    if not _can_manage_all(current_user):
+        return []
+    org = get_org_id(current_user)
+    return (
+        db.query(User)
+        .filter(User.organization_id == org)
+        .order_by(User.id.asc())
+        .limit(500)
+        .all()
+    )
+
+
 @router.post("/notifications/{notification_id}/read")
 def mark_notification_read(
     notification_id: int,
@@ -1404,6 +1761,8 @@ def run_reminders(
     horizon = now + timedelta(hours=24)
     created = 0
     org = get_org_id(current_user)
+    settings = get_settings()
+    email_enabled = bool(getattr(settings, "reminders_email_enabled", False))
 
     def _create_notification(user_id: int, *, dedupe_key: str, title: str, body: str, url: str) -> None:
         nonlocal created
@@ -1424,6 +1783,17 @@ def run_reminders(
             )
         )
         created += 1
+
+        # Optional email (best-effort)
+        if email_enabled:
+            try:
+                u = db.query(User).filter(User.id == int(user_id), User.organization_id == org).first()
+                if u and getattr(u, "email", None):
+                    base = (settings.frontend_url or "").rstrip("/")
+                    link = f"{base}{url}" if base and url.startswith("/") else (url or "")
+                    send_email(to=str(u.email), subject=title, text=f"{body}\n\n{link}".strip())
+            except Exception:
+                pass
 
     # Content item scheduled publications
     items = (
@@ -1470,7 +1840,55 @@ def run_reminders(
             dedupe_key=dedupe,
             title="Task Deadline",
             body=f"'{t.title}' ist fällig bis {t.deadline.strftime('%Y-%m-%d %H:%M')}.",
-            url="/content",
+            url=f"/content?item={t.content_item_id}" if t.content_item_id else "/content",
+        )
+
+    # Content item deadlines (due_at)
+    due_items = (
+        db.query(ContentItem)
+        .filter(
+            ContentItem.organization_id == org,
+            ContentItem.due_at.is_not(None),
+            ContentItem.due_at <= horizon,
+            ContentItem.due_at >= now,
+        )
+        .all()
+    )
+    for it in due_items:
+        if it.owner_id is None:
+            continue
+        dedupe = f"content_item:due:{it.id}:{it.due_at.isoformat()}"
+        _create_notification(
+            int(it.owner_id),
+            dedupe_key=dedupe,
+            title="Content Deadline",
+            body=f"'{it.title}' ist fällig bis {it.due_at.strftime('%Y-%m-%d %H:%M')}.",
+            url=f"/content?item={it.id}",
+        )
+
+    # Overdue tasks (deduped per day)
+    overdue = (
+        db.query(ContentTask)
+        .filter(
+            ContentTask.organization_id == org,
+            ContentTask.deadline.is_not(None),
+            ContentTask.deadline < now,
+            ContentTask.status != ContentTaskStatus.DONE,
+        )
+        .limit(400)
+        .all()
+    )
+    day = now.strftime("%Y-%m-%d")
+    for t in overdue:
+        if t.owner_id is None:
+            continue
+        dedupe = f"content_task:overdue:{t.id}:{day}"
+        _create_notification(
+            int(t.owner_id),
+            dedupe_key=dedupe,
+            title="Überfälliger Task",
+            body=f"'{t.title}' ist überfällig (Deadline: {t.deadline.strftime('%Y-%m-%d %H:%M')}).",
+            url=f"/content?item={t.content_item_id}" if t.content_item_id else "/content",
         )
 
     try:
@@ -1480,4 +1898,30 @@ def run_reminders(
         raise HTTPException(status_code=500, detail="Failed to create reminders")
 
     return {"ok": True, "created": created}
+
+
+@router.post("/reminders/run/system")
+def run_reminders_system(
+    request: Request,
+    db: Session = Depends(get_db_session),
+):
+    """
+    Cron-safe reminders endpoint.
+    Authenticate via `X-Reminders-Token: <REMINDERS_CRON_TOKEN>`.
+    """
+    settings = get_settings()
+    token = (request.headers.get("x-reminders-token") or "").strip()
+    if not settings.reminders_cron_token or token != settings.reminders_cron_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # Run in org=1 context (single-tenant default in this repo).
+    actor = (
+        db.query(User)
+        .filter(User.organization_id == 1, User.role.in_([UserRole.admin, UserRole.editor]))
+        .order_by(User.id.asc())
+        .first()
+    )
+    if not actor:
+        raise HTTPException(status_code=500, detail="No admin/editor user found")
+    return run_reminders(db=db, current_user=actor)  # type: ignore
 
