@@ -7,6 +7,8 @@ type User = {
   id: number
   email: string
   role: string
+  organization_id?: number
+  section_permissions?: Record<string, boolean> | null
 }
 
 interface AuthState {
@@ -45,8 +47,17 @@ export function useAuth() {
 
   const logout = async () => {
     try {
+      const csrf = (() => {
+        try {
+          const m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/)
+          return m ? decodeURIComponent(m[1]) : ""
+        } catch {
+          return ""
+        }
+      })()
       await fetch(`${API_BASE}/api/auth/logout`, {
         method: 'POST',
+        headers: csrf ? { "X-CSRF-Token": csrf } : undefined,
         credentials: 'include',
       })
       setState({ user: null, loading: false, error: null })

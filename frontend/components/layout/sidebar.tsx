@@ -48,7 +48,25 @@ export function Sidebar({ isCollapsed, onToggle, variant = "fixed" }: SidebarPro
   const pathname = usePathname()
   const { user } = useAuth()
   const isAdmin = user?.role === "admin"
-  const visibleNavItems = isAdmin ? navItems : navItems.filter((i) => i.href !== "/admin")
+  const perms = (user as any)?.section_permissions || {}
+  const allow = (section: string) => !(perms && typeof perms === "object" && perms[section] === false)
+  const sectionForHref = (href: string) => {
+    if (href.startsWith("/crm")) return "crm"
+    if (href.startsWith("/calendar")) return "calendar"
+    if (href.startsWith("/activities")) return "activities"
+    if (href.startsWith("/performance")) return "performance"
+    if (href.startsWith("/budget")) return "budget"
+    if (href.startsWith("/content")) return "content"
+    if (href.startsWith("/reports")) return "reports"
+    if (href.startsWith("/uploads")) return "uploads"
+    if (href.startsWith("/admin")) return "admin"
+    return "dashboard"
+  }
+  const visibleNavItems = (isAdmin ? navItems : navItems.filter((i) => i.href !== "/admin")).filter((i) => {
+    const sec = sectionForHref(i.href)
+    if (sec === "admin") return isAdmin
+    return allow(sec)
+  })
   const isDrawer = variant === "drawer"
 
   return (

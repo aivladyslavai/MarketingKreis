@@ -35,16 +35,16 @@ def get_current_user(
         session = db.get(AuthSession, str(sid))
         if not session or session.revoked_at is not None:
             raise HTTPException(status_code=401, detail="Session revoked")
-        # Best-effort session activity tracking (throttle updates)
+        # Update last_seen_at (best-effort) for "Sessions" screen.
+        # Avoid writing on every request: only bump if older than 5 minutes.
         try:
             now = datetime.now(timezone.utc)
-            last = session.last_seen_at
-            if not last or (now - last) > timedelta(minutes=5):
+            if session.last_seen_at is None or (now - session.last_seen_at) > timedelta(minutes=5):
                 session.last_seen_at = now
                 db.add(session)
                 db.commit()
         except Exception:
-            # Never block auth on activity tracking failures
+            # Never block request on telemetry write.
             pass
     except HTTPException:
         raise

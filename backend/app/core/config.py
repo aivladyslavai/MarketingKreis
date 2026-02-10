@@ -53,12 +53,21 @@ class Settings(BaseSettings):
     # Metrics (Prometheus)
     metrics_token: Optional[str] = Field(default=None, env="METRICS_TOKEN")
 
+    # Ops alerts (cron-safe)
+    ops_alerts_token: Optional[str] = Field(default=None, env="OPS_ALERTS_TOKEN")
+    ops_alerts_enabled: bool = Field(default=False, env="OPS_ALERTS_ENABLED")
+    ops_alert_emails: Optional[str] = Field(default=None, env="OPS_ALERT_EMAILS")  # comma-separated recipients
+
     # CSRF Protection
     csrf_secret_key: str = Field(
         default="dev-csrf-secret-change-in-production-a1b2c3d4e5f6g7h8",
         env="CSRF_SECRET_KEY",
         min_length=32
     )
+
+    # 2FA (TOTP) encryption key (Fernet, urlsafe base64 32-byte key)
+    totp_encryption_key: Optional[str] = Field(default=None, env="TOTP_ENCRYPTION_KEY")
+    totp_issuer: str = Field(default="MarketingKreis", env="TOTP_ISSUER")
 
     debug: bool = Field(default=True, env="DEBUG")
 
@@ -127,6 +136,17 @@ class Settings(BaseSettings):
                     "Generate with: python3 -c \"import secrets; print(secrets.token_urlsafe(64))\""
                 )
         return v
+
+    @validator("totp_encryption_key")
+    def validate_totp_encryption_key(cls, v: Optional[str], values: dict) -> Optional[str]:
+        env = values.get("environment")
+        if env in {"production", "staging"}:
+            if not v or len(v.strip()) < 32:
+                raise ValueError(
+                    "TOTP_ENCRYPTION_KEY must be set in production/staging (Fernet key). "
+                    "Generate with: python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+                )
+        return v.strip() if isinstance(v, str) else v
 
     @validator("jwt_secret_key")
     def validate_jwt_secret(cls, v: str, values: dict) -> str:

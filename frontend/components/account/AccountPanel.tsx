@@ -37,6 +37,22 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
   const [reducedMotion, setReducedMotion] = React.useState(false)
   const [debugNetwork, setDebugNetwork] = React.useState(false)
 
+  // Security: Sessions
+  const [sessions, setSessions] = React.useState<any[]>([])
+  const [sessionsLoading, setSessionsLoading] = React.useState(false)
+  const [sessionsError, setSessionsError] = React.useState<string | null>(null)
+
+  // Security: Admin 2FA (TOTP)
+  const [totpEnabled, setTotpEnabled] = React.useState<boolean>(false)
+  const [totpLoading, setTotpLoading] = React.useState(false)
+  const [totpError, setTotpError] = React.useState<string | null>(null)
+  const [totpSetupSecret, setTotpSetupSecret] = React.useState<string>("")
+  const [totpSetupUri, setTotpSetupUri] = React.useState<string>("")
+  const [totpCode, setTotpCode] = React.useState<string>("")
+  const [totpQrDataUrl, setTotpQrDataUrl] = React.useState<string>("")
+  const [recoveryRemaining, setRecoveryRemaining] = React.useState<number>(0)
+  const [recoveryCodes, setRecoveryCodes] = React.useState<string[]>([])
+
   React.useEffect(() => {
     // Reduced motion
     try {
@@ -65,6 +81,76 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
       } else {
         router.replace("/signup?mode=login")
       }
+    }
+  }
+
+  const getCsrf = () => {
+    try {
+      const m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/)
+      return m ? decodeURIComponent(m[1]) : ""
+    } catch {
+      return ""
+    }
+  }
+
+  const api = async (path: string, init: RequestInit = {}) => {
+    const csrf = getCsrf()
+    const method = (init.method || "GET").toUpperCase()
+    const headers: any = { ...(init.headers || {}) }
+    if (csrf && !["GET", "HEAD", "OPTIONS"].includes(method)) headers["X-CSRF-Token"] = csrf
+    const res = await fetch(path.startsWith("/api") ? path : `/api${path.startsWith("/") ? path : "/" + path}`, {
+      ...init,
+      headers,
+      credentials: "include",
+      cache: "no-store",
+    })
+    const text = await res.text().catch(() => "")
+    if (!res.ok) {
+      let msg = text || res.statusText
+      try {
+        const j = JSON.parse(text)
+        msg = j?.detail || j?.error || j?.message || msg
+      } catch {}
+      throw new Error(msg)
+    }
+    try {
+      return JSON.parse(text)
+    } catch {
+      return text
+    }
+  }
+
+  const loadSessions = async () => {
+    try {
+      setSessionsLoading(true)
+      setSessionsError(null)
+      const rows = await api("/auth/sessions")
+      setSessions(Array.isArray(rows) ? rows : [])
+    } catch (e: any) {
+      setSessions([])
+      setSessionsError(e?.message || "Failed to load sessions")
+    } finally {
+      setSessionsLoading(false)
+    }
+  }
+
+  const loadTotpStatus = async () => {
+    if (!isAdmin) return
+    try {
+      setTotpLoading(true)
+      setTotpError(null)
+      const j = await api("/auth/2fa/status")
+      setTotpEnabled(Boolean((j as any)?.enabled))
+      try {
+        const rs = await api("/auth/2fa/recovery/status")
+        setRecoveryRemaining(Number((rs as any)?.remaining || 0))
+      } catch {
+        setRecoveryRemaining(0)
+      }
+    } catch (e: any) {
+      setTotpError(e?.message || "Failed to load 2FA status")
+    } finally {
+      setTotpLoading(false)
     }
   }
 
@@ -349,6 +435,315 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                 <span className="font-semibold text-slate-200">Tipp:</span> Wenn du Performance‑Probleme siehst, aktiviere
                 “Reduced Motion” und deaktiviere Debug‑Logs.
               </div>
+            </div>
+
+            {/* Security */}
+            <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-slate-200">Security</div>
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    Aktive Geräte/Sitzungen verwalten. Hier kannst du einzelne Sessions beenden oder dich überall abmelden.
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  className="h-9 text-xs border-white/20 text-slate-200"
+                  onClick={loadSessions}
+                  disabled={sessionsLoading}
+                >
+                  <RotateCcw className="h-3.5 w-3.5 mr-2" /> Reload
+                </Button>
+              </div>
+
+              {sessionsError && (
+                <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-[11px] text-rose-100">
+                  {sessionsError}
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="outline"
+                  className="h-11 text-xs border-white/20 text-slate-200"
+                  onClick={async () => {
+                    await api("/auth/sessions/revoke_all?keep_current=true", { method: "POST" })
+                    await loadSessions()
+                  }}
+                >
+                  <Shield className="h-4 w-4 mr-2" />
+                  Logout all other devices
+                </Button>
+                <Button
+                  className="h-11 text-xs bg-red-500/90 hover:bg-red-500 text-white"
+                  onClick={async () => {
+                    await api("/auth/sessions/revoke_all", { method: "POST" })
+                    // cookies cleared -> go to login
+                    onClose()
+                    window.location.href = "/signup?mode=login"
+                  }}
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Logout everywhere
+                </Button>
+              </div>
+
+              <div className="h-px w-full bg-white/10" />
+
+              <div className="space-y-2">
+                {sessions.length === 0 ? (
+                  <div className="text-[11px] text-slate-400">
+                    {sessionsLoading ? "Loading…" : "Keine Sessions gefunden. (Klicke Reload)"}
+                  </div>
+                ) : (
+                  sessions.map((s: any) => {
+                    const ua = String(s.user_agent || "")
+                    const ip = s.ip || "—"
+                    const created = s.created_at ? new Date(s.created_at).toLocaleString() : "—"
+                    const seen = s.last_seen_at ? new Date(s.last_seen_at).toLocaleString() : "—"
+                    const revoked = s.revoked_at ? new Date(s.revoked_at).toLocaleString() : null
+                    return (
+                      <div key={s.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold text-slate-100 truncate">
+                              {s.is_current ? "This device" : "Device"} · <span className="text-slate-300">{ip}</span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-400 break-words">
+                              UA: {ua || "—"}
+                            </div>
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-400">
+                              <div>Created: <span className="text-slate-200">{created}</span></div>
+                              <div>Last seen: <span className="text-slate-200">{seen}</span></div>
+                              <div className="sm:col-span-2">
+                                Status:{" "}
+                                {revoked ? (
+                                  <span className="text-rose-200">revoked ({revoked})</span>
+                                ) : (
+                                  <span className="text-emerald-200">active</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2 flex-shrink-0">
+                            {!revoked && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-9 text-xs border-white/20 text-slate-200"
+                                onClick={async () => {
+                                  const r = await api(`/auth/sessions/${encodeURIComponent(s.id)}/revoke`, { method: "POST" })
+                                  if ((r as any)?.logged_out) {
+                                    onClose()
+                                    window.location.href = "/signup?mode=login"
+                                    return
+                                  }
+                                  await loadSessions()
+                                }}
+                              >
+                                Revoke
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+
+              {isAdmin && (
+                <>
+                  <div className="h-px w-full bg-white/10" />
+
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-slate-200">Admin 2FA (TOTP)</div>
+                        <div className="mt-1 text-[11px] text-slate-400">
+                          Erhöht die Security deutlich: Login erfordert zusätzlich einen 6‑stelligen Code aus Authenticator (Google Authenticator, 1Password, etc.).
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="h-9 text-xs border-white/20 text-slate-200"
+                        onClick={loadTotpStatus}
+                        disabled={totpLoading}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 mr-2" /> Status
+                      </Button>
+                    </div>
+
+                    {totpError && (
+                      <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-[11px] text-rose-100">
+                        {totpError}
+                      </div>
+                    )}
+
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-[11px] text-slate-300">
+                      Status:{" "}
+                      {totpEnabled ? (
+                        <span className="text-emerald-200 font-semibold">ENABLED</span>
+                      ) : (
+                        <span className="text-amber-200 font-semibold">DISABLED</span>
+                      )}
+                    </div>
+
+                    {!totpEnabled ? (
+                      <div className="space-y-2">
+                        <Button
+                          variant="outline"
+                          className="h-11 text-xs border-white/20 text-slate-200"
+                          onClick={async () => {
+                            try {
+                              setTotpError(null)
+                              const j = await api("/auth/2fa/setup", { method: "POST" })
+                              setTotpSetupSecret(String((j as any)?.secret || ""))
+                              setTotpSetupUri(String((j as any)?.otpauth_uri || ""))
+                              setTotpQrDataUrl("")
+                              const uri = String((j as any)?.otpauth_uri || "")
+                              if (uri) {
+                                try {
+                                  const QRCode = (await import("qrcode")).default
+                                  const url = await QRCode.toDataURL(uri, { margin: 1, width: 220 })
+                                  setTotpQrDataUrl(url)
+                                } catch {
+                                  setTotpQrDataUrl("")
+                                }
+                              }
+                            } catch (e: any) {
+                              setTotpError(e?.message || "Setup failed")
+                            }
+                          }}
+                        >
+                          2FA Setup starten
+                        </Button>
+
+                        {(totpSetupSecret || totpSetupUri) && (
+                          <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3 space-y-2">
+                            <div className="text-[11px] text-slate-400">
+                              1) Scanne den QR-Code (oder nutze den Setup-Key manuell).
+                            </div>
+                            {totpQrDataUrl && (
+                              <div className="flex items-center justify-center py-2">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={totpQrDataUrl} alt="2FA QR" className="rounded-xl border border-white/10" />
+                              </div>
+                            )}
+                            <div className="text-[11px] text-slate-400">
+                              2) Issuer: <span className="text-slate-200">MarketingKreis</span> · Account:{" "}
+                              <span className="text-slate-200">{user?.email}</span>
+                            </div>
+                            <div className="text-xs">
+                              Secret: <span className="font-mono text-slate-200">{totpSetupSecret || "—"}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 break-all">
+                              otpauth: <span className="font-mono">{totpSetupUri || "—"}</span>
+                            </div>
+                            <input
+                              value={totpCode}
+                              onChange={(e) => setTotpCode(e.target.value)}
+                              placeholder="6-digit Code"
+                              className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                            />
+                            <Button
+                              className="h-11 w-full"
+                              onClick={async () => {
+                                try {
+                                  setTotpError(null)
+                                  await api("/auth/2fa/enable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpCode }) })
+                                  setTotpCode("")
+                                  setTotpSetupSecret("")
+                                  setTotpSetupUri("")
+                                  setTotpQrDataUrl("")
+                                  await loadTotpStatus()
+                                } catch (e: any) {
+                                  setTotpError(e?.message || "Enable failed")
+                                }
+                              }}
+                            >
+                              2FA aktivieren
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <input
+                          value={totpCode}
+                          onChange={(e) => setTotpCode(e.target.value)}
+                          placeholder="6-digit Code to disable"
+                          className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                        />
+                        <div className="text-[11px] text-slate-400">
+                          Du kannst hier auch einen Recovery Code verwenden. Remaining:{" "}
+                          <span className="text-slate-200 font-semibold">{recoveryRemaining}</span>
+                        </div>
+                        <Button
+                          variant="outline"
+                          className="h-11 w-full border-rose-400/30 bg-rose-500/10 hover:bg-rose-500/15 text-rose-100"
+                          onClick={async () => {
+                            try {
+                              setTotpError(null)
+                              await api("/auth/2fa/disable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpCode }) })
+                              setTotpCode("")
+                              await loadTotpStatus()
+                            } catch (e: any) {
+                              setTotpError(e?.message || "Disable failed")
+                            }
+                          }}
+                        >
+                          2FA deaktivieren
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          className="h-11 w-full border-white/20 text-slate-200"
+                          onClick={async () => {
+                            try {
+                              setTotpError(null)
+                              const j = await api("/auth/2fa/recovery/regenerate", { method: "POST" })
+                              const codes = Array.isArray((j as any)?.codes) ? (j as any).codes.map(String) : []
+                              setRecoveryCodes(codes)
+                              await loadTotpStatus()
+                            } catch (e: any) {
+                              setTotpError(e?.message || "Recovery codes failed")
+                            }
+                          }}
+                        >
+                          Recovery Codes generieren
+                        </Button>
+
+                        {recoveryCodes.length > 0 && (
+                          <div className="rounded-xl border border-amber-300/20 bg-amber-500/10 p-3 space-y-2">
+                            <div className="text-[11px] text-amber-100 font-semibold">
+                              Wichtig: Diese Codes werden nur jetzt angezeigt. Bitte speichern.
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {recoveryCodes.map((c) => (
+                                <div key={c} className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 font-mono text-xs text-slate-100">
+                                  {c}
+                                </div>
+                              ))}
+                            </div>
+                            <Button
+                              variant="outline"
+                              className="h-10 text-xs border-white/20 text-slate-200"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(recoveryCodes.join("\n"))
+                                } catch {}
+                              }}
+                            >
+                              Copy all
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </TabsContent>

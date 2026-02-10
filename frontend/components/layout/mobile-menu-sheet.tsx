@@ -52,8 +52,25 @@ export default function MobileMenuSheet({
   const pathname = usePathname() || "/"
   const { user } = useAuth()
   const isAdmin = user?.role === "admin"
+  const perms = (user as any)?.section_permissions || {}
+  const allow = (section: string) => !(perms && typeof perms === "object" && perms[section] === false)
+  const sectionForHref = (href: string) => {
+    if (href.startsWith("/crm")) return "crm"
+    if (href.startsWith("/calendar")) return "calendar"
+    if (href.startsWith("/activities")) return "activities"
+    if (href.startsWith("/performance")) return "performance"
+    if (href.startsWith("/budget")) return "budget"
+    if (href.startsWith("/content")) return "content"
+    if (href.startsWith("/reports")) return "reports"
+    if (href.startsWith("/uploads")) return "uploads"
+    if (href.startsWith("/admin")) return "admin"
+    return "dashboard"
+  }
 
-  const visibleSecondary = secondary.filter((i) => (i.requiresAdmin ? isAdmin : true))
+  const visiblePrimary = primary.filter((i) => allow(sectionForHref(i.href)))
+  const visibleSecondary = secondary
+    .filter((i) => (i.requiresAdmin ? isAdmin : true))
+    .filter((i) => (i.href === "/admin" ? isAdmin : allow(sectionForHref(i.href))))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -81,7 +98,7 @@ export default function MobileMenuSheet({
           <div className="p-4 space-y-4" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 16px)" }}>
             {/* Primary tabs */}
             <div className="grid grid-cols-2 gap-2">
-              {primary.map(({ href, label, Icon }) => {
+              {visiblePrimary.map(({ href, label, Icon }) => {
                 const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href))
                 return (
                   <Link

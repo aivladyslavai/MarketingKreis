@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Enum, Boolean, ForeignKey, Text, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import enum
@@ -24,6 +24,21 @@ class User(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # 2FA (TOTP) for admins (and optionally others)
+    totp_enabled = Column(Boolean, nullable=False, server_default="0")
+    totp_secret_enc = Column(Text, nullable=True)
+    totp_confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    totp_last_used_step = Column(Integer, nullable=True)
+    # Array of {hash: str, used_at: optional iso} items (no plaintext in DB)
+    totp_recovery_codes = Column(JSON, nullable=True)
+
+    # RBAC-lite: per-section permissions overrides.
+    # Example: {"crm": true, "reports": false}
+    section_permissions = Column(JSON, nullable=True)
+
+    # RBAC-lite: per-section access toggles (e.g. {"crm": true, "admin": false})
+    section_permissions = Column(JSON, nullable=True)
 
     # Activities owned by this user
     activities = relationship("Activity", back_populates="owner")

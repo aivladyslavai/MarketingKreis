@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LayoutDashboard, Building2, CalendarDays, ActivitySquare, Menu } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
 
 const items = [
   { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
@@ -14,6 +15,16 @@ const items = [
 
 export default function MobileNav() {
   const pathname = usePathname() || "/"
+  const { user } = useAuth()
+  const perms = (user as any)?.section_permissions || {}
+  const allow = (section: string) => !(perms && typeof perms === "object" && perms[section] === false)
+  const filtered = items.filter((i) => {
+    if (i.href === "#menu") return true
+    if (i.href.startsWith("/crm")) return allow("crm")
+    if (i.href.startsWith("/calendar")) return allow("calendar")
+    if (i.href.startsWith("/activities")) return allow("activities")
+    return true
+  })
   return (
     <nav
       className="
@@ -26,8 +37,8 @@ export default function MobileNav() {
         paddingBottom: "max(env(safe-area-inset-bottom), 8px)",
       }}
     >
-      <ul className="mx-auto max-w-[520px] grid grid-cols-5 gap-0.5 px-2 py-2">
-        {items.map(({ href, label, Icon }) => {
+      <ul className={`mx-auto max-w-[520px] grid gap-0.5 px-2 py-2`} style={{ gridTemplateColumns: `repeat(${filtered.length}, minmax(0, 1fr))` }}>
+        {filtered.map(({ href, label, Icon }) => {
           const isMenu = href === "#menu"
           const active = !isMenu && (pathname === href || (href !== "/dashboard" && pathname.startsWith(href)))
           return (

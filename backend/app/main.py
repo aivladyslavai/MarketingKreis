@@ -27,6 +27,7 @@ from app.db.session import engine
 from app.db.migrations import run_migrations_on_startup
 from app.core.security import CSRFMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
+from app.core.section_access import SectionAccessMiddleware
 import os
 
 
@@ -67,6 +68,9 @@ def create_app() -> FastAPI:
 
     # Centralized security headers (all environments; HSTS only when https)
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # RBAC-lite (per section) enforcement
+    app.add_middleware(SectionAccessMiddleware)
 
     # CSRF middleware (prod-only)
     if settings.environment in {"production", "staging"}:

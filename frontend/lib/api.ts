@@ -5,38 +5,28 @@
 const envBase = process.env.NEXT_PUBLIC_API_URL
 export const apiBase = envBase && envBase.startsWith("/") ? envBase : "/api"
 
-function readCookie(name: string): string | null {
+function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
-  const raw = document.cookie || ""
-  const parts = raw.split(";").map((p) => p.trim())
-  for (const p of parts) {
-    if (!p) continue
-    const idx = p.indexOf("=")
-    if (idx < 0) continue
-    const k = p.slice(0, idx).trim()
-    if (k !== name) continue
-    return decodeURIComponent(p.slice(idx + 1))
-  }
-  return null
+  const m = document.cookie.match(new RegExp(`(?:^|; )${name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")}=([^;]*)`))
+  return m ? decodeURIComponent(m[1]) : null
 }
 
-function withCsrf(init: RequestInit = {}): RequestInit {
-  const method = String(init.method || "GET").toUpperCase()
-  const unsafe = ["POST", "PUT", "PATCH", "DELETE"].includes(method)
-  if (!unsafe) return init
-  const token = readCookie("csrf_token")
-  if (!token) return init
+function withCsrfHeader(init: RequestInit): RequestInit {
+  const method = (init.method || "GET").toUpperCase()
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return init
+  const csrf = getCookie("csrf_token") || getCookie("mk_csrf") || getCookie("XSRF-TOKEN")
+  if (!csrf) return init
   return {
     ...init,
-    headers: { ...(init.headers || {}), "X-CSRF-Token": token },
+    headers: { ...(init.headers || {}), "X-CSRF-Token": csrf },
   }
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const req = withCsrf(init)
+  const i = withCsrfHeader(init)
   const res = await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
-    ...req,
-    headers: { "Content-Type": "application/json", ...(req.headers || {}) },
+    ...i,
+    headers: { "Content-Type": "application/json", ...(i.headers || {}) },
     credentials: "include",
     cache: "no-store",
   })
@@ -61,10 +51,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 // server-side proxies, avoiding 401 "Not authenticated" errors.
 export async function requestLocal<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = path.startsWith("/") ? path : "/" + path
-  const req = withCsrf(init)
+  const i = withCsrfHeader(init)
   const res = await fetch(url, {
-    ...req,
-    headers: { "Content-Type": "application/json", ...(req.headers || {}) },
+    ...i,
+    headers: { "Content-Type": "application/json", ...(i.headers || {}) },
     credentials: "include",
     cache: "no-store",
   })
@@ -84,10 +74,10 @@ export async function requestLocal<T>(path: string, init: RequestInit = {}): Pro
 }
 
 export const authFetch = async (path: string, init: RequestInit = {}): Promise<Response> => {
-  const req = withCsrf(init)
+  const i = withCsrfHeader(init)
   const res = await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
-    ...req,
-    headers: { "Content-Type": "application/json", ...(req.headers || {}) },
+    ...i,
+    headers: { "Content-Type": "application/json", ...(i.headers || {}) },
     credentials: "include",
     cache: "no-store",
   })
@@ -409,6 +399,17 @@ export type ReportScheduleDTO = {
   updated_at: string
 }
 
+export type AuthSessionDTO = {
+  id: string
+  ip?: string | null
+  user_agent?: string | null
+  created_at: string
+  last_seen_at?: string | null
+  revoked_at?: string | null
+  revoked_reason?: string | null
+  is_current: boolean
+}
+
 export const contentItemsAPI = {
   list: (params?: ContentItemsListParams) => {
     const sp = new URLSearchParams()
@@ -543,6 +544,15 @@ export const notificationsAPI = {
   readAll: () => request<{ ok: boolean }>(`/content/notifications/read-all`, { method: "POST" }),
 }
 
+export const authSecurityAPI = {
+  sessions: {
+    list: () => request<AuthSessionDTO[]>(`/auth/sessions`),
+    revoke: (id: string) => request<{ ok: boolean; id: string; logged_out?: boolean }>(`/auth/sessions/${encodeURIComponent(id)}/revoke`, { method: "POST" }),
+    revokeAll: (keepCurrent: boolean) =>
+      request<{ ok: boolean; revoked: number; keep_current: boolean }>(`/auth/sessions/revoke_all?keep_current=${keepCurrent ? "true" : "false"}`, { method: "POST" }),
+  },
+}
+
 export const reportsAPI = {
   templates: {
     list: () => request<ReportTemplateDTO[]>(`/reports/templates`),
@@ -618,6 +628,7 @@ export type AdminUser = {
   isVerified: boolean
   createdAt?: string | null
   updatedAt?: string | null
+  section_permissions?: Record<string, boolean> | null
 }
 
 export type AdminUsersResponse = {
@@ -665,6 +676,20 @@ export type AdminUserUpdatePayload = {
   role?: "user" | "editor" | "admin"
   is_verified?: boolean
   new_password?: string
+  section_permissions?: Record<string, boolean> | null
+}
+
+export type AdminSession = {
+  id: string
+  user_id: number
+  user_email: string
+  user_role: string
+  ip?: string | null
+  user_agent?: string | null
+  created_at?: string | null
+  last_seen_at?: string | null
+  revoked_at?: string | null
+  revoked_reason?: string | null
 }
 
 export const adminAPI = {
@@ -695,6 +720,21 @@ export const adminAPI = {
     requestLocal<{ ok: boolean; id: number }>(`/api/admin/users/${id}`, {
       method: "DELETE",
     }),
+
+  sessions: {
+    list: (params?: { user_id?: number; active_only?: boolean; limit?: number }) => {
+      const sp = new URLSearchParams()
+      if (params?.user_id != null) sp.set("user_id", String(params.user_id))
+      if (params?.active_only != null) sp.set("active_only", params.active_only ? "true" : "false")
+      if (params?.limit != null) sp.set("limit", String(params.limit))
+      const qs = sp.toString()
+      return requestLocal<AdminSession[]>(`/api/admin/sessions${qs ? `?${qs}` : ""}`)
+    },
+    revoke: (id: string) =>
+      requestLocal<{ ok: boolean; id: string }>(`/api/admin/sessions/${encodeURIComponent(id)}/revoke`, { method: "POST" }),
+    revokeAllForUser: (userId: number) =>
+      requestLocal<{ ok: boolean; revoked: number; user_id: number }>(`/api/admin/users/${userId}/revoke_all_sessions`, { method: "POST" }),
+  },
 }
 
 // Legacy-style default export used by a few older hooks.

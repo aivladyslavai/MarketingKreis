@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260210_0011"
+    target_revision = "20260210_0014"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:
@@ -476,6 +476,45 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("create index if not exists ix_report_schedules_organization_id on report_schedules (organization_id);"))
         conn.execute(text("create index if not exists ix_report_schedules_template_id on report_schedules (template_id);"))
         conn.execute(text("create index if not exists ix_report_schedules_next_run_at on report_schedules (next_run_at);"))
+
+        # 2FA (TOTP) user fields
+        conn.execute(
+            text(
+                "do $$\n"
+                "begin\n"
+                "  if not exists (\n"
+                "    select 1 from information_schema.columns where table_name='users' and column_name='totp_enabled'\n"
+                "  ) then\n"
+                "    alter table users add column totp_enabled boolean not null default false;\n"
+                "  end if;\n"
+                "  if not exists (\n"
+                "    select 1 from information_schema.columns where table_name='users' and column_name='totp_secret_enc'\n"
+                "  ) then\n"
+                "    alter table users add column totp_secret_enc text;\n"
+                "  end if;\n"
+                "  if not exists (\n"
+                "    select 1 from information_schema.columns where table_name='users' and column_name='totp_confirmed_at'\n"
+                "  ) then\n"
+                "    alter table users add column totp_confirmed_at timestamptz;\n"
+                "  end if;\n"
+                "  if not exists (\n"
+                "    select 1 from information_schema.columns where table_name='users' and column_name='totp_last_used_step'\n"
+                "  ) then\n"
+                "    alter table users add column totp_last_used_step integer;\n"
+                "  end if;\n"
+                "  if not exists (\n"
+                "    select 1 from information_schema.columns where table_name='users' and column_name='totp_recovery_codes'\n"
+                "  ) then\n"
+                "    alter table users add column totp_recovery_codes jsonb;\n"
+                "  end if;\n"
+                "  if not exists (\n"
+                "    select 1 from information_schema.columns where table_name='users' and column_name='section_permissions'\n"
+                "  ) then\n"
+                "    alter table users add column section_permissions jsonb;\n"
+                "  end if;\n"
+                "end $$;"
+            )
+        )
 
         # Templates + automation rules
         conn.execute(

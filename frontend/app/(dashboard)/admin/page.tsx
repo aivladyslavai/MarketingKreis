@@ -48,6 +48,24 @@ export default function AdminPage() {
   const [userRoleFilter, setUserRoleFilter] = React.useState<"" | "user" | "editor" | "admin">("")
   const [updatingUserId, setUpdatingUserId] = React.useState<number | null>(null)
   const [deletingUserId, setDeletingUserId] = React.useState<number | null>(null)
+  const [expandedPermsUserId, setExpandedPermsUserId] = React.useState<number | null>(null)
+  const SECTION_KEYS: { key: string; label: string }[] = [
+    { key: "crm", label: "CRM" },
+    { key: "calendar", label: "Calendar" },
+    { key: "activities", label: "Activities" },
+    { key: "performance", label: "Performance" },
+    { key: "budget", label: "Budget" },
+    { key: "content", label: "Content" },
+    { key: "reports", label: "Reports" },
+    { key: "uploads", label: "Uploads" },
+  ]
+
+  // Admin sessions
+  const [adminSessions, setAdminSessions] = React.useState<any[]>([])
+  const [sessionsLoading, setSessionsLoading] = React.useState(false)
+  const [sessionsError, setSessionsError] = React.useState<string | null>(null)
+  const [sessionsActiveOnly, setSessionsActiveOnly] = React.useState(true)
+  const [sessionsSearch, setSessionsSearch] = React.useState("")
   const [viewport, setViewport] = React.useState<{ w: number; h: number; dpr: number; online: boolean }>({ w: 0, h: 0, dpr: 1, online: true })
   const prefersDark = typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : false
   const isMobile = viewport.w > 0 && viewport.w < 640
@@ -323,6 +341,38 @@ export default function AdminPage() {
     }
   }, [activeTab, authLoading, user])
 
+  const loadAdminSessions = async () => {
+    setSessionsLoading(true)
+    setSessionsError(null)
+    try {
+      const rows = await adminAPI.sessions.list({ active_only: sessionsActiveOnly, limit: 250 })
+      setAdminSessions(Array.isArray(rows) ? rows : [])
+    } catch (e: any) {
+      setAdminSessions([])
+      setSessionsError(e?.message || "Failed to load sessions")
+    } finally {
+      setSessionsLoading(false)
+    }
+  }
+
+  React.useEffect(() => {
+    if (activeTab === "sessions" && !authLoading && user && user.role === "admin") {
+      loadAdminSessions()
+    }
+  }, [activeTab, authLoading, user, sessionsActiveOnly])
+
+  const setSectionAllowed = async (u: AdminUser, section: string, allowed: boolean) => {
+    const perms = (u as any)?.section_permissions && typeof (u as any).section_permissions === "object" ? { ...(u as any).section_permissions } : {}
+    if (allowed) {
+      // only explicit false denies; remove when allowing
+      delete (perms as any)[section]
+    } else {
+      ;(perms as any)[section] = false
+    }
+    const updated = await adminAPI.updateUser(u.id, { section_permissions: perms as any })
+    setAdminUsers((prev) => prev.map((x) => (x.id === u.id ? updated : x)))
+  }
+
   const jobsSummary = React.useMemo(() => {
     const total = jobs.length
     const by = (s: string) => jobs.filter((j) => j.status === (s as any)).length
@@ -498,6 +548,7 @@ export default function AdminPage() {
           <TabsTrigger value="jobs" className="text-xs sm:text-sm px-2 sm:px-4">Jobs</TabsTrigger>
           <TabsTrigger value="data" className="text-xs sm:text-sm px-2 sm:px-4">Daten</TabsTrigger>
           <TabsTrigger value="users" className="text-xs sm:text-sm px-2 sm:px-4">Benutzer</TabsTrigger>
+          <TabsTrigger value="sessions" className="text-xs sm:text-sm px-2 sm:px-4">Sessions</TabsTrigger>
           <TabsTrigger value="flags" className="text-xs sm:text-sm px-2 sm:px-4">Flags</TabsTrigger>
           <TabsTrigger value="system" className="text-xs sm:text-sm px-2 sm:px-4">System</TabsTrigger>
         </TabsList>

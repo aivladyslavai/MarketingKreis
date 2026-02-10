@@ -16,6 +16,7 @@ export async function PATCH(
 ) {
   const backendUrl = getBackendUrl()
   const cookie = req.headers.get("cookie") || ""
+  const csrf = req.headers.get("x-csrf-token") || ""
   const body = await req.text()
   const target = `${backendUrl}/admin/users/${encodeURIComponent(ctx.params.id)}`
 
@@ -27,6 +28,7 @@ export async function PATCH(
       headers: {
         "Content-Type": "application/json",
         ...(cookie ? { cookie } : {}),
+        ...(csrf ? { "x-csrf-token": csrf } : {}),
       },
       body,
       credentials: "include",
@@ -54,6 +56,7 @@ export async function DELETE(
 ) {
   const backendUrl = getBackendUrl()
   const cookie = req.headers.get("cookie") || ""
+  const csrf = req.headers.get("x-csrf-token") || ""
   const target = `${backendUrl}/admin/users/${encodeURIComponent(ctx.params.id)}`
 
   try {
@@ -61,7 +64,10 @@ export async function DELETE(
     const t = setTimeout(() => controller.abort(), 9000)
     const res = await fetch(target, {
       method: "DELETE",
-      headers: cookie ? { cookie } : {},
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        ...(csrf ? { "x-csrf-token": csrf } : {}),
+      },
       credentials: "include",
       cache: "no-store",
       signal: controller.signal,

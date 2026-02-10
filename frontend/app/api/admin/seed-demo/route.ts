@@ -13,6 +13,7 @@ function getBackendUrl() {
 export async function POST(req: NextRequest) {
   const backendUrl = getBackendUrl()
   const cookie = req.headers.get("cookie") || ""
+  const csrf = req.headers.get("x-csrf-token") || ""
 
   try {
     const body = await req.text()
@@ -23,6 +24,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         ...(cookie ? { cookie } : {}),
+        ...(csrf ? { "x-csrf-token": csrf } : {}),
         "Content-Type": req.headers.get("content-type") || "application/json",
       },
       credentials: "include",

@@ -16,6 +16,8 @@ from app.models.calendar import CalendarEntry
 from app.models.performance import Performance
 from app.core.config import get_settings
 from app.api.routes.auth import _hash_password
+from app.models.auth_session import AuthSession, AuthRefreshToken
+from app.utils.mailer import send_email
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -140,6 +142,7 @@ class AdminUserOut(BaseModel):
     email: EmailStr
     role: str
     isVerified: bool
+    section_permissions: Optional[Dict[str, bool]] = None
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
 
@@ -152,6 +155,7 @@ class AdminUserUpdate(BaseModel):
     role: Optional[str] = Field(None, description="user | editor | admin")
     is_verified: Optional[bool] = None
     new_password: Optional[str] = Field(None, min_length=6)
+    section_permissions: Optional[Dict[str, bool]] = None
 
 
 class PaginatedUsers(BaseModel):
@@ -202,6 +206,7 @@ def list_users_admin(
                 email=u.email,
                 role=u.role.value if hasattr(u.role, "value") else str(u.role),
                 isVerified=bool(u.is_verified),
+                section_permissions=getattr(u, "section_permissions", None),
                 createdAt=u.created_at,
                 updatedAt=u.updated_at,
             )
@@ -224,6 +229,7 @@ def get_user_admin(
         email=user.email,
         role=user.role.value if hasattr(user.role, "value") else str(user.role),
         isVerified=bool(user.is_verified),
+        section_permissions=getattr(user, "section_permissions", None),
         createdAt=user.created_at,
         updatedAt=user.updated_at,
     )
@@ -263,6 +269,14 @@ def update_user_admin(
     if payload.new_password:
         user.hashed_password = _hash_password(payload.new_password)
 
+    # Section permissions (RBAC-lite)
+    if payload.section_permissions is not None:
+        try:
+            user.section_permissions = payload.section_permissions  # type: ignore[attr-defined]
+        except Exception:
+            # If column is missing (older DB), ignore silently.
+            pass
+
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -272,9 +286,155 @@ def update_user_admin(
         email=user.email,
         role=user.role.value if hasattr(user.role, "value") else str(user.role),
         isVerified=bool(user.is_verified),
+        section_permissions=getattr(user, "section_permissions", None),
         createdAt=user.created_at,
         updatedAt=user.updated_at,
     )
+
+
+# === Sessions (operations) ===
+
+
+class AdminSessionOut(BaseModel):
+    id: str
+    user_id: int
+    user_email: EmailStr
+    user_role: str
+    ip: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: Optional[datetime] = None
+    last_seen_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
+    revoked_reason: Optional[str] = None
+
+
+@router.get("/sessions", response_model=List[AdminSessionOut])
+def list_sessions_admin(
+    user_id: Optional[int] = None,
+    active_only: bool = False,
+    limit: int = 200,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_role(UserRole.admin)),
+) -> List[AdminSessionOut]:
+    org = get_org_id(current_user)
+    q = db.query(AuthSession, User).join(User, User.id == AuthSession.user_id).filter(User.organization_id == org)
+    if user_id is not None:
+        q = q.filter(AuthSession.user_id == int(user_id))
+    if active_only:
+        q = q.filter(AuthSession.revoked_at.is_(None))
+    rows = q.order_by(AuthSession.updated_at.desc()).limit(max(1, min(500, int(limit)))).all()
+    out: List[AdminSessionOut] = []
+    for s, u in rows:
+        out.append(
+            AdminSessionOut(
+                id=s.id,
+                user_id=int(u.id),
+                user_email=u.email,
+                user_role=(u.role.value if hasattr(u.role, "value") else str(u.role)),
+                ip=s.ip,
+                user_agent=s.user_agent,
+                created_at=s.created_at,
+                last_seen_at=s.last_seen_at,
+                revoked_at=s.revoked_at,
+                revoked_reason=s.revoked_reason,
+            )
+        )
+    return out
+
+
+@router.post("/sessions/{session_id}/revoke")
+def revoke_session_admin(
+    session_id: str,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_role(UserRole.admin)),
+) -> Dict[str, Any]:
+    org = get_org_id(current_user)
+    sess = (
+        db.query(AuthSession)
+        .join(User, User.id == AuthSession.user_id)
+        .filter(AuthSession.id == session_id, User.organization_id == org)
+        .first()
+    )
+    if not sess:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if sess.revoked_at is None:
+        now = datetime.utcnow()
+        sess.revoked_at = now
+        sess.revoked_reason = "revoked_by_admin"
+        db.add(sess)
+        db.query(AuthRefreshToken).filter(AuthRefreshToken.session_id == session_id, AuthRefreshToken.revoked_at.is_(None)).update(
+            {"revoked_at": now}, synchronize_session=False
+        )
+        db.commit()
+    return {"ok": True, "id": session_id}
+
+
+@router.post("/users/{user_id}/revoke_all_sessions")
+def revoke_all_sessions_for_user(
+    user_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_role(UserRole.admin)),
+) -> Dict[str, Any]:
+    org = get_org_id(current_user)
+    u = db.query(User).filter(User.id == int(user_id), User.organization_id == org).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    now = datetime.utcnow()
+    sessions = db.query(AuthSession).filter(AuthSession.user_id == int(user_id), AuthSession.revoked_at.is_(None)).all()
+    for s in sessions:
+        s.revoked_at = now
+        s.revoked_reason = "revoke_all_by_admin"
+        db.add(s)
+    if sessions:
+        sids = [s.id for s in sessions]
+        db.query(AuthRefreshToken).filter(AuthRefreshToken.session_id.in_(sids), AuthRefreshToken.revoked_at.is_(None)).update(
+            {"revoked_at": now}, synchronize_session=False
+        )
+    db.commit()
+    return {"ok": True, "revoked": len(sessions), "user_id": int(user_id)}
+
+
+@router.post("/alerts/run/system")
+def run_ops_alerts_system(request: Request, db: Session = Depends(get_db_session)) -> Dict[str, Any]:
+    """
+    Cron-safe ops alerts.
+    Auth: header `X-Ops-Token: <OPS_ALERTS_TOKEN>`.
+
+    Minimal: checks DB connectivity. If failing, sends an email to OPS_ALERT_EMAILS.
+    """
+    settings = get_settings()
+    token = (request.headers.get("x-ops-token") or "").strip()
+    if not settings.ops_alerts_enabled:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not settings.ops_alerts_token or token != settings.ops_alerts_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    recipients = []
+    if settings.ops_alert_emails:
+        recipients = [e.strip() for e in settings.ops_alert_emails.split(",") if e and e.strip()]
+
+    checks: Dict[str, Any] = {"db": "unknown"}
+    ok = True
+    err = None
+    try:
+        db.execute(func.now())  # cheap roundtrip
+        checks["db"] = "ok"
+    except Exception as e:
+        ok = False
+        err = str(e)[:500]
+        checks["db"] = "error"
+        checks["db_error"] = err
+
+    if not ok and recipients and getattr(settings, "smtp_host", None) and getattr(settings, "email_from", None):
+        subject = f"[MarketingKreis] ALERT: backend not healthy ({settings.environment})"
+        text = f"Backend health check failed.\n\nChecks: {checks}\n"
+        for to in recipients:
+            try:
+                send_email(to=to, subject=subject, text=text)
+            except Exception:
+                pass
+
+    return {"ok": ok, "checks": checks, "recipients": len(recipients)}
 
 
 @router.delete("/users/{user_id}")

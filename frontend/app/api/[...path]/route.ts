@@ -24,7 +24,7 @@ async function forward(req: NextRequest, pathSegments: string[]) {
     const headers: Record<string, string> = {}
     if (cookie) headers.cookie = cookie
     if (contentType) headers["Content-Type"] = contentType
-    if (csrf) headers["X-CSRF-Token"] = csrf
+    if (csrf) headers["x-csrf-token"] = csrf
 
     const body = ["GET", "HEAD"].includes(method) ? undefined : await req.arrayBuffer()
 

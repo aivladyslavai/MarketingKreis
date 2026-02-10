@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         cookie,
-        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+        ...(csrf ? { "x-csrf-token": csrf } : {}),
       },
       credentials: "include",
       cache: "no-store",

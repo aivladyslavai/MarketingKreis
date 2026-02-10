@@ -10,12 +10,14 @@ from datetime import timedelta, datetime, timezone
 import uuid
 import secrets
 from jose import jwt
-from app.api.deps import get_org_id, require_role
+from app.api.deps import get_current_user, get_org_id, require_role
 from app.models.organization import Organization
 from app.models.user import User, UserRole
 from app.models.auth_session import AuthSession, AuthRefreshToken
 import bcrypt
 from app.utils.mailer import send_email
+from app.utils.crypto import encrypt_text, decrypt_text, hmac_sha256_hex
+from app.utils.totp import generate_base32_secret, verify_totp, build_otpauth_uri
 from app.core.rate_limit import (
     enforce_rate_limit,
     enforce_bruteforce_protection,
@@ -23,7 +25,6 @@ from app.core.rate_limit import (
     record_login_success,
     get_client_ip,
 )
-from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -33,8 +34,35 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class Login2FARequest(BaseModel):
+    challenge_token: str
+    code: str
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _get_session_id_from_cookies(request: Request, settings) -> str | None:
+    sid: str | None = None
+    raw_access = request.cookies.get(settings.cookie_access_name)
+    if raw_access:
+        try:
+            payload = jwt.decode(raw_access, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+            if payload.get("typ") == "access":
+                sid = str(payload.get("sid") or "") or None
+        except Exception:
+            sid = None
+    if not sid:
+        raw_refresh = request.cookies.get(settings.cookie_refresh_name)
+        if raw_refresh:
+            try:
+                payload = jwt.decode(raw_refresh, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+                if payload.get("typ") == "refresh":
+                    sid = str(payload.get("sid") or "") or None
+            except Exception:
+                sid = None
+    return sid
 
 
 def _encode_jwt(payload: dict, minutes: int) -> str:
@@ -64,19 +92,6 @@ def _set_auth_cookies(response: Response, *, access_token: str, refresh_token: s
     cookie_secure = settings.cookie_secure
     cookie_samesite = settings.cookie_samesite
 
-    # Double-submit CSRF token (non-HttpOnly so frontend can read it and mirror to header)
-    csrf_token = secrets.token_urlsafe(32)
-    response.set_cookie(
-        key=getattr(settings, "cookie_csrf_name", "csrf_token"),
-        value=csrf_token,
-        httponly=False,
-        secure=cookie_secure,
-        samesite=cookie_samesite,
-        path="/",
-        domain=cookie_domain,
-        max_age=max(settings.refresh_token_expire_minutes * 60, settings.access_token_expire_minutes * 60),
-    )
-
     response.set_cookie(
         key=settings.cookie_access_name,
         value=access_token,
@@ -99,6 +114,20 @@ def _set_auth_cookies(response: Response, *, access_token: str, refresh_token: s
         max_age=settings.refresh_token_expire_minutes * 60,
     )
 
+    # CSRF cookie (double-submit). Non-HttpOnly so frontend can mirror into X-CSRF-Token.
+    # Only meaningful when cookie-auth is in play.
+    csrf_value = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key=settings.cookie_csrf_name,
+        value=csrf_value,
+        httponly=False,
+        secure=cookie_secure,
+        samesite=cookie_samesite,
+        path="/",
+        domain=cookie_domain,
+        max_age=settings.refresh_token_expire_minutes * 60,
+    )
+
 
 def _clear_auth_cookies(response: Response, settings) -> None:
     # Access cookie is global
@@ -106,8 +135,9 @@ def _clear_auth_cookies(response: Response, settings) -> None:
     # Refresh cookie is restricted to /auth, but older deployments used path="/"
     response.delete_cookie(settings.cookie_refresh_name, path="/auth", domain=settings.cookie_domain)
     response.delete_cookie(settings.cookie_refresh_name, path="/", domain=settings.cookie_domain)
-    # CSRF cookie is global
-    response.delete_cookie(getattr(settings, "cookie_csrf_name", "csrf_token"), path="/", domain=settings.cookie_domain)
+    # CSRF cookie is global, but older deployments may have different path/domain combos.
+    response.delete_cookie(settings.cookie_csrf_name, path="/", domain=settings.cookie_domain)
+    response.delete_cookie(settings.cookie_csrf_name, path="/auth", domain=settings.cookie_domain)
 
 
 @router.post("/login")
@@ -224,6 +254,18 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
 
     # Create a server-side session and issue access+refresh tokens (rotation supported)
     now = _utcnow()
+
+    # Admin 2FA (TOTP) step-up: if enabled, require OTP before issuing cookies.
+    if user.role == UserRole.admin and bool(getattr(user, "totp_enabled", False)):
+        if not getattr(user, "totp_secret_enc", None):
+            raise HTTPException(status_code=500, detail="2FA misconfigured for this user")
+        challenge = _encode_special(
+            {"typ": "2fa_challenge", "user_id": int(user.id), "nonce": str(uuid.uuid4())},
+            minutes=5,
+        )
+        response.headers["X-2FA-Required"] = "1"
+        return {"message": "2fa_required", "challenge_token": challenge}
+
     session_id = str(uuid.uuid4())
     refresh_jti = str(uuid.uuid4())
 
@@ -269,6 +311,228 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
             "organization_id": get_org_id(user),
         },
     }
+
+
+@router.post("/login/2fa")
+def login_2fa(body: Login2FARequest, request: Request, response: Response, db: Session = Depends(get_db_session)):
+    settings = get_settings()
+    # Basic rate limit by IP
+    enforce_rate_limit(
+        request,
+        scope="auth_2fa_ip",
+        limit=30,
+        window_seconds=60,
+    )
+    try:
+        data = _decode_special(body.challenge_token)
+        if data.get("typ") != "2fa_challenge":
+            raise HTTPException(status_code=400, detail="Invalid challenge")
+        user_id = int(data.get("user_id") or 0)
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid challenge")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid or expired challenge")
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.role != UserRole.admin or not bool(getattr(user, "totp_enabled", False)):
+        raise HTTPException(status_code=403, detail="2FA not enabled")
+    secret = decrypt_text(getattr(user, "totp_secret_enc", None))
+    if not secret:
+        raise HTTPException(status_code=500, detail="2FA misconfigured for this user")
+
+    r = verify_totp(secret, body.code, window=1, last_used_step=getattr(user, "totp_last_used_step", None))
+    used_recovery = False
+    if not r.ok or r.matched_step is None:
+        # Try recovery code
+        norm = str(body.code or "").strip().replace(" ", "").replace("-", "")
+        digest = hmac_sha256_hex(norm)
+        codes = getattr(user, "totp_recovery_codes", None) or []
+        new_codes = []
+        for item in codes if isinstance(codes, list) else []:
+            h = (item or {}).get("hash")
+            if h == digest and not (item or {}).get("used_at"):
+                new_codes.append({**(item or {}), "used_at": _utcnow().isoformat()})
+                used_recovery = True
+            else:
+                new_codes.append(item)
+        if used_recovery:
+            user.totp_recovery_codes = new_codes
+        else:
+            raise HTTPException(status_code=401, detail="Invalid 2FA code")
+
+    # anti-replay: advance last_used_step
+    if not used_recovery:
+        user.totp_last_used_step = int(r.matched_step)
+    db.add(user)
+
+    now = _utcnow()
+    session_id = str(uuid.uuid4())
+    refresh_jti = str(uuid.uuid4())
+    sess = AuthSession(
+        id=session_id,
+        user_id=int(user.id),
+        ip=get_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        last_seen_at=now,
+    )
+    rt = AuthRefreshToken(
+        session_id=session_id,
+        token_jti=refresh_jti,
+        issued_at=now,
+        expires_at=now + timedelta(minutes=settings.refresh_token_expire_minutes),
+    )
+    db.add(sess)
+    db.add(rt)
+    db.commit()
+
+    access_token = create_access_jwt(
+        user_id=str(user.id),
+        session_id=session_id,
+        minutes=settings.access_token_expire_minutes,
+    )
+    refresh_token = create_refresh_jwt(
+        user_id=str(user.id),
+        session_id=session_id,
+        jti=refresh_jti,
+        minutes=settings.refresh_token_expire_minutes,
+    )
+    _set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token, settings=settings)
+    response.headers["X-Redirect-To"] = "/dashboard"
+    return {"message": "ok"}
+
+
+@router.get("/2fa/status")
+def totp_status(request: Request, db: Session = Depends(get_db_session)):
+    user = get_current_user(request, db)
+    return {
+        "enabled": bool(getattr(user, "totp_enabled", False)),
+        "confirmed_at": getattr(user, "totp_confirmed_at", None),
+        "role": (user.role.value if hasattr(user.role, "value") else str(user.role)),
+    }
+
+
+@router.post("/2fa/setup")
+def totp_setup(request: Request, db: Session = Depends(get_db_session)):
+    user = get_current_user(request, db)
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="2FA setup is restricted to admins")
+    secret = generate_base32_secret()
+    user.totp_secret_enc = encrypt_text(secret)
+    user.totp_enabled = False
+    user.totp_confirmed_at = None
+    user.totp_last_used_step = None
+    db.add(user)
+    db.commit()
+    uri = build_otpauth_uri(issuer=getattr(get_settings(), "totp_issuer", "MarketingKreis"), account=user.email, secret_b32=secret)
+    return {"secret": secret, "otpauth_uri": uri}
+
+
+class TotpEnableRequest(BaseModel):
+    code: str
+
+
+@router.post("/2fa/enable")
+def totp_enable(body: TotpEnableRequest, request: Request, db: Session = Depends(get_db_session)):
+    user = get_current_user(request, db)
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="2FA is restricted to admins")
+    secret = decrypt_text(getattr(user, "totp_secret_enc", None))
+    if not secret:
+        raise HTTPException(status_code=400, detail="Run setup first")
+    r = verify_totp(secret, body.code, window=1, last_used_step=getattr(user, "totp_last_used_step", None))
+    if not r.ok or r.matched_step is None:
+        raise HTTPException(status_code=400, detail="Invalid code")
+    user.totp_enabled = True
+    user.totp_confirmed_at = _utcnow()
+    user.totp_last_used_step = int(r.matched_step)
+    db.add(user)
+    db.commit()
+    return {"ok": True, "enabled": True}
+
+
+class TotpDisableRequest(BaseModel):
+    code: str
+
+
+@router.post("/2fa/disable")
+def totp_disable(body: TotpDisableRequest, request: Request, db: Session = Depends(get_db_session)):
+    user = get_current_user(request, db)
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="2FA is restricted to admins")
+    if not bool(getattr(user, "totp_enabled", False)):
+        return {"ok": True, "enabled": False}
+    secret = decrypt_text(getattr(user, "totp_secret_enc", None))
+    if not secret:
+        raise HTTPException(status_code=400, detail="2FA misconfigured")
+    # Allow disabling via TOTP or a recovery code
+    r = verify_totp(secret, body.code, window=1, last_used_step=None)
+    if not r.ok:
+        # try recovery code
+        norm = str(body.code or "").strip().replace(" ", "").replace("-", "")
+        digest = hmac_sha256_hex(norm)
+        codes = getattr(user, "totp_recovery_codes", None) or []
+        used = False
+        new_codes = []
+        for item in codes if isinstance(codes, list) else []:
+            h = (item or {}).get("hash")
+            if h == digest and not (item or {}).get("used_at"):
+                new_codes.append({**(item or {}), "used_at": _utcnow().isoformat()})
+                used = True
+            else:
+                new_codes.append(item)
+        if not used:
+            raise HTTPException(status_code=400, detail="Invalid code")
+        user.totp_recovery_codes = new_codes
+    user.totp_enabled = False
+    user.totp_secret_enc = None
+    user.totp_confirmed_at = None
+    user.totp_last_used_step = None
+    user.totp_recovery_codes = None
+    db.add(user)
+    db.commit()
+    return {"ok": True, "enabled": False}
+
+
+def _generate_recovery_codes(n: int = 10) -> list[str]:
+    out: list[str] = []
+    for _ in range(n):
+        # 10 chars, group for readability
+        raw = secrets.token_hex(5)  # 10 hex chars
+        out.append(f"{raw[:5]}-{raw[5:]}")
+    return out
+
+
+@router.post("/2fa/recovery/regenerate")
+def totp_recovery_regenerate(request: Request, db: Session = Depends(get_db_session)):
+    user = get_current_user(request, db)
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="2FA is restricted to admins")
+    if not bool(getattr(user, "totp_enabled", False)):
+        raise HTTPException(status_code=400, detail="Enable 2FA first")
+
+    codes = _generate_recovery_codes(10)
+    stored = [{"hash": hmac_sha256_hex(c.replace("-", "")), "used_at": None} for c in codes]
+    user.totp_recovery_codes = stored
+    db.add(user)
+    db.commit()
+    # Return plaintext once (frontend should show+copy and then discard)
+    return {"codes": codes, "count": len(codes)}
+
+
+@router.get("/2fa/recovery/status")
+def totp_recovery_status(request: Request, db: Session = Depends(get_db_session)):
+    user = get_current_user(request, db)
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="2FA is restricted to admins")
+    codes = getattr(user, "totp_recovery_codes", None) or []
+    remaining = 0
+    if isinstance(codes, list):
+        remaining = sum(1 for c in codes if isinstance(c, dict) and not c.get("used_at"))
+    return {"enabled": bool(getattr(user, "totp_enabled", False)), "remaining": remaining}
 
 
 @router.post("/refresh")
@@ -566,30 +830,20 @@ def profile(request: Request, db: Session = Depends(get_db_session)):
     from app.api.deps import get_current_user
     user = get_current_user(request, db)
     role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
-    return {"id": user.id, "email": user.email, "role": role_value, "organization_id": get_org_id(user)}
+    perms = getattr(user, "section_permissions", None)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "role": role_value,
+        "organization_id": get_org_id(user),
+        "section_permissions": perms,
+    }
 
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db_session)):
     settings = get_settings()
     # Best-effort: revoke the current session
-    sid: str | None = None
-    raw_access = request.cookies.get(settings.cookie_access_name)
-    if raw_access:
-        try:
-            payload = jwt.decode(raw_access, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-            if payload.get("typ") == "access":
-                sid = str(payload.get("sid") or "") or None
-        except Exception:
-            sid = None
-    if not sid:
-        raw_refresh = request.cookies.get(settings.cookie_refresh_name)
-        if raw_refresh:
-            try:
-                payload = jwt.decode(raw_refresh, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-                if payload.get("typ") == "refresh":
-                    sid = str(payload.get("sid") or "") or None
-            except Exception:
-                sid = None
+    sid = _get_session_id_from_cookies(request, settings)
 
     if sid:
         try:
@@ -608,92 +862,93 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db_se
     return {"message": "ok"}
 
 
-class SessionOut(BaseModel):
-    id: str
-    user_agent: str | None = None
-    ip: str | None = None
-    created_at: datetime
-    last_seen_at: datetime | None = None
-    revoked_at: datetime | None = None
-    revoked_reason: str | None = None
-    is_current: bool = False
-
-
-def _current_sid_from_access(request: Request, settings) -> str | None:
-    raw_access = request.cookies.get(settings.cookie_access_name)
-    if not raw_access:
-        return None
-    try:
-        payload = jwt.decode(raw_access, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-        if payload.get("typ") != "access":
-            return None
-        return str(payload.get("sid") or "") or None
-    except Exception:
-        return None
-
-
-@router.get("/sessions", response_model=list[SessionOut])
+@router.get("/sessions")
 def list_sessions(request: Request, db: Session = Depends(get_db_session)):
+    """
+    List active sessions (devices) for current user.
+    """
     settings = get_settings()
     user = get_current_user(request, db)
-    current_sid = _current_sid_from_access(request, settings)
+    current_sid = _get_session_id_from_cookies(request, settings)
     rows = (
         db.query(AuthSession)
-        .filter(AuthSession.user_id == user.id)
-        .order_by(AuthSession.created_at.desc())
-        .limit(50)
+        .filter(AuthSession.user_id == int(user.id))
+        .order_by(AuthSession.updated_at.desc())
+        .limit(200)
         .all()
     )
-    out: list[SessionOut] = []
-    for s in rows:
-        out.append(
-            SessionOut(
-                id=str(s.id),
-                user_agent=s.user_agent,
-                ip=s.ip,
-                created_at=s.created_at,
-                last_seen_at=s.last_seen_at,
-                revoked_at=s.revoked_at,
-                revoked_reason=s.revoked_reason,
-                is_current=bool(current_sid and str(s.id) == current_sid),
-            )
-        )
-    return out
+    return [
+        {
+            "id": s.id,
+            "ip": s.ip,
+            "user_agent": s.user_agent,
+            "created_at": s.created_at,
+            "last_seen_at": s.last_seen_at,
+            "revoked_at": s.revoked_at,
+            "revoked_reason": s.revoked_reason,
+            "is_current": bool(current_sid and s.id == current_sid),
+        }
+        for s in rows
+    ]
 
 
 @router.post("/sessions/{session_id}/revoke")
 def revoke_session(session_id: str, request: Request, response: Response, db: Session = Depends(get_db_session)):
     settings = get_settings()
     user = get_current_user(request, db)
-    sess = db.get(AuthSession, str(session_id))
-    if not sess or int(sess.user_id) != int(user.id):
+    sess = db.query(AuthSession).filter(AuthSession.id == session_id, AuthSession.user_id == int(user.id)).first()
+    if not sess:
         raise HTTPException(status_code=404, detail="Session not found")
     if sess.revoked_at is None:
         sess.revoked_at = _utcnow()
-        sess.revoked_reason = "user_revoke"
+        sess.revoked_reason = "revoked_by_user"
+        # revoke all refresh tokens for this session
+        db.query(AuthRefreshToken).filter(AuthRefreshToken.session_id == session_id, AuthRefreshToken.revoked_at.is_(None)).update(
+            {"revoked_at": _utcnow()}, synchronize_session=False
+        )
         db.add(sess)
         db.commit()
 
-    # If the current session is revoked, also clear cookies.
-    current_sid = _current_sid_from_access(request, settings)
-    if current_sid and current_sid == str(session_id):
+    # If this is the current session, clear cookies immediately.
+    current_sid = _get_session_id_from_cookies(request, settings)
+    if current_sid and current_sid == session_id:
         _clear_auth_cookies(response, settings)
-    return {"ok": True, "id": str(session_id)}
+        return {"ok": True, "id": session_id, "logged_out": True}
+
+    return {"ok": True, "id": session_id}
 
 
-@router.post("/sessions/revoke-all")
-def revoke_all_sessions(request: Request, response: Response, db: Session = Depends(get_db_session)):
+@router.post("/sessions/revoke_all")
+def revoke_all_sessions(
+    request: Request,
+    response: Response,
+    keep_current: bool = False,
+    db: Session = Depends(get_db_session),
+):
     settings = get_settings()
     user = get_current_user(request, db)
+    current_sid = _get_session_id_from_cookies(request, settings)
+
+    q = db.query(AuthSession).filter(AuthSession.user_id == int(user.id), AuthSession.revoked_at.is_(None))
+    if keep_current and current_sid:
+        q = q.filter(AuthSession.id != current_sid)
+    rows = q.all()
     now = _utcnow()
-    (
-        db.query(AuthSession)
-        .filter(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
-        .update({"revoked_at": now, "revoked_reason": "logout_all"}, synchronize_session=False)
-    )
+    for s in rows:
+        s.revoked_at = now
+        s.revoked_reason = "revoke_all"
+        db.add(s)
+    # revoke refresh tokens for affected sessions
+    session_ids = [s.id for s in rows]
+    if session_ids:
+        db.query(AuthRefreshToken).filter(AuthRefreshToken.session_id.in_(session_ids), AuthRefreshToken.revoked_at.is_(None)).update(
+            {"revoked_at": now}, synchronize_session=False
+        )
     db.commit()
-    _clear_auth_cookies(response, settings)
-    return {"ok": True}
+
+    if not keep_current:
+        _clear_auth_cookies(response, settings)
+    return {"ok": True, "revoked": len(rows), "keep_current": keep_current}
 
 class InviteRequest(BaseModel):
     email: str
