@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown, Eye, Settings2, Mail, Check } from "lucide-react"
+import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown, Eye, Settings2, Mail, Check, Search, Filter } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { authFetch } from "@/lib/api"
 import { useActivities } from "@/hooks/use-activities"
@@ -60,6 +60,9 @@ export default function ReportsPage() {
   const [runs, setRuns] = useState<any[]>([])
   const [templatesLoading, setTemplatesLoading] = useState(false)
   const [runsLoading, setRunsLoading] = useState(false)
+  const [historyTpl, setHistoryTpl] = useState<string>("")
+  const [historyQ, setHistoryQ] = useState<string>("")
+  const [historyOnlyErrors, setHistoryOnlyErrors] = useState<boolean>(false)
 
   // Weekly email schedules (admin/editor)
   const [schedules, setSchedules] = useState<any[]>([])
@@ -202,6 +205,28 @@ export default function ReportsPage() {
     if (!canManageReports) return
     loadSchedules()
   }, [canManageReports])
+
+  const filteredRuns = useMemo(() => {
+    const q = (historyQ || "").trim().toLowerCase()
+    const tpl = (historyTpl || "").trim()
+    return (Array.isArray(runs) ? runs : [])
+      .filter((r: any) => {
+        if (historyOnlyErrors && String(r?.status || "") === "ok") return false
+        if (tpl && String(r?.template_id || "") !== tpl) return false
+        if (!q) return true
+        const tplName = r?.template_id ? templates.find((t: any) => t.id === r.template_id)?.name : ""
+        const hay = [
+          String(r?.id ?? ""),
+          String(r?.status ?? ""),
+          String(r?.error ?? ""),
+          String(tplName || ""),
+        ]
+          .join(" ")
+          .toLowerCase()
+        return hay.includes(q)
+      })
+      .slice(0, 24)
+  }, [runs, templates, historyQ, historyTpl, historyOnlyErrors])
 
   const kpis = useMemo(() => {
     const pipelineValue = crmStats?.pipelineValue || 0
@@ -601,6 +626,51 @@ export default function ReportsPage() {
               <RefreshCw className="h-3.5 w-3.5 mr-2" /> Neu laden
             </Button>
           </div>
+
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="md:col-span-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                <input
+                  value={historyQ}
+                  onChange={(e) => setHistoryQ(e.target.value)}
+                  placeholder="Suchen: Run-ID, Template, Status…"
+                  className="h-11 w-full rounded-xl bg-slate-900/70 border border-white/15 pl-10 pr-3 text-slate-200 text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="relative">
+                  <Filter className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                  <select
+                    value={historyTpl}
+                    onChange={(e) => setHistoryTpl(e.target.value)}
+                    className="h-11 w-full appearance-none rounded-xl bg-slate-900/70 border border-white/15 pl-10 pr-8 text-slate-200 text-sm"
+                  >
+                    <option value="">Alle Templates</option>
+                    {templates.map((t: any) => (
+                      <option key={t.id} value={String(t.id)}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <div className="text-[11px] text-slate-400">
+              {runsLoading ? "…" : `${filteredRuns.length} / ${runs.length} angezeigt`}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-300">Only errors</span>
+              <Switch checked={historyOnlyErrors} onCheckedChange={setHistoryOnlyErrors} />
+            </div>
+          </div>
+
           <div className="mt-3 space-y-2">
             {runsLoading ? (
               <div className="space-y-2">
@@ -613,21 +683,44 @@ export default function ReportsPage() {
               </div>
             ) : runs.length === 0 ? (
               <div className="text-xs text-slate-400">Noch keine gespeicherten Generierungen.</div>
+            ) : filteredRuns.length === 0 ? (
+              <div className="rounded-xl border border-white/10 bg-slate-950/30 p-4 text-xs text-slate-300">
+                Keine Treffer. Passe Filter oder Suche an.
+              </div>
             ) : (
-              runs.slice(0, 12).map((r: any) => {
+              filteredRuns.map((r: any) => {
                 const dt = r.created_at ? new Date(r.created_at) : null
                 const when = dt && Number.isFinite(dt.getTime()) ? dt.toLocaleString("de-DE") : String(r.created_at || "")
                 const tplName = r.template_id ? templates.find((t: any) => t.id === r.template_id)?.name : null
+                const ok = String(r.status || "") === "ok"
                 return (
                   <div key={r.id} className="rounded-xl border border-white/10 bg-slate-950/30 p-3 flex flex-col sm:flex-row sm:items-center gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs text-slate-300 truncate">
-                        <span className="font-semibold text-slate-100">#{r.id}</span> · {when}
-                        {tplName ? <span className="text-slate-400"> · {tplName}</span> : null}
+                      <div className="flex items-center gap-2 text-xs text-slate-300 min-w-0">
+                        <span className="font-semibold text-slate-100">#{r.id}</span>
+                        <span className="text-slate-500">·</span>
+                        <span className="truncate">{when}</span>
+                        {tplName ? (
+                          <>
+                            <span className="text-slate-500">·</span>
+                            <span className="truncate text-slate-200">{tplName}</span>
+                          </>
+                        ) : null}
+                        <span
+                          className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                            ok
+                              ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+                              : "border-rose-400/20 bg-rose-500/10 text-rose-200"
+                          }`}
+                        >
+                          {ok ? "ok" : "error"}
+                        </span>
                       </div>
-                      <div className="mt-1 text-[11px] text-slate-400 truncate">
-                        {r.status === "ok" ? "OK" : `Error: ${r.error || "unknown"}`}
-                      </div>
+                      {!ok && (
+                        <div className="mt-1 text-[11px] text-rose-200/90 truncate">
+                          {String(r.error || "unknown error")}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
