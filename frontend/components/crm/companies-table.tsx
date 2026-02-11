@@ -475,7 +475,7 @@ export function CompaniesTable({
 
       {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="w-[min(92vw,700px)] sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[min(92vw,700px)] sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle>Neues Unternehmen hinzufügen</DialogTitle>
             <DialogDescription>
@@ -645,7 +645,7 @@ export function CompaniesTable({
 
       {/* Edit Dialog */}
       <Dialog open={!!editingCompany} onOpenChange={() => { setEditingCompany(null); resetForm(); }}>
-        <DialogContent className="w-[min(92vw,700px)] sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[min(92vw,700px)] sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle>Unternehmen bearbeiten</DialogTitle>
             <DialogDescription>

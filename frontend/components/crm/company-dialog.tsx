@@ -153,7 +153,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(92vw,780px)] sm:max-w-[780px] max-h-[90vh] overflow-y-auto bg-white/80 dark:bg-slate-950/50 border-slate-200 dark:border-white/10 backdrop-blur-xl rounded-2xl">
+      <DialogContent className="w-[min(92vw,780px)] sm:max-w-[780px]">
         <DialogHeader>
           <DialogTitle>
             <div className="flex items-center gap-3">

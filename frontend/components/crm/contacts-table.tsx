@@ -451,7 +451,7 @@ export function ContactsTable({
 
       {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="w-[min(92vw,600px)] sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[min(92vw,600px)] sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>Neuen Kontakt hinzufügen</DialogTitle>
             <DialogDescription>
@@ -598,7 +598,7 @@ export function ContactsTable({
 
       {/* Edit Dialog */}
       <Dialog open={!!editingContact} onOpenChange={() => { setEditingContact(null); resetForm(); }}>
-        <DialogContent className="w-[min(92vw,600px)] sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[min(92vw,600px)] sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>Kontakt bearbeiten</DialogTitle>
             <DialogDescription>

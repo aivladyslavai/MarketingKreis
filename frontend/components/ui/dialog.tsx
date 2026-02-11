@@ -18,8 +18,17 @@ export function Dialog({ open = false, onOpenChange, children }: DialogProps) {
     >
       <div className="absolute inset-0 bg-black/50" />
       <div
-        className="relative z-10 w-full sm:w-auto max-h-[85vh] overflow-auto overscroll-contain"
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0px)" }}
+        className={[
+          "relative z-10 w-full sm:w-auto",
+          // Use dynamic viewport units for iOS to avoid “cut off” bottoms.
+          "max-h-[calc(100dvh-1.25rem)] sm:max-h-[calc(100dvh-3rem)]",
+          // Scrolling container for long forms
+          "overflow-y-auto overscroll-contain mk-no-scrollbar",
+        ].join(" ")}
+        style={{
+          paddingBottom: "max(env(safe-area-inset-bottom), 12px)",
+          paddingTop: "max(env(safe-area-inset-top), 0px)",
+        }}
         onClick={(e)=> e.stopPropagation()}
       >
         {children}
@@ -30,7 +39,16 @@ export function Dialog({ open = false, onOpenChange, children }: DialogProps) {
 
 export function DialogContent({ children, className }: { children?: React.ReactNode; className?: string }) {
   return (
-    <div className={"rounded-2xl sm:rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xl p-4 "+(className||"")}>{children}</div>
+    <div
+      className={
+        "rounded-2xl sm:rounded-2xl border border-slate-200 dark:border-white/10 bg-white/85 dark:bg-slate-950/55 text-slate-900 dark:text-slate-100 shadow-2xl backdrop-blur-xl p-4 sm:p-5 " +
+        // Extra safe-area so the last field + buttons never sit under iPhone home indicator.
+        "pb-[max(env(safe-area-inset-bottom),16px)] " +
+        (className || "")
+      }
+    >
+      {children}
+    </div>
   )
 }
 
