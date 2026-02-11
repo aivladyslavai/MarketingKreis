@@ -377,81 +377,100 @@ export default function ReportsPage() {
                   if (tpl?.config) applyTemplateConfig(tpl.config)
                 }}
               >
-                <option value="">Template auswählen…</option>
+                <option value="">{templatesLoading ? "Lade Templates…" : "Template auswählen…"}</option>
                 {templates.map((t: any) => (
                   <option key={t.id} value={String(t.id)}>
                     {t.name}
                   </option>
                 ))}
               </StyledSelect>
+              <div className="mt-1 text-[11px] text-slate-400">
+                {templatesLoading
+                  ? "Templates werden geladen…"
+                  : templates.length === 0
+                    ? "Noch keine Templates. Speichere deine Einstellungen als Template."
+                    : `${templates.length} Template${templates.length === 1 ? "" : "s"} verfügbar.`}
+              </div>
             </div>
             {canManageReports && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
-                disabled={templatesLoading}
-                onClick={() => {
-                  openModal({
-                    type: "custom",
-                    title: "Report Template speichern",
-                    content: (
-                      <div className="space-y-3">
-                        <div className="text-xs text-slate-300">
-                          Speichert Einstellungen (Zeitraum, Sektionen, Sprache/Ton, Branding) als wiederverwendbares Template.
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm"
+                  disabled={templatesLoading}
+                  onClick={loadTemplatesAndRuns}
+                  title="Templates neu laden"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
+                  disabled={templatesLoading}
+                  onClick={() => {
+                    openModal({
+                      type: "custom",
+                      title: "Report Template speichern",
+                      content: (
+                        <div className="space-y-3">
+                          <div className="text-xs text-slate-300">
+                            Speichert Einstellungen (Zeitraum, Sektionen, Sprache/Ton, Branding) als wiederverwendbares Template.
+                          </div>
+                          <input
+                            value={templateName}
+                            onChange={(e) => setTemplateName(e.target.value)}
+                            placeholder="Name (z.B. Weekly Executive)"
+                            className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                          />
+                          <input
+                            value={templateDesc}
+                            onChange={(e) => setTemplateDesc(e.target.value)}
+                            placeholder="Beschreibung (optional)"
+                            className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                          />
+                          <div className="flex items-center gap-2">
+                            <Button
+                              className="h-11"
+                              onClick={async () => {
+                                const payload: any = {
+                                  name: templateName || `Template ${new Date().toISOString().slice(0, 10)}`,
+                                  description: templateDesc || undefined,
+                                  config: {
+                                    from,
+                                    to,
+                                    compare,
+                                    sections,
+                                    language,
+                                    tone,
+                                    brand,
+                                  },
+                                }
+                                await reportsAPI.templates.create(payload)
+                                setTemplateName("")
+                                setTemplateDesc("")
+                                await loadTemplatesAndRuns()
+                                try {
+                                  sync.emit("global:refresh")
+                                } catch {}
+                                closeModal()
+                              }}
+                            >
+                              Speichern
+                            </Button>
+                            <Button variant="outline" className="h-11" onClick={closeModal}>
+                              Schließen
+                            </Button>
+                          </div>
                         </div>
-                        <input
-                          value={templateName}
-                          onChange={(e) => setTemplateName(e.target.value)}
-                          placeholder="Name (z.B. Weekly Executive)"
-                          className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
-                        />
-                        <input
-                          value={templateDesc}
-                          onChange={(e) => setTemplateDesc(e.target.value)}
-                          placeholder="Beschreibung (optional)"
-                          className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
-                        />
-                        <div className="flex items-center gap-2">
-                          <Button
-                            className="h-11"
-                            onClick={async () => {
-                              const payload: any = {
-                                name: templateName || `Template ${new Date().toISOString().slice(0, 10)}`,
-                                description: templateDesc || undefined,
-                                config: {
-                                  from,
-                                  to,
-                                  compare,
-                                  sections,
-                                  language,
-                                  tone,
-                                  brand,
-                                },
-                              }
-                              await reportsAPI.templates.create(payload)
-                              setTemplateName("")
-                              setTemplateDesc("")
-                              await loadTemplatesAndRuns()
-                              try {
-                                sync.emit("global:refresh")
-                              } catch {}
-                              closeModal()
-                            }}
-                          >
-                            Speichern
-                          </Button>
-                          <Button variant="outline" className="h-11" onClick={closeModal}>
-                            Schließen
-                          </Button>
-                        </div>
-                      </div>
-                    ),
-                  })
-                }}
-              >
-                Template speichern
-              </Button>
+                      ),
+                    })
+                  }}
+                >
+                  Template speichern
+                </Button>
+              </div>
             )}
           </div>
 
@@ -684,6 +703,12 @@ export default function ReportsPage() {
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3 space-y-2">
                 <div className="text-xs font-semibold text-slate-200">Neuen Schedule anlegen</div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-[11px] text-slate-300">
+                  Template:{" "}
+                  <span className="text-slate-100 font-semibold">
+                    {selectedTemplateId ? (templates.find((t: any) => String(t.id) === String(selectedTemplateId))?.name || "—") : "kein Template (nur KPI-Summary)"}
+                  </span>
+                </div>
                 <input
                   value={scheduleName}
                   onChange={(e) => setScheduleName(e.target.value)}
@@ -761,13 +786,33 @@ export default function ReportsPage() {
               <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3">
                 <div className="text-xs font-semibold text-slate-200">Aktive Schedules</div>
                 <div className="mt-2 space-y-2">
-                  {schedules.length === 0 ? (
+                  {schedulesLoading ? (
+                    <div className="space-y-2">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                          <div className="h-4 w-1/2 bg-white/10 rounded" />
+                          <div className="mt-2 h-3 w-5/6 bg-white/10 rounded" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : schedules.length === 0 ? (
                     <div className="text-xs text-slate-400">Noch keine Schedules.</div>
                   ) : (
                     schedules.slice(0, 10).map((s: any) => (
                       <div key={s.id} className="rounded-xl border border-white/10 bg-white/5 p-3 flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-100 truncate">{s.name}</div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="text-sm font-semibold text-slate-100 truncate">{s.name}</div>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                s.is_active
+                                  ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                                  : "border-slate-400/20 bg-slate-500/10 text-slate-200"
+                              }`}
+                            >
+                              {s.is_active ? "active" : "paused"}
+                            </span>
+                          </div>
                           <div className="mt-1 text-[11px] text-slate-400 truncate">
                             {s.is_active ? "Aktiv" : "Pausiert"} · {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][s.weekday] || "—"} ·{" "}
                             {String(s.hour).padStart(2, "0")}:{String(s.minute).padStart(2, "0")} · {Array.isArray(s.recipients) ? s.recipients.join(", ") : ""}
@@ -776,8 +821,9 @@ export default function ReportsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-9 text-xs border-white/20 text-slate-200"
+                          className="h-9 text-xs border-red-500/30 text-red-200 hover:bg-red-500/10"
                           onClick={async () => {
+                            if (!confirm(`Schedule „${String(s.name || s.id)}“ wirklich löschen?`)) return
                             await reportsAPI.schedules.delete(s.id)
                             await loadSchedules()
                           }}

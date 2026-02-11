@@ -485,6 +485,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                   variant="outline"
                   className="h-11 text-xs border-white/20 text-slate-200"
                   onClick={async () => {
+                    if (!confirm("Alle anderen Geräte/Sessions abmelden? (Dieses Gerät bleibt eingeloggt)")) return
                     await api("/auth/sessions/revoke_all?keep_current=true", { method: "POST" })
                     await loadSessions()
                   }}
@@ -495,6 +496,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                 <Button
                   className="h-11 text-xs bg-red-500/90 hover:bg-red-500 text-white"
                   onClick={async () => {
+                    if (!confirm("Wirklich überall abmelden? Du wirst auf die Login-Seite weitergeleitet.")) return
                     await api("/auth/sessions/revoke_all", { method: "POST" })
                     // cookies cleared -> go to login
                     onClose()
@@ -612,19 +614,25 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                     )}
 
                     <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-[11px] text-slate-300">
-                      Status:{" "}
-                      {totpEnabled ? (
-                        <span className="text-emerald-200 font-semibold">ENABLED</span>
-                      ) : (
-                        <span className="text-amber-200 font-semibold">DISABLED</span>
-                      )}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-slate-300">Status</div>
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                            totpEnabled
+                              ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                              : "border-amber-300/30 bg-amber-500/10 text-amber-100"
+                          }`}
+                        >
+                          {totpEnabled ? "enabled" : "disabled"}
+                        </span>
+                      </div>
                     </div>
 
                     {!totpEnabled ? (
                       <div className="space-y-2">
                         <Button
                           variant="outline"
-                          className="h-11 text-xs border-white/20 text-slate-200"
+                          className="h-11 text-xs border-white/20 text-slate-100 bg-white/5 hover:bg-white/10"
                           onClick={async () => {
                             try {
                               setTotpError(null)
@@ -708,7 +716,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                               className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
                             />
                             <Button
-                              className="h-11 w-full"
+                              className="h-11 w-full bg-emerald-500/90 hover:bg-emerald-500 text-white"
                               onClick={async () => {
                                 try {
                                   setTotpError(null)
@@ -733,18 +741,21 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                         <input
                           value={totpCode}
                           onChange={(e) => setTotpCode(e.target.value)}
-                          placeholder="6-digit Code to disable"
+                          placeholder="Code oder Recovery Code"
                           className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
                         />
-                        <div className="text-[11px] text-slate-400">
-                          Du kannst hier auch einen Recovery Code verwenden. Remaining:{" "}
-                          <span className="text-slate-200 font-semibold">{recoveryRemaining}</span>
+                        <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                          <span>Du kannst hier auch einen Recovery Code verwenden.</span>
+                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-slate-200">
+                            Remaining: <span className="font-semibold">{recoveryRemaining}</span>
+                          </span>
                         </div>
                         <Button
                           variant="outline"
                           className="h-11 w-full border-rose-400/30 bg-rose-500/10 hover:bg-rose-500/15 text-rose-100"
                           onClick={async () => {
                             try {
+                              if (!confirm("2FA wirklich deaktivieren? (Du brauchst dann keinen OTP-Code mehr beim Login)")) return
                               setTotpError(null)
                               await api("/auth/2fa/disable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpCode }) })
                               setTotpCode("")
@@ -759,9 +770,10 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
 
                         <Button
                           variant="outline"
-                          className="h-11 w-full border-white/20 text-slate-200"
+                          className="h-11 w-full border-amber-300/25 bg-amber-500/10 text-amber-100 hover:bg-amber-500/15"
                           onClick={async () => {
                             try {
+                              if (!confirm("Neue Recovery Codes generieren? (Alte Codes werden ungültig)")) return
                               setTotpError(null)
                               const j = await api("/auth/2fa/recovery/regenerate", { method: "POST" })
                               const codes = Array.isArray((j as any)?.codes) ? (j as any).codes.map(String) : []

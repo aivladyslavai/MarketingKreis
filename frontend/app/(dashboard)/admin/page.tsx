@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Switch } from "@/components/ui/switch"
 import { useJobsApi } from "@/hooks/use-uploads-api"
 import { useAuth } from "@/hooks/use-auth"
 import {
@@ -1364,10 +1365,10 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                <label className="flex items-center gap-2 text-[11px] text-slate-200">
-                  <input type="checkbox" checked={sessionsActiveOnly} onChange={(e)=>setSessionsActiveOnly(e.target.checked)} />
-                  Active only
-                </label>
+                <div className="flex items-center gap-2 text-[11px] text-slate-200">
+                  <span className="text-slate-300">Active only</span>
+                  <Switch checked={sessionsActiveOnly} onCheckedChange={setSessionsActiveOnly} />
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1407,12 +1408,40 @@ export default function AdminPage() {
                             <div className="text-xs font-semibold text-slate-100 truncate">
                               {s.user_email} <span className="text-slate-400">({s.user_role})</span>
                             </div>
-                            <div className="mt-1 text-[11px] text-slate-400 break-words">IP: {s.ip || "—"}</div>
-                            <div className="mt-1 text-[11px] text-slate-400 break-words">UA: {s.user_agent || "—"}</div>
-                            <div className="mt-2 text-[11px] text-slate-400">
-                              Last seen: <span className="text-slate-200">{s.last_seen_at ? new Date(s.last_seen_at).toLocaleString() : "—"}</span>{" "}
-                              · Status:{" "}
-                              {s.revoked_at ? <span className="text-rose-200">revoked</span> : <span className="text-emerald-200">active</span>}
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                              <span className="rounded-full border border-white/10 bg-slate-950/30 px-2 py-0.5 text-slate-300">IP: {s.ip || "—"}</span>
+                              <span className="rounded-full border border-white/10 bg-slate-950/30 px-2 py-0.5 text-slate-300 truncate max-w-[260px]">
+                                UA: {s.user_agent || "—"}
+                              </span>
+                              <span
+                                className={`rounded-full border px-2 py-0.5 font-semibold ${
+                                  s.revoked_at
+                                    ? "border-rose-400/20 bg-rose-500/10 text-rose-200"
+                                    : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+                                }`}
+                              >
+                                {s.revoked_at ? "revoked" : "active"}
+                              </span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-400">
+                              <div>
+                                Created:{" "}
+                                <span className="text-slate-200">
+                                  {s.created_at ? new Date(s.created_at).toLocaleString() : "—"}
+                                </span>
+                              </div>
+                              <div>
+                                Last seen:{" "}
+                                <span className="text-slate-200">
+                                  {s.last_seen_at ? new Date(s.last_seen_at).toLocaleString() : "—"}
+                                </span>
+                              </div>
+                              {s.revoked_at && (
+                                <div className="sm:col-span-2">
+                                  Revoked: <span className="text-slate-200">{new Date(s.revoked_at).toLocaleString()}</span>
+                                  {s.revoked_reason ? <span className="text-slate-500"> · {String(s.revoked_reason)}</span> : null}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="flex flex-col gap-2 flex-shrink-0">
@@ -1420,8 +1449,9 @@ export default function AdminPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8 text-[10px] sm:text-xs"
+                                className="h-8 text-[10px] sm:text-xs border-white/20 text-slate-200"
                                 onClick={async () => {
+                                  if (!confirm(`Session für ${String(s.user_email || "user")} wirklich revoken?`)) return
                                   await adminAPI.sessions.revoke(String(s.id))
                                   await loadAdminSessions()
                                 }}
@@ -1433,8 +1463,9 @@ export default function AdminPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8 text-[10px] sm:text-xs border-red-500/40 text-red-300 hover:bg-red-500/10"
+                                className="h-8 text-[10px] sm:text-xs border-red-500/30 text-red-200 hover:bg-red-500/10"
                                 onClick={async () => {
+                                  if (!confirm(`Alle Sessions für ${String(s.user_email || "user")} revoken?`)) return
                                   await adminAPI.sessions.revokeAllForUser(Number(s.user_id))
                                   await loadAdminSessions()
                                 }}
@@ -1559,7 +1590,7 @@ export default function AdminPage() {
               <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                 <div className="text-xs font-semibold text-slate-200">Metrics (Prometheus)</div>
                 <div className="mt-2 text-[11px] text-slate-400">
-                  In prod ist <span className="font-mono">/metrics</span> geschützt через <span className="font-mono">METRICS_TOKEN</span>.
+                  In prod ist <span className="font-mono">/metrics</span> geschützt via <span className="font-mono">METRICS_TOKEN</span>.
                 </div>
                 <pre className="mt-2 text-[10px] text-slate-300 whitespace-pre-wrap break-words">{`curl -H \"Authorization: Bearer $METRICS_TOKEN\" ${apiBase}/metrics`}</pre>
               </div>
@@ -1567,7 +1598,7 @@ export default function AdminPage() {
               <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                 <div className="text-xs font-semibold text-slate-200">Alerts</div>
                 <div className="mt-2 text-[11px] text-slate-400">
-                  Cron endpoint: <span className="font-mono">POST /admin/alerts/run/system</span> с header{" "}
+                  Cron endpoint: <span className="font-mono">POST /admin/alerts/run/system</span> mit Header{" "}
                   <span className="font-mono">X-Ops-Token</span>. Env: <span className="font-mono">OPS_ALERTS_ENABLED</span>,{" "}
                   <span className="font-mono">OPS_ALERT_EMAILS</span>.
                 </div>
