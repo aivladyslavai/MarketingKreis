@@ -1128,12 +1128,20 @@ export default function AdminPage() {
                                   {SECTION_KEYS.map((s) => {
                                     const allowed = !((u as any)?.section_permissions && (u as any).section_permissions[s.key] === false)
                                     return (
-                                      <label key={s.key} className="flex items-center gap-2 text-[11px] text-slate-200">
+                                      <label
+                                        key={s.key}
+                                        className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-[11px] ${
+                                          allowed
+                                            ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+                                            : "border-rose-400/20 bg-rose-500/10 text-rose-100"
+                                        }`}
+                                      >
+                                        <span className="truncate">{s.label}</span>
                                         <input
                                           type="checkbox"
                                           checked={allowed}
                                           disabled={busy}
-                                          className="h-4 w-4 rounded border-white/20 bg-slate-950/30 accent-emerald-400 disabled:opacity-40"
+                                          className="sr-only"
                                           onChange={async (e) => {
                                             try {
                                               setUpdatingUserId(u.id)
@@ -1143,7 +1151,9 @@ export default function AdminPage() {
                                             }
                                           }}
                                         />
-                                        <span className="truncate">{s.label}</span>
+                                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-100">
+                                          {allowed ? "allowed" : "denied"}
+                                        </span>
                                       </label>
                                     )
                                   })}
@@ -1299,12 +1309,20 @@ export default function AdminPage() {
                                         const busy = updatingUserId === u.id || deletingUserId === u.id
                                         const allowed = !((u as any)?.section_permissions && (u as any).section_permissions[s.key] === false)
                                         return (
-                                          <label key={s.key} className="flex items-center gap-2 text-[11px] text-slate-200">
+                                          <label
+                                            key={s.key}
+                                            className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-[11px] ${
+                                              allowed
+                                                ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+                                                : "border-rose-400/20 bg-rose-500/10 text-rose-100"
+                                            }`}
+                                          >
+                                            <span className="truncate">{s.label}</span>
                                             <input
                                               type="checkbox"
                                               checked={allowed}
                                               disabled={busy}
-                                              className="h-4 w-4 rounded border-white/20 bg-slate-950/30 accent-emerald-400 disabled:opacity-40"
+                                              className="sr-only"
                                               onChange={async (e) => {
                                                 try {
                                                   setUpdatingUserId(u.id)
@@ -1314,7 +1332,9 @@ export default function AdminPage() {
                                                 }
                                               }}
                                             />
-                                            <span>{s.label}</span>
+                                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-slate-100">
+                                              {allowed ? "allowed" : "denied"}
+                                            </span>
                                           </label>
                                         )
                                       })}
