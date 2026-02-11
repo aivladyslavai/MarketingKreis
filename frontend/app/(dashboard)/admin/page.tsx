@@ -1132,6 +1132,7 @@ export default function AdminPage() {
                                           type="checkbox"
                                           checked={allowed}
                                           disabled={busy}
+                                          className="h-4 w-4 rounded border-white/20 bg-slate-950/30 accent-emerald-400 disabled:opacity-40"
                                           onChange={async (e) => {
                                             try {
                                               setUpdatingUserId(u.id)
@@ -1302,6 +1303,7 @@ export default function AdminPage() {
                                               type="checkbox"
                                               checked={allowed}
                                               disabled={busy}
+                                              className="h-4 w-4 rounded border-white/20 bg-slate-950/30 accent-emerald-400 disabled:opacity-40"
                                               onChange={async (e) => {
                                                 try {
                                                   setUpdatingUserId(u.id)

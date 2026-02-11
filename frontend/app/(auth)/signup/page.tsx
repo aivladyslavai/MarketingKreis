@@ -561,20 +561,21 @@ function SignupInner() {
                         <div className="flex items-start gap-2">
                           <Info className="h-4 w-4 mt-0.5 text-violet-300 flex-shrink-0" />
                           <div className="min-w-0">
-                            <div className="text-sm font-semibold text-slate-100">2FA подтверждение</div>
+                            <div className="text-sm font-semibold text-slate-100">2FA bestätigen</div>
                             <div className="mt-0.5 text-[11px] text-slate-300">
-                              Введите 6‑значный код из Authenticator. Также можно использовать Recovery Code (например <span className="font-mono">abcde-12345</span>).
+                              Gib den 6‑stelligen Code aus deiner Authenticator‑App ein. Alternativ kannst du auch einen Recovery‑Code verwenden (z.B.{" "}
+                              <span className="font-mono">abcde-12345</span>).
                             </div>
                           </div>
                         </div>
                       </div>
                       <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
-                        2FA Code / Recovery Code
+                        2FA‑Code / Recovery‑Code
                       </label>
                       <div className="relative">
                         <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                         <Input
-                          placeholder="123456 или abcde-12345"
+                          placeholder="123456 oder abcde-12345"
                           inputMode="text"
                           autoComplete="one-time-code"
                           value={login2faCode}
@@ -600,7 +601,7 @@ function SignupInner() {
                         type="checkbox"
                         checked={loginRemember}
                         onChange={(e) => setLoginRemember(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-slate-900"
+                        className="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-violet-500"
                       />
                       <span>Eingeloggt bleiben</span>
                     </label>

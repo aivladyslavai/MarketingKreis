@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown, Eye, Settings2, Mail } from "lucide-react"
+import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown, Eye, Settings2, Mail, Check } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 import { authFetch } from "@/lib/api"
 import { useActivities } from "@/hooks/use-activities"
 import { useCalendarApi } from "@/hooks/use-calendar-api"
@@ -666,8 +667,8 @@ export default function ReportsPage() {
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Mail className="h-4 w-4 text-slate-200" />
-                <div className="text-sm font-semibold text-slate-200">Рассылка</div>
-                <div className="hidden sm:block text-xs text-slate-400">еженедельно на email</div>
+                <div className="text-sm font-semibold text-slate-200">E-Mail Versand</div>
+                <div className="hidden sm:block text-xs text-slate-400">wöchentlich</div>
               </div>
               <Button
                 variant="outline"
@@ -721,10 +722,13 @@ export default function ReportsPage() {
                     className="h-11 sm:h-9 w-20 rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200"
                   />
                 </div>
-                <label className="flex items-center gap-2 text-xs text-slate-200">
-                  <input type="checkbox" checked={scheduleActive} onChange={(e) => setScheduleActive(e.target.checked)} />
-                  Aktiv
-                </label>
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                  <div className="text-xs text-slate-200">
+                    Aktiv
+                    <div className="text-[11px] text-slate-400">Wenn aus, wird nichts gesendet.</div>
+                  </div>
+                  <Switch checked={scheduleActive} onCheckedChange={setScheduleActive} />
+                </div>
                 <Button
                   className="h-11 w-full"
                   onClick={async () => {
@@ -810,8 +814,16 @@ export default function ReportsPage() {
                       <input
                         type="checkbox"
                         checked={on}
+                        className="sr-only"
                         onChange={(e)=> setSections(s=>({ ...s, [k]: e.target.checked }))}
                       />
+                      <span
+                        className={`h-4 w-4 rounded-full border flex items-center justify-center ${
+                          on ? "border-emerald-400/30 bg-emerald-500/15" : "border-white/15 bg-white/5"
+                        }`}
+                      >
+                        {on ? <Check className="h-3 w-3 text-emerald-200" /> : null}
+                      </span>
                       <span className="capitalize">{k}</span>
                     </label>
                   )
