@@ -3,7 +3,31 @@
 import { useMemo, useState, useEffect, useId } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { FileText, Plus, ArrowLeft, Filter, Download, Image, Video, Calendar as CalIcon, MoreHorizontal, User, File, Loader2, Lock, Sparkles } from "lucide-react"
+import {
+  FileText,
+  Plus,
+  ArrowLeft,
+  Filter,
+  Download,
+  Image,
+  Video,
+  CalendarDays,
+  Clock,
+  Tag,
+  File,
+  Lock,
+  Sparkles,
+  Bell,
+  ListTodo,
+  Wand2,
+  Search,
+  RefreshCcw,
+  MoreHorizontal,
+  Copy,
+  Archive,
+  ArchiveRestore,
+  Files,
+} from "lucide-react"
 import Link from "next/link"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { motion } from "framer-motion"
@@ -11,6 +35,14 @@ import { sync } from "@/lib/sync"
 import { ResponsiveContainer, AreaChart, Area } from "recharts"
 import { GlassSelect } from "@/components/ui/glass-select"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/components/ui/use-toast"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import KanbanBoard, { type TaskStatus as KanbanStatus } from "@/components/kanban/kanban-board"
 import { useContentData, type ContentTask } from "@/hooks/use-content-data"
 import { useContentItems } from "@/hooks/use-content-items"
@@ -577,6 +609,7 @@ function TaskEditForm({
 
 export default function ContentPage() {
   const { openModal, closeModal } = useModal()
+  const { toast } = useToast()
   const { user } = useAuth()
   const isAdmin = user?.role === "admin" || user?.role === "editor"
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
@@ -636,6 +669,10 @@ export default function ContentPage() {
 
   const [itemQ, setItemQ] = useState<string>("")
   const [itemStatus, setItemStatus] = useState<string>("ALL")
+  const [itemSort, setItemSort] = useState<string>(() => {
+    if (typeof window === "undefined") return "updated_desc"
+    return localStorage.getItem("content:itemSort") || "updated_desc"
+  })
   const [itemScope, setItemScope] = useState<"mine" | "all">(() => {
     if (typeof window === "undefined") return "mine"
     const v = localStorage.getItem("content:itemScope")
@@ -653,6 +690,7 @@ export default function ContentPage() {
     loading: itemsLoading,
     error: itemsError,
     refetch: refetchItems,
+    createItem: createContentItem,
     updateItem: updateContentItem,
   } = useContentItems(
     useMemo(() => {
@@ -671,6 +709,132 @@ export default function ContentPage() {
       return p
     }, [itemQ, itemStatus, isAdmin, itemScope, itemOwnerFilter, user?.id])
   )
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("content:itemSort", itemSort)
+    } catch {}
+  }, [itemSort])
+
+  const fmtDate = (v: any) => {
+    if (!v) return ""
+    try {
+      const d = v instanceof Date ? v : new Date(v)
+      if (Number.isNaN(d.getTime())) return ""
+      return d.toISOString().slice(0, 10)
+    } catch {
+      return ""
+    }
+  }
+
+  const statusChip = (s: string) => {
+    const v = String(s || "").toUpperCase()
+    const base = "text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap font-semibold"
+    if (v === "APPROVED") return `${base} bg-emerald-500/15 text-emerald-100 border-emerald-400/20`
+    if (v === "REVIEW") return `${base} bg-amber-500/15 text-amber-100 border-amber-400/20`
+    if (v === "DRAFT") return `${base} bg-sky-500/15 text-sky-100 border-sky-400/20`
+    if (v === "PUBLISHED") return `${base} bg-emerald-500/15 text-emerald-100 border-emerald-400/20`
+    if (v === "BLOCKED") return `${base} bg-rose-500/15 text-rose-100 border-rose-400/20`
+    if (v === "ARCHIVED") return `${base} bg-slate-500/15 text-slate-200 border-white/10`
+    if (v === "SCHEDULED") return `${base} bg-violet-500/15 text-violet-100 border-violet-400/20`
+    return `${base} bg-white/5 text-slate-200 border-white/10`
+  }
+
+  const statusAccent = (s: string) => {
+    const v = String(s || "").toUpperCase()
+    if (v === "APPROVED") return "from-emerald-400/50 via-emerald-400/15 to-transparent"
+    if (v === "REVIEW") return "from-amber-400/50 via-amber-400/15 to-transparent"
+    if (v === "DRAFT") return "from-sky-400/50 via-sky-400/15 to-transparent"
+    if (v === "PUBLISHED") return "from-emerald-400/50 via-emerald-400/15 to-transparent"
+    if (v === "BLOCKED") return "from-rose-400/50 via-rose-400/15 to-transparent"
+    if (v === "ARCHIVED") return "from-slate-400/40 via-slate-400/15 to-transparent"
+    if (v === "SCHEDULED") return "from-violet-400/50 via-violet-400/15 to-transparent"
+    return "from-white/25 via-white/10 to-transparent"
+  }
+
+  const sortedItems = useMemo(() => {
+    const arr = Array.isArray(contentItems) ? [...contentItems] : []
+    const statusRank: Record<string, number> = {
+      IDEA: 1,
+      DRAFT: 2,
+      REVIEW: 3,
+      APPROVED: 4,
+      SCHEDULED: 5,
+      PUBLISHED: 6,
+      BLOCKED: 7,
+      ARCHIVED: 8,
+    }
+    const dateOr = (fallback: number, d?: Date) => (d ? d.getTime() : fallback)
+
+    arr.sort((a: any, b: any) => {
+      const sa = String(a?.status || "").toUpperCase()
+      const sb = String(b?.status || "").toUpperCase()
+      switch (itemSort) {
+        case "updated_asc":
+          return dateOr(0, a.updatedAt) - dateOr(0, b.updatedAt)
+        case "updated_desc":
+          return dateOr(0, b.updatedAt) - dateOr(0, a.updatedAt)
+        case "due_asc":
+          return dateOr(Number.POSITIVE_INFINITY, a.dueAt) - dateOr(Number.POSITIVE_INFINITY, b.dueAt)
+        case "due_desc":
+          return dateOr(0, b.dueAt) - dateOr(0, a.dueAt)
+        case "publish_asc":
+          return dateOr(Number.POSITIVE_INFINITY, a.scheduledAt) - dateOr(Number.POSITIVE_INFINITY, b.scheduledAt)
+        case "title_asc":
+          return String(a.title || "").localeCompare(String(b.title || ""), "de")
+        case "status_asc":
+          return (statusRank[sa] || 999) - (statusRank[sb] || 999)
+        default:
+          return dateOr(0, b.updatedAt) - dateOr(0, a.updatedAt)
+      }
+    })
+    return arr
+  }, [contentItems, itemSort])
+
+  const copyToClipboard = async (text: string, okMsg: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast({ title: "Kopiert", description: okMsg })
+    } catch {
+      toast({ title: "Kopieren fehlgeschlagen", description: "Bitte im Browser Clipboard erlauben.", variant: "destructive" as any })
+    }
+  }
+
+  const toggleArchiveItem = async (it: any) => {
+    const isArchived = String(it.status || "").toUpperCase() === "ARCHIVED"
+    const next = isArchived ? "DRAFT" : "ARCHIVED"
+    const label = isArchived ? "Wiederherstellen" : "Archivieren"
+    if (!confirm(`${label}: "${it.title}"?`)) return
+    try {
+      await updateContentItem(it.id, { status: next as any })
+      toast({ title: "OK", description: `${label} erfolgreich.` })
+    } catch (e: any) {
+      toast({ title: "Fehler", description: e?.message || "Aktion fehlgeschlagen", variant: "destructive" as any })
+    }
+  }
+
+  const duplicateItem = async (it: any) => {
+    try {
+      const created = await createContentItem({
+        title: `${String(it.title || "Untitled")} (Copy)`,
+        channel: it.channel || undefined,
+        format: it.format || null,
+        status: "DRAFT",
+        tags: Array.isArray(it.tags) ? it.tags : null,
+        brief: it.brief || null,
+        body: it.body || null,
+        tone: it.tone || null,
+        language: it.language || null,
+        due_at: it.dueAt ? new Date(it.dueAt).toISOString() : null,
+        scheduled_at: null,
+        owner_id: it.ownerId ?? null,
+      } as any)
+      toast({ title: "Dupliziert", description: "Neues Item wurde erstellt." })
+      openContentItem(created.id)
+    } catch (e: any) {
+      toast({ title: "Fehler", description: e?.message || "Duplizieren fehlgeschlagen", variant: "destructive" as any })
+    }
+  }
   const [view, setView] = useState<"grid" | "kanban">(() => {
     if (typeof window === "undefined") return "grid"
     return (localStorage.getItem("contentView") as "grid" | "kanban") || "grid"
@@ -918,165 +1082,377 @@ export default function ContentPage() {
         </div>
       </div>
 
-      <Card className="glass-card">
-        <CardHeader className="px-4 sm:px-6 pt-4 pb-3 border-b border-white/10">
+      <Card className="glass-card overflow-hidden">
+        <CardHeader className="relative px-4 sm:px-6 pt-5 pb-4 border-b border-white/10">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-fuchsia-500/40 via-violet-400/20 to-transparent" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08),transparent_60%)]" />
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500/20 border border-purple-400/40 text-xs">
-                  ✦
-                </span>
-                Content Items
-              </CardTitle>
-              <p className="text-xs text-slate-400 mt-1">Kampagnen/Materialien mit Workflow, Assets, Kalender & KI.</p>
+            <div className="relative flex items-center gap-3">
+              <div className="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center">
+                <Sparkles className="h-5 w-5 text-violet-200" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2 leading-tight">
+                  Content Items
+                  <span className="hidden sm:inline text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-slate-200/80">
+                    Workflow · Assets · Kalender · KI
+                  </span>
+                </CardTitle>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Verwalte Kampagnen/Materialien in einem sauberen Prozess — von Idee bis Publish.
+                </p>
+              </div>
             </div>
-            <div className="text-[11px] text-slate-400">
-              {itemsLoading ? "Lade…" : `${contentItems.length} Items`}
-              {itemsError && <span className="ml-2 text-amber-300">· {itemsError}</span>}
+            <div className="relative flex items-center gap-2 text-[11px] text-slate-300">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                {itemsLoading ? "Lade…" : `${contentItems.length} Items`}
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                {tasksLoading ? "…" : `${tasks.length} Tasks`}
+              </span>
+              {itemsError && <span className="ml-1 text-amber-300">· {itemsError}</span>}
             </div>
           </div>
         </CardHeader>
         <CardContent className="px-4 sm:px-6 py-4 space-y-4">
           <Tabs value={hubTab} onValueChange={(v) => setHubTab(v as any)} className="space-y-4">
-            <TabsList className="w-full overflow-x-auto mk-no-scrollbar bg-white/5 border border-white/10 rounded-2xl p-1 flex-nowrap justify-start sm:justify-center">
+            <TabsList className="w-full overflow-x-auto mk-no-scrollbar rounded-2xl p-1.5 flex-nowrap justify-start sm:justify-center border border-white/10 bg-gradient-to-b from-white/10 to-white/5">
               <TabsTrigger
                 value="items"
-                className="min-w-[110px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow"
+                className="min-w-[132px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-slate-950/40 data-[state=active]:text-white data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-white/15"
               >
-                Items
+                <span className="inline-flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-slate-300" />
+                  Items
+                  <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-slate-200/80">
+                    {contentItems.length}
+                  </span>
+                </span>
               </TabsTrigger>
               <TabsTrigger
                 value="calendar"
-                className="min-w-[110px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow"
+                className="min-w-[132px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-slate-950/40 data-[state=active]:text-white data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-white/15"
               >
-                Calendar
+                <span className="inline-flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-slate-300" />
+                  Kalender
+                </span>
               </TabsTrigger>
               <TabsTrigger
                 value="tasks"
-                className="min-w-[110px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow"
+                className="min-w-[132px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-slate-950/40 data-[state=active]:text-white data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-white/15"
               >
-                Tasks
+                <span className="inline-flex items-center gap-2">
+                  <ListTodo className="h-4 w-4 text-slate-300" />
+                  Tasks
+                  <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-slate-200/80">
+                    {tasks.length}
+                  </span>
+                </span>
               </TabsTrigger>
               <TabsTrigger
                 value="templates"
-                className="min-w-[120px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow"
+                className="min-w-[150px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-slate-950/40 data-[state=active]:text-white data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-white/15"
               >
-                Templates
+                <span className="inline-flex items-center gap-2">
+                  <Wand2 className="h-4 w-4 text-slate-300" />
+                  Templates
+                </span>
               </TabsTrigger>
               <TabsTrigger
                 value="notifications"
-                className="min-w-[130px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow"
+                className="min-w-[180px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-slate-950/40 data-[state=active]:text-white data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-white/15"
               >
-                Notifications
+                <span className="inline-flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-slate-300" />
+                  Notifications
+                </span>
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="items" className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
-                <Input
-                  value={itemQ}
-                  onChange={(e) => setItemQ(e.target.value)}
-                  placeholder="Suche Content Items…"
-                  className="sm:max-w-[320px] min-w-0 bg-white/10 dark:bg-slate-900/50 text-white placeholder:text-white/50 border border-white/20 dark:border-slate-700"
-                />
-                <GlassSelect
-                  value={itemStatus}
-                  onChange={(v) => setItemStatus(v)}
-                  options={[
-                    { value: "ALL", label: "Alle Status" },
-                    { value: "IDEA", label: "IDEA" },
-                    { value: "DRAFT", label: "DRAFT" },
-                    { value: "REVIEW", label: "REVIEW" },
-                    { value: "APPROVED", label: "APPROVED" },
-                    { value: "SCHEDULED", label: "SCHEDULED" },
-                    { value: "PUBLISHED", label: "PUBLISHED" },
-                    { value: "ARCHIVED", label: "ARCHIVED" },
-                    { value: "BLOCKED", label: "BLOCKED" },
-                  ]}
-                  className="sm:w-44 min-w-0"
-                />
-                {isAdmin && (
-                  <GlassSelect
-                    value={itemScope}
-                    onChange={(v) => setItemScope(v as any)}
-                    options={[
-                      { value: "mine", label: "Nur meine" },
-                      { value: "all", label: "Alle" },
-                    ]}
-                    className="sm:w-40 min-w-0"
-                  />
-                )}
-                {isAdmin && itemScope === "all" && (
-                  <GlassSelect
-                    value={itemOwnerFilter}
-                    onChange={(v) => setItemOwnerFilter(v)}
-                    options={[
-                      { value: "all", label: "Alle Owner" },
-                      { value: "unassigned", label: "Unassigned" },
-                      ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
-                    ]}
-                    className="w-full sm:w-64 min-w-0"
-                  />
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="sm:ml-auto glass-card shrink-0 whitespace-nowrap h-11 sm:h-9"
-                  onClick={() => refetchItems()}
-                >
-                  Refresh
-                </Button>
-                <Button
-                  size="sm"
-                  className="bg-white text-slate-900 hover:bg-white/90 shrink-0 whitespace-nowrap h-11 sm:h-9"
-                  onClick={() => openContentItem()}
-                >
-                  <Plus className="h-4 w-4 mr-2" /> New Item
-                </Button>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/30 backdrop-blur-xl p-3 sm:p-4 overflow-hidden">
+                <div className="pointer-events-none absolute inset-x-0 -mt-4 h-20 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.10),transparent_60%)]" />
+                <div className="relative flex flex-col gap-2 sm:gap-3">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                    <div className="relative w-full sm:max-w-[340px]">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        value={itemQ}
+                        onChange={(e) => setItemQ(e.target.value)}
+                        placeholder="Suche nach Titel, Tags, Channel…"
+                        className="pl-9"
+                      />
+                    </div>
+                    <GlassSelect
+                      value={itemStatus}
+                      onChange={(v) => setItemStatus(v)}
+                      options={[
+                        { value: "ALL", label: "Alle Status" },
+                        { value: "IDEA", label: "IDEA" },
+                        { value: "DRAFT", label: "DRAFT" },
+                        { value: "REVIEW", label: "REVIEW" },
+                        { value: "APPROVED", label: "APPROVED" },
+                        { value: "SCHEDULED", label: "SCHEDULED" },
+                        { value: "PUBLISHED", label: "PUBLISHED" },
+                        { value: "ARCHIVED", label: "ARCHIVED" },
+                        { value: "BLOCKED", label: "BLOCKED" },
+                      ]}
+                      className="sm:w-48 min-w-0"
+                    />
+                    <GlassSelect
+                      value={itemSort}
+                      onChange={(v) => setItemSort(v)}
+                      options={[
+                        { value: "updated_desc", label: "Sort: Zuletzt aktualisiert" },
+                        { value: "updated_asc", label: "Sort: Älteste zuerst" },
+                        { value: "due_asc", label: "Sort: Due (nächste zuerst)" },
+                        { value: "due_desc", label: "Sort: Due (späteste zuerst)" },
+                        { value: "publish_asc", label: "Sort: Publish (nächste zuerst)" },
+                        { value: "title_asc", label: "Sort: Titel (A–Z)" },
+                        { value: "status_asc", label: "Sort: Status" },
+                      ]}
+                      className="sm:w-56 min-w-0"
+                    />
+                    {isAdmin && (
+                      <div className="inline-flex items-center rounded-xl border border-white/10 bg-white/5 p-1">
+                        <button
+                          type="button"
+                          onClick={() => setItemScope("mine")}
+                          className={[
+                            "h-9 px-3 rounded-lg text-xs font-semibold transition",
+                            itemScope === "mine" ? "bg-white/10 text-white shadow ring-1 ring-white/10" : "text-slate-200/80 hover:bg-white/10",
+                          ].join(" ")}
+                        >
+                          Nur meine
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setItemScope("all")}
+                          className={[
+                            "h-9 px-3 rounded-lg text-xs font-semibold transition",
+                            itemScope === "all" ? "bg-white/10 text-white shadow ring-1 ring-white/10" : "text-slate-200/80 hover:bg-white/10",
+                          ].join(" ")}
+                        >
+                          Alle
+                        </button>
+                      </div>
+                    )}
+                    {isAdmin && itemScope === "all" && (
+                      <GlassSelect
+                        value={itemOwnerFilter}
+                        onChange={(v) => setItemOwnerFilter(v)}
+                        options={[
+                          { value: "all", label: "Alle Owner" },
+                          { value: "unassigned", label: "Unassigned" },
+                          ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
+                        ]}
+                        className="w-full sm:w-64 min-w-0"
+                      />
+                    )}
+                    <div className="sm:ml-auto flex items-stretch gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="glass-card shrink-0 whitespace-nowrap h-11 border-white/15 bg-white/5 hover:bg-white/10"
+                        onClick={() => refetchItems()}
+                      >
+                        <RefreshCcw className="h-4 w-4 mr-2" /> Refresh
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="shrink-0 whitespace-nowrap h-11 bg-white text-slate-900 hover:bg-white/90"
+                        onClick={() => openContentItem()}
+                      >
+                        <Plus className="h-4 w-4 mr-2" /> New Item
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <div className="truncate">
+                      Tipp: nutze Status + Owner Filter, um schnell Reviews & Deadlines zu finden.
+                    </div>
+                    <div className="hidden sm:flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
+                        <Clock className="h-3.5 w-3.5" /> Due / Publish
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
+                        <Tag className="h-3.5 w-3.5" /> Tags
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {itemsLoading ? (
-                <div className="py-8 flex items-center justify-center text-slate-300">
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" /> Lade…
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="rounded-2xl border border-white/10 bg-slate-950/30 p-4 overflow-hidden">
+                      <div className="h-1 w-full bg-gradient-to-r from-white/10 via-white/5 to-transparent rounded-full" />
+                      <div className="mt-4 h-4 w-2/3 bg-white/10 rounded" />
+                      <div className="mt-2 h-3 w-1/2 bg-white/5 rounded" />
+                      <div className="mt-4 flex gap-2">
+                        <div className="h-5 w-16 bg-white/10 rounded-full" />
+                        <div className="h-5 w-20 bg-white/5 rounded-full" />
+                      </div>
+                      <div className="mt-4 h-3 w-3/4 bg-white/5 rounded" />
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                   {contentItems.length === 0 && (
-                    <div className="col-span-full text-center text-xs text-slate-400 py-10">
-                      Keine Content Items. Erstelle eins mit “New Item”.
+                    <div className="col-span-full">
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/35 p-8 text-center overflow-hidden">
+                        <div className="mx-auto h-12 w-12 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center">
+                          <FileText className="h-6 w-6 text-slate-300" />
+                        </div>
+                        <div className="mt-3 text-sm font-semibold text-slate-100">Noch keine Items</div>
+                        <div className="mt-1 text-xs text-slate-400">
+                          Erstelle dein erstes Content Item und nutze Templates, um Checklists & Tasks automatisch zu erzeugen.
+                        </div>
+                        <div className="mt-4 flex items-center justify-center">
+                          <Button className="h-11 bg-white text-slate-900 hover:bg-white/90" onClick={() => openContentItem()}>
+                            <Plus className="h-4 w-4 mr-2" /> New Item
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   )}
-                  {contentItems.map((it) => (
-                    <button
+                  {sortedItems.map((it) => (
+                    <div
                       key={it.id}
-                      type="button"
-                      className="rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-left hover:bg-white/5 transition overflow-hidden"
+                      className="group relative rounded-2xl border border-white/10 bg-slate-950/30 backdrop-blur-xl p-4 text-left overflow-hidden transition-all hover:bg-slate-950/40 hover:ring-1 hover:ring-white/10 hover:shadow-[0_14px_36px_rgba(0,0,0,0.35)]"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => openContentItem(it.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault()
+                          openContentItem(it.id)
+                        }
+                      }}
                     >
+                      <div className={["pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r", statusAccent(it.status)].join(" ")} />
+                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.06),transparent_55%)] opacity-0 group-hover:opacity-100 transition-opacity" />
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-100 truncate">{it.title}</div>
-                          <div className="mt-1 text-[11px] text-slate-400 truncate">
-                            {it.channel}
-                            {it.format ? ` · ${it.format}` : ""}
+                          <div className="flex items-start gap-3">
+                            <div className="h-9 w-9 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center flex-shrink-0">
+                              {iconForChannel(String(it.channel || ""))}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-slate-100 truncate">{it.title}</div>
+                              <div className="mt-1 text-[11px] text-slate-400 truncate">
+                                {it.channel || "—"}
+                                {it.format ? ` · ${it.format}` : ""}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <span className="text-[10px] px-2 py-1 rounded-full bg-white/5 border border-white/10 text-slate-200 whitespace-nowrap">
-                          {it.status}
-                        </span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className={statusChip(it.status)}>{String(it.status || "").toUpperCase()}</span>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="h-9 w-9 rounded-xl border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 inline-flex items-center justify-center"
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label="Quick actions"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              className="border-white/10 bg-slate-950/95 text-slate-100"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  openContentItem(it.id)
+                                }}
+                              >
+                                Öffnen
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator className="bg-white/10" />
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  copyToClipboard(String(it.id), `ID #${it.id}`)
+                                }}
+                              >
+                                <Copy className="h-4 w-4 mr-2 opacity-80" /> ID kopieren
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  copyToClipboard(String(it.title || ""), "Titel kopiert")
+                                }}
+                              >
+                                <Copy className="h-4 w-4 mr-2 opacity-80" /> Titel kopieren
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  duplicateItem(it)
+                                }}
+                              >
+                                <Files className="h-4 w-4 mr-2 opacity-80" /> Duplizieren
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator className="bg-white/10" />
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  toggleArchiveItem(it)
+                                }}
+                                className="text-amber-100 focus:text-amber-50"
+                              >
+                                {String(it.status || "").toUpperCase() === "ARCHIVED" ? (
+                                  <>
+                                    <ArchiveRestore className="h-4 w-4 mr-2 opacity-80" /> Wiederherstellen
+                                  </>
+                                ) : (
+                                  <>
+                                    <Archive className="h-4 w-4 mr-2 opacity-80" /> Archivieren
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-1">
+                      <div className="mt-3 flex flex-wrap gap-1.5">
                         {(it.tags || []).slice(0, 4).map((t, idx) => (
-                          <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-white/70 border border-white/10">
+                          <span
+                            key={idx}
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-200/90 border border-white/10 max-w-full truncate"
+                            title={t}
+                          >
                             {t}
                           </span>
                         ))}
+                        {(it.tags || []).length > 4 && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-300 border border-white/10">
+                            +{(it.tags || []).length - 4}
+                          </span>
+                        )}
                       </div>
-                      <div className="mt-2 text-[11px] text-slate-500 flex flex-wrap gap-2">
-                        {it.dueAt && <span>Due: {it.dueAt.toISOString().slice(0, 10)}</span>}
-                        {it.scheduledAt && <span>Publish: {it.scheduledAt.toISOString().slice(0, 10)}</span>}
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                        {it.dueAt && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
+                            <Clock className="h-3.5 w-3.5" /> Due: {fmtDate(it.dueAt)}
+                          </span>
+                        )}
+                        {it.scheduledAt && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
+                            <CalendarDays className="h-3.5 w-3.5" /> Publish: {fmtDate(it.scheduledAt)}
+                          </span>
+                        )}
+                        <span className="ml-auto text-slate-300/70 group-hover:text-slate-200 transition">Öffnen →</span>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
