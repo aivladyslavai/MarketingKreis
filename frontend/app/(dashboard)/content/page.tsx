@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect, useId } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { FileText, Plus, ArrowLeft, Filter, Download, Image, Video, Calendar as CalIcon, MoreHorizontal, User, File, Loader2 } from "lucide-react"
+import { FileText, Plus, ArrowLeft, Filter, Download, Image, Video, Calendar as CalIcon, MoreHorizontal, User, File, Loader2, Lock, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { motion } from "framer-motion"
@@ -938,20 +938,35 @@ export default function ContentPage() {
         </CardHeader>
         <CardContent className="px-4 sm:px-6 py-4 space-y-4">
           <Tabs value={hubTab} onValueChange={(v) => setHubTab(v as any)} className="space-y-4">
-            <TabsList className="w-full bg-slate-900/40 border-white/10">
-              <TabsTrigger value="items" className="flex-1 text-xs sm:text-sm">
+            <TabsList className="w-full overflow-x-auto mk-no-scrollbar bg-white/5 border border-white/10 rounded-2xl p-1 flex-nowrap justify-start sm:justify-center">
+              <TabsTrigger
+                value="items"
+                className="min-w-[110px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow"
+              >
                 Items
               </TabsTrigger>
-              <TabsTrigger value="calendar" className="flex-1 text-xs sm:text-sm">
+              <TabsTrigger
+                value="calendar"
+                className="min-w-[110px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow"
+              >
                 Calendar
               </TabsTrigger>
-              <TabsTrigger value="tasks" className="flex-1 text-xs sm:text-sm">
+              <TabsTrigger
+                value="tasks"
+                className="min-w-[110px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow"
+              >
                 Tasks
               </TabsTrigger>
-              <TabsTrigger value="templates" className="flex-1 text-xs sm:text-sm">
+              <TabsTrigger
+                value="templates"
+                className="min-w-[120px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow"
+              >
                 Templates
               </TabsTrigger>
-              <TabsTrigger value="notifications" className="flex-1 text-xs sm:text-sm">
+              <TabsTrigger
+                value="notifications"
+                className="min-w-[130px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow"
+              >
                 Notifications
               </TabsTrigger>
             </TabsList>
@@ -1079,22 +1094,42 @@ export default function ContentPage() {
             </TabsContent>
 
             <TabsContent value="tasks" className="space-y-2">
-              <div className="text-xs text-slate-300">Task Board находится ниже на странице.</div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const el = document.getElementById("mk-task-board")
-                  el?.scrollIntoView({ behavior: "smooth", block: "start" })
-                }}
-              >
-                Перейти к Task Board
-              </Button>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <div className="text-sm font-semibold text-slate-100">Task Board</div>
+                <div className="mt-1 text-xs text-slate-400">Das Task Board befindet sich weiter unten auf der Seite.</div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 glass-card"
+                  onClick={() => {
+                    const el = document.getElementById("mk-task-board")
+                    el?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  }}
+                >
+                  Zum Task Board
+                </Button>
+              </div>
             </TabsContent>
 
             <TabsContent value="templates" className="space-y-2">
               {!isAdmin ? (
-                <div className="text-xs text-slate-400">Templates/Automation доступны только Admin/Editor.</div>
+                <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center flex-shrink-0">
+                      <Lock className="h-5 w-5 text-slate-200" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-100">Templates & Automation</div>
+                      <div className="mt-1 text-xs text-slate-400">
+                        Dieser Bereich ist nur für <span className="text-slate-200 font-semibold">Admin</span> und{" "}
+                        <span className="text-slate-200 font-semibold">Editor</span> verfügbar.
+                      </div>
+                      <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-[11px] text-slate-300">
+                        Tipp: Templates erstellen automatisch Checklists/Tasks für neue Content Items und sorgen für einen sauberen Workflow.
+                      </div>
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <ContentTemplatesAdmin />
               )}
