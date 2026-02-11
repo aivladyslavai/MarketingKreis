@@ -19,8 +19,11 @@ const SelectTrigger = React.forwardRef<
       // Mobile UX:
       // - h-11 on mobile (comfortable)
       // - text-base on mobile to prevent iOS Safari auto-zoom
-      "flex h-11 sm:h-10 w-full items-center justify-between rounded-md border border-slate-700 bg-slate-900/60 px-3 py-2 text-base sm:text-sm text-slate-50 shadow-sm",
-      "placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-950",
+      "flex h-11 sm:h-10 w-full items-center justify-between rounded-xl border px-3 py-2 text-base sm:text-sm shadow-sm transition-colors",
+      "bg-white text-slate-900 border-slate-200 dark:bg-slate-950/30 dark:text-slate-100 dark:border-white/10",
+      "placeholder:text-slate-500 dark:placeholder:text-slate-500",
+      "focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-500/40",
+      "dark:focus:ring-blue-500/30 dark:focus:border-blue-400/40",
       "disabled:cursor-not-allowed disabled:opacity-50",
       className
     )}
@@ -43,7 +46,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "z-[90] min-w-[8rem] max-w-[92vw] overflow-hidden rounded-md border border-slate-800 bg-slate-950 text-slate-50 shadow-lg",
+        "z-[90] min-w-[8rem] max-w-[92vw] overflow-hidden rounded-xl border border-white/10 bg-slate-950/95 text-slate-50 shadow-lg backdrop-blur-md",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
         "data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2",
@@ -87,9 +90,9 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm px-8 py-2 text-base sm:text-sm min-h-11 sm:min-h-0 outline-none",
+      "relative flex w-full cursor-default select-none items-center rounded-lg px-8 py-2 text-base sm:text-sm min-h-11 sm:min-h-0 outline-none",
       "text-slate-50 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-      "data-[highlighted]:bg-slate-800 data-[highlighted]:text-slate-50",
+      "data-[highlighted]:bg-white/10 data-[highlighted]:text-slate-50",
       className
     )}
     {...props}

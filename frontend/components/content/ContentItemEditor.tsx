@@ -3,6 +3,8 @@
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GlassSelect } from "@/components/ui/glass-select"
 import { Badge } from "@/components/ui/badge"
@@ -496,20 +498,20 @@ export function ContentItemEditor({
 
         <TabsContent value="details" className="space-y-3">
           <div className="space-y-1">
-            <label className="text-xs text-slate-300">Brief</label>
-            <textarea
+            <Label>Brief</Label>
+            <Textarea
               value={item.brief || ""}
               onChange={(e) => setItem((p) => ({ ...p, brief: e.target.value || null }))}
-              className="min-h-[100px] w-full rounded-md bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
+              className="min-h-[120px]"
               placeholder="Brief / Ziel / Outline…"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-slate-300">Content</label>
-            <textarea
+            <Label>Content</Label>
+            <Textarea
               value={item.body || ""}
               onChange={(e) => setItem((p) => ({ ...p, body: e.target.value || null }))}
-              className="min-h-[160px] w-full rounded-md bg-slate-950/60 border border-slate-700 px-3 py-2 text-sm text-slate-100"
+              className="min-h-[200px]"
               placeholder="Draft / Text…"
             />
           </div>
@@ -794,7 +796,7 @@ export function ContentItemEditor({
         </TabsContent>
 
         <TabsContent value="checklist" className="space-y-3">
-          {!itemId && <div className="text-xs text-slate-400">Сначала сохрани Item, затем добавляй checklist.</div>}
+          {!itemId && <div className="text-xs text-slate-400">Speichere zuerst das Item, dann kannst du Checklist-Punkte hinzufügen.</div>}
           <div className="flex items-center gap-2">
             <Input value={newChecklist} onChange={(e) => setNewChecklist(e.target.value)} placeholder="Neuer Checklist пункт…" />
             <Button type="button" variant="outline" onClick={addChecklist} disabled={!itemId}>
@@ -802,7 +804,7 @@ export function ContentItemEditor({
             </Button>
           </div>
           <div className="space-y-2">
-            {checklist.length === 0 && <div className="text-xs text-slate-400">— пусто —</div>}
+            {checklist.length === 0 && <div className="text-xs text-slate-400">— leer —</div>}
             {checklist.map((r: any) => (
               <button
                 key={r.id}
@@ -823,7 +825,7 @@ export function ContentItemEditor({
         </TabsContent>
 
         <TabsContent value="assets" className="space-y-3">
-          {!itemId && <div className="text-xs text-slate-400">Сначала сохрани Item, затем добавляй assets.</div>}
+          {!itemId && <div className="text-xs text-slate-400">Speichere zuerst das Item, dann kannst du Assets hinzufügen.</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="space-y-1">
               <label className="text-xs text-slate-300">Link URL</label>
@@ -850,7 +852,7 @@ export function ContentItemEditor({
           </div>
 
           <div className="space-y-2">
-            {assets.length === 0 && <div className="text-xs text-slate-400">— нет файлов/линков —</div>}
+            {assets.length === 0 && <div className="text-xs text-slate-400">— keine Dateien/Links —</div>}
             {assets.map((a: any) => {
               const isImg = String(a.mime_type || "").startsWith("image/")
               const url = a.kind === "UPLOAD" ? contentItemsAPI.assets.downloadUrl(a.id) : a.url
@@ -897,15 +899,15 @@ export function ContentItemEditor({
         </TabsContent>
 
         <TabsContent value="comments" className="space-y-3">
-          {!itemId && <div className="text-xs text-slate-400">Сначала сохрани Item, затем добавляй комментарии.</div>}
+          {!itemId && <div className="text-xs text-slate-400">Speichere zuerst das Item, dann kannst du Kommentare hinzufügen.</div>}
           <div className="flex items-center gap-2">
-            <Input value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Комментарий…" />
+            <Input value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Kommentar…" />
             <Button type="button" variant="outline" onClick={addComment} disabled={!itemId || !newComment.trim()}>
               <Plus className="h-4 w-4 mr-1" /> Add
             </Button>
           </div>
           <div className="space-y-2">
-            {comments.length === 0 && <div className="text-xs text-slate-400">— нет комментариев —</div>}
+            {comments.length === 0 && <div className="text-xs text-slate-400">— keine Kommentare —</div>}
             {comments.map((c: any) => (
               <div key={c.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="flex items-center justify-between gap-2">
@@ -924,7 +926,7 @@ export function ContentItemEditor({
               <Sparkles className="h-4 w-4 text-amber-300" /> KI‑Assistent
             </div>
             <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <Input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Optional: дополнительная инструкция (короче/строже/…) " />
+              <Input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Optional: zusätzliche Instruktion (kürzer/strenger/…)" />
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" onClick={() => runAI("brief")} disabled={aiLoading}>
                   Brief

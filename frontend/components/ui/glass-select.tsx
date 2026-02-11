@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { cn } from "@/lib/utils"
 
 export interface GlassOption {
   value: string
@@ -14,16 +15,41 @@ interface GlassSelectProps {
   options: GlassOption[]
   className?: string
   disabled?: boolean
+  "aria-invalid"?: boolean | "true" | "false"
+  "aria-describedby"?: string
+  name?: string
+  required?: boolean
 }
 
-export function GlassSelect({ value, onChange, placeholder, options, className = "", disabled }: GlassSelectProps) {
+export function GlassSelect({ value, onChange, placeholder, options, className = "", disabled, ...rest }: GlassSelectProps) {
+  const invalid = rest["aria-invalid"] === true || rest["aria-invalid"] === "true"
   return (
-    <div className={`relative group rounded-xl h-11 sm:h-10 flex items-center px-3 border transition-colors backdrop-blur-md bg-white/10 dark:bg-slate-900/50 border-white/20 dark:border-slate-700 focus-within:border-blue-400/50 focus-within:ring-1 focus-within:ring-blue-500/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${className}`}>
+    <div
+      className={cn(
+        "relative group rounded-xl h-11 sm:h-10 flex items-center px-3 border transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+        "bg-white dark:bg-slate-950/30",
+        "border-slate-200 dark:border-white/10",
+        "focus-within:border-blue-500/40 focus-within:ring-2 focus-within:ring-blue-500/25",
+        "dark:focus-within:border-blue-400/40 dark:focus-within:ring-blue-500/30",
+        disabled && "opacity-60 cursor-not-allowed",
+        invalid && "border-rose-500/50 focus-within:ring-rose-500/25 focus-within:border-rose-500/60 dark:border-rose-500/40",
+        className
+      )}
+    >
       <select
         value={value ?? ""}
         onChange={(e) => onChange?.(e.target.value)}
         disabled={disabled}
-        className="appearance-none bg-transparent border-none outline-none w-full text-base sm:text-sm text-slate-900 dark:text-slate-200 pr-6"
+        aria-invalid={rest["aria-invalid"]}
+        aria-describedby={rest["aria-describedby"]}
+        name={rest.name}
+        required={rest.required}
+        className={cn(
+          "appearance-none bg-transparent border-none outline-none w-full pr-6",
+          "text-base sm:text-sm",
+          "text-slate-900 dark:text-slate-200",
+          disabled && "cursor-not-allowed"
+        )}
       >
         <option value="" disabled>{placeholder || "Auswählen"}</option>
         {options.map((o) => (

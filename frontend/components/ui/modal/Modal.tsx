@@ -2,6 +2,10 @@
 
 import * as React from "react"
 import type { ModalProps } from "./types"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 
 type Props = ModalProps & { onClose: () => void }
 
@@ -41,15 +45,15 @@ export function Modal(props: Props) {
             <div className="space-y-4">
               {props.content}
               <div className="flex justify-end gap-2">
-                <button
-                  className="px-4 h-10 rounded-md bg-blue-600 text-white hover:bg-blue-500"
+                <Button
+                  className="h-11 bg-white text-slate-900 hover:bg-white/90 dark:bg-white dark:text-slate-900"
                   onClick={() => {
                     props.onOk?.()
                     onClose()
                   }}
                 >
                   {props.okText || "OK"}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -58,18 +62,18 @@ export function Modal(props: Props) {
             <div className="space-y-4">
               {props.content}
               <div className="flex justify-end gap-2">
-                <button className="px-4 h-10 rounded-md border border-slate-300/30 bg-white/60 dark:bg-neutral-800/60" onClick={onClose}>
+                <Button variant="outline" className="h-11 border-white/15 bg-white/50 hover:bg-white/70 dark:bg-slate-950/20 dark:hover:bg-slate-950/30" onClick={onClose}>
                   {props.cancelText || "Abbrechen"}
-                </button>
-                <button
-                  className="px-4 h-10 rounded-md bg-blue-600 text-white hover:bg-blue-500"
+                </Button>
+                <Button
+                  className="h-11 bg-white text-slate-900 hover:bg-white/90 dark:bg-white dark:text-slate-900"
                   onClick={() => {
                     props.onConfirm?.()
                     onClose()
                   }}
                 >
                   {props.confirmText || "Bestätigen"}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -106,18 +110,17 @@ function FormBody(props: Props) {
     >
       {(props.fields || []).map((f) => (
         <div key={f.name} className="grid gap-1">
-          {f.label && <label className="text-sm opacity-80">{f.label}</label>}
+          {f.label && <Label className="text-slate-600 dark:text-slate-300">{f.label}</Label>}
           {f.type === "textarea" ? (
-            <textarea
-              className="min-h-[90px] rounded-md bg-slate-100/70 dark:bg-neutral-800/70 border border-slate-300/30 dark:border-neutral-700/50 px-3 py-2"
+            <Textarea
+              className="min-h-[110px]"
               placeholder={f.placeholder}
               required={f.required}
               value={values[f.name] || ""}
               onChange={(e) => set(f.name, e.target.value)}
             />
           ) : (
-            <input
-              className="h-10 rounded-md bg-slate-100/70 dark:bg-neutral-800/70 border border-slate-300/30 dark:border-neutral-700/50 px-3"
+            <Input
               type={f.type || "text"}
               placeholder={f.placeholder}
               required={f.required}
@@ -128,12 +131,12 @@ function FormBody(props: Props) {
         </div>
       ))}
       <div className="flex justify-end gap-2 pt-2">
-        <button type="button" className="px-4 h-10 rounded-md border border-slate-300/30 bg-white/60 dark:bg-neutral-800/60" onClick={onClose}>
+        <Button type="button" variant="outline" className="h-11 border-white/15 bg-white/50 hover:bg-white/70 dark:bg-slate-950/20 dark:hover:bg-slate-950/30" onClick={onClose}>
           {props.cancelText || "Abbrechen"}
-        </button>
-        <button type="submit" className="px-4 h-10 rounded-md bg-blue-600 text-white hover:bg-blue-500">
+        </Button>
+        <Button type="submit" className="h-11 bg-white text-slate-900 hover:bg-white/90 dark:bg-white dark:text-slate-900">
           {props.submitText || "Speichern"}
-        </button>
+        </Button>
       </div>
     </form>
   )

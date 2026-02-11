@@ -2,6 +2,12 @@
 
 import * as React from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { FormField } from "@/components/ui/form-field"
+import { GlassSelect } from "@/components/ui/glass-select"
+import { CalendarDays } from "lucide-react"
 
 interface CalendarEventFormProps {
   isOpen: boolean
@@ -20,139 +26,191 @@ export function CalendarEventForm({
   editingEvent,
   selectedDate,
   currentDate,
-  isDarkMode
+  // kept in props for backwards-compat; styling is now consistent in dark/light
 }: CalendarEventFormProps) {
   if (!isOpen) return null
 
+  const initialDate =
+    (editingEvent?.date as string) ||
+    (selectedDate?.toISOString().split("T")[0] as string | undefined) ||
+    currentDate.toISOString().split("T")[0]
+
+  const [title, setTitle] = React.useState<string>(editingEvent?.title || "")
+  const [description, setDescription] = React.useState<string>(editingEvent?.description || "")
+  const [date, setDate] = React.useState<string>(initialDate)
+  const [time, setTime] = React.useState<string>(editingEvent?.time || "09:00")
+  const [duration, setDuration] = React.useState<number>(Number(editingEvent?.duration || 60))
+  const [category, setCategory] = React.useState<string>(editingEvent?.category || "meeting")
+  const [location, setLocation] = React.useState<string>(editingEvent?.location || "")
+
+  React.useEffect(() => {
+    if (!isOpen) return
+    setTitle(editingEvent?.title || "")
+    setDescription(editingEvent?.description || "")
+    setDate(initialDate)
+    setTime(editingEvent?.time || "09:00")
+    setDuration(Number(editingEvent?.duration || 60))
+    setCategory(editingEvent?.category || "meeting")
+    setLocation(editingEvent?.location || "")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editingEvent, selectedDate?.toISOString(), currentDate.toISOString()])
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const formData = new FormData(e.currentTarget)
-    const eventData = {
-      title: formData.get('title') as string,
-      description: formData.get('description') as string,
-      date: formData.get('date') as string,
-      time: formData.get('time') as string,
-      duration: parseInt((formData.get('duration') as string) || '60') || 60,
-      category: (formData.get('category') as string) || 'meeting',
-      priority: formData.get('priority') as string,
-      location: formData.get('location') as string,
-      assignee: formData.get('assignee') as string,
-    }
-    onSave(eventData)
-  };
+    onSave({
+      title: title.trim(),
+      description: description.trim(),
+      date,
+      time,
+      duration: Number(duration || 60),
+      category,
+      location: location.trim(),
+    })
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
-      <DialogContent className="max-w-2xl bg-white text-slate-900 border-slate-200 dark:bg-slate-900/90 dark:text-slate-200 dark:border-slate-800">
+      <DialogContent className="w-[min(92vw,760px)] sm:max-w-[760px] bg-white/80 dark:bg-slate-950/50 border-slate-200 dark:border-white/10 backdrop-blur-xl rounded-2xl">
         <DialogHeader>
           <DialogTitle>
-            <span className="text-2xl font-bold text-slate-900 dark:text-white">
-              {editingEvent ? '📅 Termin bearbeiten' : '📅 Neuer Termin'}
-            </span>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center">
+                <CalendarDays className="h-5 w-5 text-slate-700 dark:text-slate-200" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-slate-900 dark:text-white text-base sm:text-lg font-semibold leading-tight">
+                  {editingEvent ? "Termin bearbeiten" : "Neuer Termin"}
+                </div>
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate">Datum, Zeit und Details</div>
+              </div>
+            </div>
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-200' : 'text-slate-700'}`}>
-                  Titel *
-                </label>
-                <input
-                  name="title"
-                  type="text"
-                  required
-                  defaultValue={editingEvent?.title || ''}
-                  className={`w-full p-3 rounded-xl border transition-all ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'} focus:ring-2 focus:ring-blue-500/20`}
-                  placeholder="z.B. Frühlingskampagne Launch"
-                />
-              </div>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <FormField id="evt_title" label="Titel" required>
+                {({ describedBy, invalid }) => (
+                  <Input
+                    id="evt_title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="z.B. Frühlingskampagne Launch"
+                    required
+                    aria-describedby={describedBy}
+                    aria-invalid={invalid || undefined}
+                  />
+                )}
+              </FormField>
+            </div>
 
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-200' : 'text-slate-700'}`}>
-                  Datum *
-                </label>
-                <input
-                  name="date"
+            <FormField id="evt_date" label="Datum" required>
+              {({ describedBy, invalid }) => (
+                <Input
+                  id="evt_date"
                   type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
                   required
-                  defaultValue={editingEvent?.date || (selectedDate?.toISOString().split('T')[0]) || currentDate.toISOString().split('T')[0]}
-                  className={`w-full p-3 rounded-xl border transition-all ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'} focus:ring-2 focus:ring-blue-500/20`}
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid || undefined}
                 />
-              </div>
+              )}
+            </FormField>
 
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-200' : 'text-slate-700'}`}>
-                  Uhrzeit *
-                </label>
-                <input
-                  name="time"
+            <FormField id="evt_time" label="Uhrzeit" required>
+              {({ describedBy, invalid }) => (
+                <Input
+                  id="evt_time"
                   type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
                   required
-                  defaultValue={editingEvent?.time || '09:00'}
-                  className={`w-full p-3 rounded-xl border transition-all ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'} focus:ring-2 focus:ring-blue-500/20`}
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid || undefined}
                 />
-              </div>
+              )}
+            </FormField>
 
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-200' : 'text-slate-700'}`}>
-                  Kategorie
-                </label>
-                <select
-                  name="category"
-                  defaultValue={(editingEvent?.category as string) || 'meeting'}
-                  className={`w-full p-3 rounded-xl border transition-all ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500'} focus:ring-2 focus:ring-blue-500/20`}
-                >
-                  <option value="meeting">Meeting</option>
-                  <option value="event">Event</option>
-                  <option value="deadline">Deadline</option>
-                  <option value="reminder">Reminder</option>
-                </select>
-              </div>
+            <FormField id="evt_category" label="Kategorie">
+              {({ describedBy, invalid }) => (
+                <GlassSelect
+                  value={category}
+                  onChange={(v) => setCategory(v)}
+                  options={[
+                    { value: "meeting", label: "Meeting" },
+                    { value: "event", label: "Event" },
+                    { value: "deadline", label: "Deadline" },
+                    { value: "reminder", label: "Reminder" },
+                  ]}
+                  aria-invalid={invalid || undefined}
+                  aria-describedby={describedBy}
+                  className="w-full"
+                />
+              )}
+            </FormField>
 
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-200' : 'text-slate-700'}`}>
-                  Ort
-                </label>
-                <input
-                  name="location"
-                  type="text"
-                  defaultValue={editingEvent?.location || ''}
-                  className={`w-full p-3 rounded-xl border transition-all ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'} focus:ring-2 focus:ring-blue-500/20`}
+            <FormField id="evt_location" label="Ort">
+              {({ describedBy, invalid }) => (
+                <Input
+                  id="evt_location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
                   placeholder="z.B. Hauptbüro, Zoom"
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid || undefined}
                 />
-              </div>
+              )}
+            </FormField>
 
-              <div className="md:col-span-2">
-                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-200' : 'text-slate-700'}`}>
-                  Beschreibung
-                </label>
-                <textarea
-                  name="description"
-                  rows={3}
-                  defaultValue={editingEvent?.description || ''}
-                  className={`w-full p-3 rounded-xl border transition-all ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-blue-500'} focus:ring-2 focus:ring-blue-500/20`}
-                  placeholder="Zusätzliche Details zum Termin..."
+            <FormField id="evt_duration" label="Dauer (Min.)" hint="Standard: 60">
+              {({ describedBy, invalid }) => (
+                <Input
+                  id="evt_duration"
+                  type="number"
+                  value={String(duration || 60)}
+                  onChange={(e) => setDuration(parseInt(e.target.value) || 60)}
+                  min="5"
+                  step="5"
+                  placeholder="60"
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid || undefined}
                 />
-              </div>
-            </div>
+              )}
+            </FormField>
 
-            <div className="flex items-center gap-3 mt-8">
-              <button
-                type="submit"
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg font-medium"
-              >
-                {editingEvent ? '💾 Speichern' : '📅 Erstellen'}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className={`px-6 py-3 rounded-xl border transition-all font-medium ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-              >
-                Abbrechen
-              </button>
+            <div className="sm:col-span-2">
+              <FormField id="evt_desc" label="Beschreibung">
+                {({ describedBy, invalid }) => (
+                  <Textarea
+                    id="evt_desc"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Zusätzliche Details zum Termin…"
+                    rows={4}
+                    aria-describedby={describedBy}
+                    aria-invalid={invalid || undefined}
+                  />
+                )}
+              </FormField>
             </div>
-          </form>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="h-11 border-white/15 bg-white/50 hover:bg-white/70 dark:bg-slate-950/20 dark:hover:bg-slate-950/30"
+            >
+              Abbrechen
+            </Button>
+            <Button type="submit" disabled={!title.trim()} className="h-11 bg-white text-slate-900 hover:bg-white/90 dark:bg-white dark:text-slate-900">
+              {editingEvent ? "Speichern" : "Erstellen"}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   )
