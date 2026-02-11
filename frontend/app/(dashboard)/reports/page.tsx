@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown } from "lucide-react"
+import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown, Eye, Settings2, Mail } from "lucide-react"
 import { authFetch } from "@/lib/api"
 import { useActivities } from "@/hooks/use-activities"
 import { useCalendarApi } from "@/hooks/use-calendar-api"
@@ -364,10 +364,8 @@ export default function ReportsPage() {
               </StyledSelect>
             </div>
           </div>
-          {/* Action buttons */}
-          <div className="flex flex-wrap items-center gap-2" data-tour="reports-actions">
           {/* Templates: select + save */}
-          <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-1">
+          <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <div className="flex-1 min-w-0">
               <StyledSelect
                 value={selectedTemplateId}
@@ -390,7 +388,7 @@ export default function ReportsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm"
+                className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
                 disabled={templatesLoading}
                 onClick={() => {
                   openModal({
@@ -456,7 +454,13 @@ export default function ReportsPage() {
             )}
           </div>
 
-          <Button disabled={genLoading} size="sm" className="bg-blue-600 hover:bg-blue-500 h-8 sm:h-9 text-xs sm:text-sm" onClick={async()=>{
+          {/* Action buttons */}
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2" data-tour="reports-actions">
+          <Button
+            disabled={genLoading}
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-500 h-11 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
+            onClick={async()=>{
             try {
               setGenLoading(true)
               const ff = (()=>{ try { return JSON.parse(localStorage.getItem('featureFlags')||'{}') } catch { return {} } })()
@@ -499,10 +503,23 @@ export default function ReportsPage() {
           }}>
             {genLoading ? 'Generiere…' : 'Report generieren'}
           </Button>
-          <Button variant="outline" size="sm" className="border-white/20 text-slate-200 h-8 sm:h-9 text-xs sm:text-sm" onClick={()=> setSettingsOpen(v=>!v)}>{settingsOpen ? 'Einstellungen ▾' : 'Einstellungen ▸'}</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
+            onClick={()=> setSettingsOpen(v=>!v)}
+          >
+            <Settings2 className="h-3.5 w-3.5 mr-2" />
+            {settingsOpen ? 'Einstellungen' : 'Einstellungen'}
+            <span className="ml-2 text-slate-400">{settingsOpen ? '▾' : '▸'}</span>
+          </Button>
           {reportHtml && (
             <>
-              <Button variant="outline" size="sm" className="border-white/20 text-slate-200 h-8 sm:h-9 text-xs sm:text-sm" onClick={()=>{
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
+                onClick={()=>{
                 openModal({
                   type: 'custom',
                   title: 'Report – Preview',
@@ -513,9 +530,13 @@ export default function ReportsPage() {
                   )
                 })
               }}>
-                👁️ Preview
+                <Eye className="h-3.5 w-3.5 mr-2" /> Preview
               </Button>
-              <Button variant="outline" size="sm" className="border-white/20 text-slate-200 h-8 sm:h-9 text-xs sm:text-sm" onClick={()=>{
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
+                onClick={()=>{
                 const blob = new Blob([`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>${reportHtml}</body></html>`], { type: 'text/html;charset=utf-8' })
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement('a')
@@ -523,7 +544,11 @@ export default function ReportsPage() {
               }}>
                 <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" /> <span className="hidden sm:inline">Download HTML</span>
               </Button>
-              <Button variant="outline" size="sm" className="border-white/20 text-slate-200 h-8 sm:h-9 text-xs sm:text-sm" onClick={()=>{
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
+                onClick={()=>{
                 const wrapper = `<!doctype html><html><head><meta charset='utf-8'><meta name="viewport" content="width=device-width, initial-scale=1"><title>Report</title>
                 <style>@page{margin:18mm} body{background:#0b1220;color:#e5e7eb} @media print{body{background:white;color:black}}</style>
                 </head><body>${reportHtml}<script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 500)}</script></body></html>`
@@ -539,9 +564,13 @@ export default function ReportsPage() {
         </div>
 
         {/* History */}
-        <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-slate-200">Historie (Generierungen)</div>
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-slate-200" />
+              <div className="text-sm font-semibold text-slate-200">Historie</div>
+              <div className="hidden sm:block text-xs text-slate-400">Gespeicherte Generierungen</div>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -553,7 +582,16 @@ export default function ReportsPage() {
             </Button>
           </div>
           <div className="mt-3 space-y-2">
-            {runs.length === 0 ? (
+            {runsLoading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="rounded-xl border border-white/10 bg-slate-950/30 p-3">
+                    <div className="h-4 w-2/3 bg-white/10 rounded" />
+                    <div className="mt-2 h-3 w-1/2 bg-white/10 rounded" />
+                  </div>
+                ))}
+              </div>
+            ) : runs.length === 0 ? (
               <div className="text-xs text-slate-400">Noch keine gespeicherten Generierungen.</div>
             ) : (
               runs.slice(0, 12).map((r: any) => {
@@ -612,7 +650,7 @@ export default function ReportsPage() {
                           })
                         }}
                       >
-                        Preview
+                        <Eye className="h-3.5 w-3.5 mr-2" /> Preview
                       </Button>
                     </div>
                   </div>
@@ -624,9 +662,13 @@ export default function ReportsPage() {
 
         {/* Weekly email schedule */}
         {canManageReports && (
-          <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold text-slate-200">Рассылка (еженедельно на email)</div>
+              <div className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-slate-200" />
+                <div className="text-sm font-semibold text-slate-200">Рассылка</div>
+                <div className="hidden sm:block text-xs text-slate-400">еженедельно на email</div>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -748,15 +790,33 @@ export default function ReportsPage() {
         )}
 
         {settingsOpen && (
-          <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="text-sm text-slate-300">Sektionen:</div>
-              {Object.keys(sections).map((k) => (
-                <label key={k} className="flex items-center gap-2 text-sm text-slate-200">
-                  <input type="checkbox" checked={(sections as any)[k]} onChange={(e)=> setSections(s=>({ ...s, [k]: e.target.checked }))} />
-                  {k}
-                </label>
-              ))}
+          <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4 text-slate-200" />
+              <div className="text-sm font-semibold text-slate-200">Einstellungen</div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs text-slate-400">Sektionen</div>
+              <div className="flex flex-wrap gap-2">
+                {Object.keys(sections).map((k) => {
+                  const on = Boolean((sections as any)[k])
+                  return (
+                    <label
+                      key={k}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs cursor-pointer select-none ${
+                        on ? "bg-emerald-500/10 border-emerald-400/20 text-emerald-100" : "bg-white/5 border-white/10 text-slate-200 hover:bg-white/10"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={(e)=> setSections(s=>({ ...s, [k]: e.target.checked }))}
+                      />
+                      <span className="capitalize">{k}</span>
+                    </label>
+                  )
+                })}
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="text-sm text-slate-300">Sprache:</div>

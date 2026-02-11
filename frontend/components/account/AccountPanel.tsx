@@ -12,6 +12,7 @@ import {
   Bug,
   Check,
   Copy,
+  Monitor,
   Keyboard,
   LifeBuoy,
   LogOut,
@@ -118,6 +119,20 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
     } catch {
       return text
     }
+  }
+
+  const deviceLabelFromUA = (uaRaw: string) => {
+    const ua = (uaRaw || "").toLowerCase()
+    const isMobile =
+      ua.includes("iphone") || ua.includes("ipad") || ua.includes("android") || ua.includes("mobile")
+    const os = ua.includes("iphone") || ua.includes("ipad") ? "iOS" : ua.includes("android") ? "Android" : ua.includes("mac os") ? "macOS" : ua.includes("windows") ? "Windows" : ua.includes("linux") ? "Linux" : "Unknown OS"
+    const browser =
+      ua.includes("edg/") ? "Edge" :
+      ua.includes("chrome/") ? "Chrome" :
+      ua.includes("safari/") && !ua.includes("chrome/") ? "Safari" :
+      ua.includes("firefox/") ? "Firefox" :
+      "Browser"
+    return `${isMobile ? "Mobile" : "Desktop"} · ${os} · ${browser}`
   }
 
   const loadSessions = async () => {
@@ -441,7 +456,10 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
             <div className="glass-card rounded-2xl border border-white/10 bg-slate-950/70 p-5 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-slate-200">Security</div>
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-emerald-200" />
+                    <div className="text-xs font-semibold text-slate-200">Security</div>
+                  </div>
                   <div className="mt-1 text-[11px] text-slate-400">
                     Aktive Geräte/Sitzungen verwalten. Hier kannst du einzelne Sessions beenden oder dich überall abmelden.
                   </div>
@@ -462,7 +480,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Button
                   variant="outline"
                   className="h-11 text-xs border-white/20 text-slate-200"
@@ -502,13 +520,24 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                     const created = s.created_at ? new Date(s.created_at).toLocaleString() : "—"
                     const seen = s.last_seen_at ? new Date(s.last_seen_at).toLocaleString() : "—"
                     const revoked = s.revoked_at ? new Date(s.revoked_at).toLocaleString() : null
+                    const label = deviceLabelFromUA(ua)
                     return (
                       <div key={s.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="text-xs font-semibold text-slate-100 truncate">
-                              {s.is_current ? "This device" : "Device"} · <span className="text-slate-300">{ip}</span>
+                              <span className="inline-flex items-center gap-2">
+                                <Monitor className="h-4 w-4 text-slate-200" />
+                                <span>{s.is_current ? "This device" : "Device"}</span>
+                                {s.is_current && (
+                                  <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-200">
+                                    current
+                                  </span>
+                                )}
+                              </span>{" "}
+                              · <span className="text-slate-300">{ip}</span>
                             </div>
+                            <div className="mt-1 text-[11px] text-slate-300">{label}</div>
                             <div className="mt-1 text-[11px] text-slate-400 break-words">
                               UA: {ua || "—"}
                             </div>
@@ -540,6 +569,8 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                                   }
                                   await loadSessions()
                                 }}
+                                disabled={Boolean(s.is_current)}
+                                title={s.is_current ? "Du kannst die aktuelle Session nicht einzeln revoken. Nutze 'Logout everywhere'." : undefined}
                               >
                                 Revoke
                               </Button>
@@ -634,16 +665,46 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                               2) Issuer: <span className="text-slate-200">MarketingKreis</span> · Account:{" "}
                               <span className="text-slate-200">{user?.email}</span>
                             </div>
-                            <div className="text-xs">
-                              Secret: <span className="font-mono text-slate-200">{totpSetupSecret || "—"}</span>
+                            <div className="rounded-lg border border-white/10 bg-white/5 p-2 flex items-center justify-between gap-2">
+                              <div className="min-w-0 text-xs text-slate-300">
+                                Secret: <span className="font-mono text-slate-100 break-all">{totpSetupSecret || "—"}</span>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-[11px] border-white/20 text-slate-200"
+                                onClick={async () => {
+                                  try { await navigator.clipboard.writeText(totpSetupSecret || "") } catch {}
+                                }}
+                                disabled={!totpSetupSecret}
+                              >
+                                Copy
+                              </Button>
                             </div>
-                            <div className="text-[11px] text-slate-500 break-all">
-                              otpauth: <span className="font-mono">{totpSetupUri || "—"}</span>
-                            </div>
+                            <details className="rounded-lg border border-white/10 bg-white/5 p-2">
+                              <summary className="cursor-pointer text-[11px] text-slate-300 select-none">
+                                otpauth URI anzeigen (für Debug)
+                              </summary>
+                              <div className="mt-2 flex items-start justify-between gap-2">
+                                <div className="text-[11px] text-slate-500 break-all font-mono">{totpSetupUri || "—"}</div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 text-[11px] border-white/20 text-slate-200"
+                                  onClick={async () => {
+                                    try { await navigator.clipboard.writeText(totpSetupUri || "") } catch {}
+                                  }}
+                                  disabled={!totpSetupUri}
+                                >
+                                  Copy
+                                </Button>
+                              </div>
+                            </details>
                             <input
                               value={totpCode}
                               onChange={(e) => setTotpCode(e.target.value)}
                               placeholder="6-digit Code"
+                              inputMode="numeric"
                               className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
                             />
                             <Button

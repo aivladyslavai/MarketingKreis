@@ -556,23 +556,40 @@ function SignupInner() {
                       </div>
                     </>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 p-3">
+                        <div className="flex items-start gap-2">
+                          <Info className="h-4 w-4 mt-0.5 text-violet-300 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-100">2FA подтверждение</div>
+                            <div className="mt-0.5 text-[11px] text-slate-300">
+                              Введите 6‑значный код из Authenticator. Также можно использовать Recovery Code (например <span className="font-mono">abcde-12345</span>).
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                       <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
-                        2FA Code (Authenticator)
+                        2FA Code / Recovery Code
                       </label>
                       <div className="relative">
                         <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                         <Input
-                          placeholder="123456"
-                          inputMode="numeric"
+                          placeholder="123456 или abcde-12345"
+                          inputMode="text"
+                          autoComplete="one-time-code"
                           value={login2faCode}
-                          onChange={(e) => setLogin2faCode(e.target.value)}
+                          onChange={(e) =>
+                            setLogin2faCode(
+                              e.target.value
+                                .replace(/\s+/g, "")
+                                .replace(/[^0-9a-fA-F-]/g, "")
+                                .slice(0, 20),
+                            )
+                          }
                           className="h-11 border-slate-700/50 bg-slate-800/50 pl-10 text-slate-200 placeholder:text-slate-500 transition-colors focus:border-violet-500/50 focus:ring-violet-500/20"
                           required
+                          autoFocus
                         />
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        Admin-Accounts mit aktivem 2FA benötigen zusätzlich den Code aus deiner Authenticator App.
                       </div>
                     </div>
                   )}
