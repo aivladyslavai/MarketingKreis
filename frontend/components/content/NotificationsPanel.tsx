@@ -56,7 +56,7 @@ export function NotificationsPanel() {
 
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 overflow-hidden">
+      <div className="relative rounded-2xl border border-white/10 bg-slate-950/40 p-4 overflow-hidden">
         <div className="pointer-events-none absolute inset-x-0 -mt-4 h-24 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.10),transparent_60%)]" />
         <div className="relative flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -148,7 +148,7 @@ export function NotificationsPanel() {
             <div
               key={n.id}
               className={[
-                "rounded-2xl border border-white/10 bg-slate-950/60 p-4 overflow-hidden",
+                "relative rounded-2xl border border-white/10 bg-slate-950/60 p-4 overflow-hidden",
                 unread ? "ring-1 ring-emerald-400/15" : "",
               ].join(" ")}
             >

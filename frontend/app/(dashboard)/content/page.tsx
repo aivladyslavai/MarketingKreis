@@ -1171,7 +1171,7 @@ export default function ContentPage() {
             </TabsList>
 
             <TabsContent value="items" className="space-y-4">
-              <div className="rounded-2xl border border-white/10 bg-slate-950/30 backdrop-blur-xl p-3 sm:p-4 overflow-hidden">
+              <div className="relative rounded-2xl border border-white/10 bg-slate-950/30 backdrop-blur-xl p-3 sm:p-4 overflow-hidden">
                 <div className="pointer-events-none absolute inset-x-0 -mt-4 h-20 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.10),transparent_60%)]" />
                 <div className="relative flex flex-col gap-2 sm:gap-3">
                   <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
