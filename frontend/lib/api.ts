@@ -5,6 +5,8 @@
 const envBase = process.env.NEXT_PUBLIC_API_URL
 export const apiBase = envBase && envBase.startsWith("/") ? envBase : "/api"
 
+const MK_ADMIN_STEPUP_EVENT = "mk:admin-stepup-required"
+
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
   const m = document.cookie.match(new RegExp(`(?:^|; )${name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")}=([^;]*)`))
@@ -22,7 +24,41 @@ function withCsrfHeader(init: RequestInit): RequestInit {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+type StepUpEventDetail = {
+  message?: string
+  resolve: () => void
+  reject: (err: any) => void
+}
+
+let _stepUpGate: { promise: Promise<void>; resolve: () => void; reject: (err: any) => void } | null = null
+
+async function ensureAdminStepUp(message?: string): Promise<void> {
+  if (typeof window === "undefined") throw new Error(message || "2FA step-up required")
+  if (_stepUpGate) return _stepUpGate.promise
+
+  let resolve!: () => void
+  let reject!: (err: any) => void
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  _stepUpGate = { promise, resolve, reject }
+
+  try {
+    window.dispatchEvent(new CustomEvent<StepUpEventDetail>(MK_ADMIN_STEPUP_EVENT, { detail: { message, resolve, reject } }))
+  } catch (e) {
+    _stepUpGate = null
+    throw e
+  }
+
+  try {
+    await promise
+  } finally {
+    _stepUpGate = null
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}, attempt: number = 0): Promise<T> {
   const i = withCsrfHeader(init)
   const res = await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
     ...i,
@@ -31,6 +67,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     cache: "no-store",
   })
   if (!res.ok) {
+    if (res.status === 428 && attempt < 1) {
+      // Admin step-up required: show popup and retry once.
+      let msg = "2FA step-up required"
+      try {
+        const j = await res.json()
+        msg = (j as any)?.detail || (j as any)?.error || msg
+      } catch {}
+      await ensureAdminStepUp(msg)
+      return request<T>(path, init, attempt + 1)
+    }
     let msg = res.statusText
     try {
       const j = await res.json()
@@ -59,6 +105,15 @@ export async function requestLocal<T>(path: string, init: RequestInit = {}): Pro
     cache: "no-store",
   })
   if (!res.ok) {
+    if (res.status === 428) {
+      let msg = "2FA step-up required"
+      try {
+        const j = await res.json()
+        msg = (j as any)?.detail || (j as any)?.error || msg
+      } catch {}
+      await ensureAdminStepUp(msg)
+      return requestLocal<T>(path, init)
+    }
     let msg = res.statusText
     try {
       const j = await res.json()
