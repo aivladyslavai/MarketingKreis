@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { FormField } from "@/components/ui/form-field"
 import {
   BookOpen,
   Bug,
@@ -22,6 +25,8 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trash2,
+  QrCode,
+  KeyRound,
   ZapOff,
 } from "lucide-react"
 import { restartOnboarding } from "@/components/onboarding/onboarding-tour"
@@ -47,6 +52,8 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
   const [totpEnabled, setTotpEnabled] = React.useState<boolean>(false)
   const [totpLoading, setTotpLoading] = React.useState(false)
   const [totpError, setTotpError] = React.useState<string | null>(null)
+  const [totpSetupOpen, setTotpSetupOpen] = React.useState(false)
+  const [totpSetupLoading, setTotpSetupLoading] = React.useState(false)
   const [totpSetupSecret, setTotpSetupSecret] = React.useState<string>("")
   const [totpSetupUri, setTotpSetupUri] = React.useState<string>("")
   const [totpCode, setTotpCode] = React.useState<string>("")
@@ -166,6 +173,40 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
       setTotpError(e?.message || "Failed to load 2FA status")
     } finally {
       setTotpLoading(false)
+    }
+  }
+
+  const resetTotpSetupState = () => {
+    setTotpSetupSecret("")
+    setTotpSetupUri("")
+    setTotpQrDataUrl("")
+    setTotpCode("")
+    setRecoveryCodes([])
+  }
+
+  const startTotpSetup = async () => {
+    try {
+      setTotpSetupLoading(true)
+      setTotpError(null)
+      resetTotpSetupState()
+      const j = await api("/auth/2fa/setup", { method: "POST" })
+      const secret = String((j as any)?.secret || "")
+      const uri = String((j as any)?.otpauth_uri || "")
+      setTotpSetupSecret(secret)
+      setTotpSetupUri(uri)
+      if (uri) {
+        try {
+          const QRCode = (await import("qrcode")).default
+          const url = await QRCode.toDataURL(uri, { margin: 1, width: 220 })
+          setTotpQrDataUrl(url)
+        } catch {
+          setTotpQrDataUrl("")
+        }
+      }
+    } catch (e: any) {
+      setTotpError(e?.message || "Setup failed")
+    } finally {
+      setTotpSetupLoading(false)
     }
   }
 
@@ -634,111 +675,18 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                           variant="outline"
                           className="h-11 text-xs border-white/20 text-slate-100 bg-white/5 hover:bg-white/10"
                           onClick={async () => {
-                            try {
-                              setTotpError(null)
-                              const j = await api("/auth/2fa/setup", { method: "POST" })
-                              setTotpSetupSecret(String((j as any)?.secret || ""))
-                              setTotpSetupUri(String((j as any)?.otpauth_uri || ""))
-                              setTotpQrDataUrl("")
-                              const uri = String((j as any)?.otpauth_uri || "")
-                              if (uri) {
-                                try {
-                                  const QRCode = (await import("qrcode")).default
-                                  const url = await QRCode.toDataURL(uri, { margin: 1, width: 220 })
-                                  setTotpQrDataUrl(url)
-                                } catch {
-                                  setTotpQrDataUrl("")
-                                }
-                              }
-                            } catch (e: any) {
-                              setTotpError(e?.message || "Setup failed")
-                            }
+                            setTotpSetupOpen(true)
+                            await startTotpSetup()
                           }}
+                          disabled={totpSetupLoading || totpLoading}
                         >
+                          <QrCode className="h-4 w-4 mr-2" />
                           2FA Setup starten
                         </Button>
 
-                        {(totpSetupSecret || totpSetupUri) && (
-                          <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3 space-y-2">
-                            <div className="text-[11px] text-slate-400">
-                              1) Scanne den QR-Code (oder nutze den Setup-Key manuell).
-                            </div>
-                            {totpQrDataUrl && (
-                              <div className="flex items-center justify-center py-2">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={totpQrDataUrl} alt="2FA QR" className="rounded-xl border border-white/10" />
-                              </div>
-                            )}
-                            <div className="text-[11px] text-slate-400">
-                              2) Issuer: <span className="text-slate-200">MarketingKreis</span> · Account:{" "}
-                              <span className="text-slate-200">{user?.email}</span>
-                            </div>
-                            <div className="rounded-lg border border-white/10 bg-white/5 p-2 flex items-center justify-between gap-2">
-                              <div className="min-w-0 text-xs text-slate-300">
-                                Secret: <span className="font-mono text-slate-100 break-all">{totpSetupSecret || "—"}</span>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 text-[11px] border-white/20 text-slate-200"
-                                onClick={async () => {
-                                  try { await navigator.clipboard.writeText(totpSetupSecret || "") } catch {}
-                                }}
-                                disabled={!totpSetupSecret}
-                              >
-                                Copy
-                              </Button>
-                            </div>
-                            <details className="rounded-lg border border-white/10 bg-white/5 p-2">
-                              <summary className="cursor-pointer text-[11px] text-slate-300 select-none">
-                                otpauth URI anzeigen (für Debug)
-                              </summary>
-                              <div className="mt-2 flex items-start justify-between gap-2">
-                                <div className="text-[11px] text-slate-500 break-all font-mono">{totpSetupUri || "—"}</div>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 text-[11px] border-white/20 text-slate-200"
-                                  onClick={async () => {
-                                    try { await navigator.clipboard.writeText(totpSetupUri || "") } catch {}
-                                  }}
-                                  disabled={!totpSetupUri}
-                                >
-                                  Copy
-                                </Button>
-                              </div>
-                            </details>
-                            <input
-                              value={totpCode}
-                              onChange={(e) => setTotpCode(e.target.value)}
-                              placeholder="6-digit Code"
-                              inputMode="numeric"
-                              className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
-                            />
-                            <Button
-                              className="h-11 w-full bg-emerald-500/90 hover:bg-emerald-500 text-white"
-                              onClick={async () => {
-                                try {
-                                  setTotpError(null)
-                                  const j = await api("/auth/2fa/enable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpCode }) })
-                                  const rc = Array.isArray((j as any)?.recovery_codes)
-                                    ? (j as any).recovery_codes.map(String)
-                                    : []
-                                  if (rc.length) setRecoveryCodes(rc)
-                                  setTotpCode("")
-                                  setTotpSetupSecret("")
-                                  setTotpSetupUri("")
-                                  setTotpQrDataUrl("")
-                                  await loadTotpStatus()
-                                } catch (e: any) {
-                                  setTotpError(e?.message || "Enable failed")
-                                }
-                              }}
-                            >
-                              2FA aktivieren
-                            </Button>
-                          </div>
-                        )}
+                        <div className="text-[11px] text-slate-400">
+                          Setup öffnet sich als Pop‑up. Dort kannst du QR scannen und 2FA aktivieren.
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -818,6 +766,216 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                         )}
                       </div>
                     )}
+
+                    <Dialog
+                      open={totpSetupOpen}
+                      onOpenChange={(open) => {
+                        setTotpSetupOpen(open)
+                        if (!open) resetTotpSetupState()
+                      }}
+                    >
+                      <DialogContent className="w-full sm:w-[520px]">
+                        <DialogHeader>
+                          <DialogTitle>
+                            <span className="flex items-center gap-2">
+                              <Shield className="h-5 w-5 text-emerald-300" />
+                              Admin 2FA (TOTP) Setup
+                            </span>
+                          </DialogTitle>
+                          <DialogDescription>
+                            Scanne den QR‑Code in deiner Authenticator‑App und bestätige mit dem 6‑stelligen Code.
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        {totpError && (
+                          <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-[11px] text-rose-100">
+                            {totpError}
+                          </div>
+                        )}
+
+                        {totpSetupLoading ? (
+                          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                            Setup wird geladen…
+                          </div>
+                        ) : recoveryCodes.length ? (
+                          <div className="space-y-3">
+                            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                              <div className="flex items-start gap-3">
+                                <KeyRound className="h-5 w-5 text-emerald-300 mt-0.5" />
+                                <div>
+                                  <div className="text-sm font-semibold text-emerald-100">Recovery Codes</div>
+                                  <div className="mt-1 text-[11px] text-emerald-100/80">
+                                    Speichere diese Codes jetzt. Du siehst sie nur einmal.
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-3 grid grid-cols-2 gap-2">
+                                {recoveryCodes.map((c) => (
+                                  <div
+                                    key={c}
+                                    className="rounded-xl border border-white/10 bg-slate-950/30 px-3 py-2 font-mono text-xs text-slate-100"
+                                  >
+                                    {c}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-3 flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  className="h-9 text-xs border-white/20 text-slate-200"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(recoveryCodes.join("\n"))
+                                    } catch {}
+                                  }}
+                                >
+                                  <Copy className="h-3.5 w-3.5 mr-2" />
+                                  Copy all
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                                <div className="text-xs font-semibold text-slate-200 flex items-center gap-2">
+                                  <QrCode className="h-4 w-4" />
+                                  QR‑Code
+                                </div>
+                                <div className="mt-2 flex items-center justify-center">
+                                  {totpQrDataUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={totpQrDataUrl} alt="2FA QR" className="rounded-xl border border-white/10" />
+                                  ) : (
+                                    <div className="text-[11px] text-slate-400">QR konnte nicht generiert werden.</div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-2">
+                                <div className="text-xs font-semibold text-slate-200">Setup‑Key</div>
+                                <div className="text-[11px] text-slate-400">
+                                  Issuer: <span className="text-slate-200">MarketingKreis</span>
+                                  <br />
+                                  Account: <span className="text-slate-200">{user?.email}</span>
+                                </div>
+                                <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3">
+                                  <div className="text-[11px] text-slate-400">Secret</div>
+                                  <div className="mt-1 font-mono text-xs text-slate-100 break-all">
+                                    {totpSetupSecret || "—"}
+                                  </div>
+                                  <div className="mt-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 text-[11px] border-white/20 text-slate-200"
+                                      onClick={async () => {
+                                        try {
+                                          await navigator.clipboard.writeText(totpSetupSecret || "")
+                                        } catch {}
+                                      }}
+                                      disabled={!totpSetupSecret}
+                                    >
+                                      <Copy className="h-3.5 w-3.5 mr-2" />
+                                      Copy
+                                    </Button>
+                                  </div>
+                                </div>
+                                <details className="rounded-xl border border-white/10 bg-slate-950/30 p-3">
+                                  <summary className="cursor-pointer select-none text-[11px] text-slate-300">
+                                    otpauth URI anzeigen (Debug)
+                                  </summary>
+                                  <div className="mt-2 flex items-start justify-between gap-2">
+                                    <div className="min-w-0 text-[11px] text-slate-500 break-all font-mono">{totpSetupUri || "—"}</div>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 text-[11px] border-white/20 text-slate-200"
+                                      onClick={async () => {
+                                        try {
+                                          await navigator.clipboard.writeText(totpSetupUri || "")
+                                        } catch {}
+                                      }}
+                                      disabled={!totpSetupUri}
+                                    >
+                                      <Copy className="h-3.5 w-3.5 mr-2" />
+                                      Copy
+                                    </Button>
+                                  </div>
+                                </details>
+                              </div>
+                            </div>
+
+                            <FormField
+                              id="totp-code"
+                              label="6‑stelliger Code"
+                              hint="Tip: Wenn „Invalid code“ kommt, warte 10–30 Sekunden und versuch es nochmal."
+                            >
+                              {({ describedBy, invalid }) => (
+                                <Input
+                                  id="totp-code"
+                                  value={totpCode}
+                                  onChange={(e) => setTotpCode(e.target.value)}
+                                  placeholder="123456"
+                                  inputMode="numeric"
+                                  aria-describedby={describedBy}
+                                  aria-invalid={invalid}
+                                />
+                              )}
+                            </FormField>
+
+                            <Button
+                              className="h-11 w-full bg-emerald-500/90 hover:bg-emerald-500 text-white"
+                              onClick={async () => {
+                                try {
+                                  setTotpError(null)
+                                  const j = await api("/auth/2fa/enable", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ code: totpCode }),
+                                  })
+                                  const rc = Array.isArray((j as any)?.recovery_codes)
+                                    ? (j as any).recovery_codes.map(String)
+                                    : []
+                                  if (rc.length) setRecoveryCodes(rc)
+                                  setTotpCode("")
+                                  await loadTotpStatus()
+                                } catch (e: any) {
+                                  setTotpError(e?.message || "Enable failed")
+                                }
+                              }}
+                              disabled={!totpSetupSecret || !totpCode}
+                            >
+                              2FA aktivieren
+                            </Button>
+                          </div>
+                        )}
+
+                        <DialogFooter>
+                          {!recoveryCodes.length ? (
+                            <Button
+                              variant="outline"
+                              className="h-10 border-white/20 text-slate-200"
+                              onClick={async () => {
+                                await startTotpSetup()
+                              }}
+                              disabled={totpSetupLoading}
+                            >
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                              Setup neu generieren
+                            </Button>
+                          ) : null}
+                          <Button
+                            variant="outline"
+                            className="h-10 border-white/20 text-slate-200"
+                            onClick={() => setTotpSetupOpen(false)}
+                          >
+                            Schließen
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </>
               )}
