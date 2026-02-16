@@ -5,8 +5,20 @@ export const dynamic = "force-dynamic"
 
 function getCookie(cookieHeader: string, name: string): string {
   try {
-    const m = cookieHeader.match(new RegExp(`(?:^|; )${name.replace(/[-[\\]{}()*+?.,\\\\^$|#\\s]/g, "\\\\$&")}=([^;]*)`))
-    return m ? decodeURIComponent(m[1]) : ""
+    // Avoid regex pitfalls: parse cookies manually.
+    // cookieHeader format: "a=1; b=2; csrf_token=..."
+    const parts = (cookieHeader || "").split(";")
+    for (const rawPart of parts) {
+      const part = rawPart.trim()
+      if (!part) continue
+      const eq = part.indexOf("=")
+      if (eq < 0) continue
+      const k = part.slice(0, eq).trim()
+      if (k !== name) continue
+      const v = part.slice(eq + 1)
+      return decodeURIComponent(v)
+    }
+    return ""
   } catch {
     return ""
   }
