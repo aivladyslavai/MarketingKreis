@@ -3,6 +3,30 @@ import { NextRequest, NextResponse } from "next/server"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
+function canDeriveCsrfFromCookie(req: NextRequest): boolean {
+  const fetchSite = (req.headers.get("sec-fetch-site") || "").toLowerCase()
+  if (fetchSite === "cross-site") return false
+
+  const origin = req.headers.get("origin") || ""
+  if (origin && origin !== req.nextUrl.origin) return false
+
+  const referer = req.headers.get("referer") || ""
+  if (referer && !referer.startsWith(req.nextUrl.origin)) return false
+
+  return true
+}
+
+function appendSetCookies(res: Response, next: NextResponse) {
+  const anyHeaders: any = res.headers as any
+  const arr: string[] | undefined = anyHeaders?.getSetCookie?.()
+  if (Array.isArray(arr) && arr.length) {
+    for (const c of arr) next.headers.append("set-cookie", c)
+    return
+  }
+  const sc = res.headers.get("set-cookie")
+  if (sc) next.headers.append("set-cookie", sc)
+}
+
 function getCookie(cookieHeader: string, name: string): string {
   try {
     const parts = (cookieHeader || "").split(";")
@@ -39,7 +63,7 @@ async function forward(req: NextRequest, authPathSegments: string[]) {
     const cookie = req.headers.get("cookie") || ""
     const contentType = req.headers.get("content-type") || ""
     const csrfHeader = req.headers.get("x-csrf-token") || ""
-    const csrfCookie = cookie ? getCookie(cookie, "csrf_token") : ""
+    const csrfCookie = cookie && canDeriveCsrfFromCookie(req) ? getCookie(cookie, "csrf_token") : ""
     const csrf = csrfHeader || csrfCookie
 
     const headers: Record<string, string> = {}
@@ -70,8 +94,7 @@ async function forward(req: NextRequest, authPathSegments: string[]) {
       if (v) next.headers.set(key, v)
     }
 
-    const setCookie = res.headers.get("set-cookie")
-    if (setCookie) next.headers.set("set-cookie", setCookie)
+    appendSetCookies(res, next)
 
     if (!next.headers.get("content-type")) {
       next.headers.set("content-type", "application/json")

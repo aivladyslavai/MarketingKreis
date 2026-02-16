@@ -9,8 +9,21 @@ const MK_ADMIN_STEPUP_EVENT = "mk:admin-stepup-required"
 
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")}=([^;]*)`))
-  return m ? decodeURIComponent(m[1]) : null
+  try {
+    const parts = (document.cookie || "").split(";")
+    for (const rawPart of parts) {
+      const part = rawPart.trim()
+      if (!part) continue
+      const eq = part.indexOf("=")
+      if (eq < 0) continue
+      const k = part.slice(0, eq).trim()
+      if (k !== name) continue
+      return decodeURIComponent(part.slice(eq + 1))
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 function withCsrfHeader(init: RequestInit): RequestInit {

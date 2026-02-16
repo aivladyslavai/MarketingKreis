@@ -3,6 +3,17 @@ import { NextRequest, NextResponse } from "next/server"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
+function appendSetCookies(res: Response, next: NextResponse) {
+  const anyHeaders: any = res.headers as any
+  const arr: string[] | undefined = anyHeaders?.getSetCookie?.()
+  if (Array.isArray(arr) && arr.length) {
+    for (const c of arr) next.headers.append("set-cookie", c)
+    return
+  }
+  const sc = res.headers.get("set-cookie")
+  if (sc) next.headers.append("set-cookie", sc)
+}
+
 function getBackendUrl() {
   const fromEnv = process.env.BACKEND_URL
   if (fromEnv) return fromEnv.replace(/\/$/, "")
@@ -30,8 +41,7 @@ export async function POST(req: NextRequest) {
 
     const text = await backendRes.text()
     const resp = new NextResponse(text, { status: backendRes.status })
-    const setCookie = backendRes.headers.get("set-cookie")
-    if (setCookie) resp.headers.set("set-cookie", setCookie)
+    appendSetCookies(backendRes, resp)
 
     // Forward backend redirect hint, if any
     const redirectTo = backendRes.headers.get("X-Redirect-To")

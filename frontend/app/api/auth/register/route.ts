@@ -3,6 +3,17 @@ import { NextRequest, NextResponse } from "next/server"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
+function appendSetCookies(res: Response, next: NextResponse) {
+  const anyHeaders: any = res.headers as any
+  const arr: string[] | undefined = anyHeaders?.getSetCookie?.()
+  if (Array.isArray(arr) && arr.length) {
+    for (const c of arr) next.headers.append("set-cookie", c)
+    return
+  }
+  const sc = res.headers.get("set-cookie")
+  if (sc) next.headers.append("set-cookie", sc)
+}
+
 function getBackendUrl() {
   const fromEnv = process.env.BACKEND_URL
   if (fromEnv) return fromEnv.replace(/\/$/, "")
@@ -25,7 +36,6 @@ export async function POST(req: NextRequest) {
       signal: controller.signal,
     })
     clearTimeout(t)
-    const setCookie = r.headers.get('set-cookie') || undefined
     const text = await r.text()
 
     // Try to parse and auto-verify on the server to avoid exposing raw token to the client
@@ -48,7 +58,7 @@ export async function POST(req: NextRequest) {
           } catch {}
         }
         const resp = NextResponse.json(json, { status: r.status })
-        if (setCookie) resp.headers.set('set-cookie', setCookie)
+        appendSetCookies(r, resp)
         return resp
       } catch {
         // fallthrough: backend returned non-JSON
@@ -56,7 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     const resp = new NextResponse(text, { status: r.status })
-    if (setCookie) resp.headers.set('set-cookie', setCookie)
+    appendSetCookies(r, resp)
     return resp
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Unexpected error" }, { status: 500 })
