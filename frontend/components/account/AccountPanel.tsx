@@ -60,6 +60,9 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
   const [totpQrDataUrl, setTotpQrDataUrl] = React.useState<string>("")
   const [recoveryRemaining, setRecoveryRemaining] = React.useState<number>(0)
   const [recoveryCodes, setRecoveryCodes] = React.useState<string[]>([])
+  const [totpLiveCode, setTotpLiveCode] = React.useState<string>("")
+  const [totpSecondsLeft, setTotpSecondsLeft] = React.useState<number>(0)
+  const [totpLiveAvailable, setTotpLiveAvailable] = React.useState<boolean>(true)
 
   React.useEffect(() => {
     // Reduced motion
@@ -182,7 +185,91 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
     setTotpQrDataUrl("")
     setTotpCode("")
     setRecoveryCodes([])
+    setTotpLiveCode("")
+    setTotpSecondsLeft(0)
   }
+
+  // TOTP codes rotate every 30s (standard). QR is static.
+  React.useEffect(() => {
+    if (!totpSetupOpen) return
+    if (!totpSetupSecret) return
+    if (recoveryCodes.length) return
+
+    let disposed = false
+    const STEP = 30
+    const ALPH = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+
+    const base32ToBytes = (b32: string): Uint8Array => {
+      const s = (b32 || "").trim().replace(/\s+/g, "").toUpperCase().replace(/=+$/g, "")
+      let bits = 0
+      let value = 0
+      const out: number[] = []
+      for (const ch of s) {
+        const idx = ALPH.indexOf(ch)
+        if (idx < 0) continue
+        value = (value << 5) | idx
+        bits += 5
+        if (bits >= 8) {
+          out.push((value >>> (bits - 8)) & 0xff)
+          bits -= 8
+        }
+      }
+      return new Uint8Array(out)
+    }
+
+    const computeCode = async (t: number) => {
+      try {
+        const cryptoAny: any = (globalThis as any).crypto
+        if (!cryptoAny?.subtle) {
+          setTotpLiveAvailable(false)
+          return
+        }
+        const keyBytes = base32ToBytes(totpSetupSecret)
+        if (!keyBytes.length) {
+          setTotpLiveAvailable(false)
+          return
+        }
+        const counter = Math.floor(t / STEP)
+        const msg = new Uint8Array(8)
+        let c = counter
+        for (let i = 7; i >= 0; i--) {
+          msg[i] = c & 0xff
+          c = Math.floor(c / 256)
+        }
+        const key = await cryptoAny.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-1" }, false, ["sign"])
+        const sig = new Uint8Array(await cryptoAny.subtle.sign("HMAC", key, msg))
+        const offset = sig[sig.length - 1] & 0x0f
+        const bin =
+          ((sig[offset] & 0x7f) << 24) |
+          ((sig[offset + 1] & 0xff) << 16) |
+          ((sig[offset + 2] & 0xff) << 8) |
+          (sig[offset + 3] & 0xff)
+        const code = String(bin % 1_000_000).padStart(6, "0")
+        if (!disposed) {
+          setTotpLiveAvailable(true)
+          setTotpLiveCode(code)
+        }
+      } catch {
+        if (!disposed) setTotpLiveAvailable(false)
+      }
+    }
+
+    const tick = () => {
+      const now = Math.floor(Date.now() / 1000)
+      const left = STEP - (now % STEP)
+      setTotpSecondsLeft(left === STEP ? 0 : left)
+      // compute on first run and on step boundaries (or when code missing)
+      if (left === STEP || left === 1 || !totpLiveCode) computeCode(now)
+    }
+
+    tick()
+    const id = window.setInterval(tick, 1000)
+    return () => {
+      disposed = true
+      window.clearInterval(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totpSetupOpen, totpSetupSecret, recoveryCodes.length])
 
   const startTotpSetup = async () => {
     try {
@@ -843,6 +930,9 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                                   <QrCode className="h-4 w-4" />
                                   QR‑Code
                                 </div>
+                                <div className="mt-1 text-[11px] text-slate-400">
+                                  Hinweis: Der QR‑Code ist statisch. Der 6‑stellige Code rotiert automatisch.
+                                </div>
                                 <div className="mt-2 flex items-center justify-center">
                                   {totpQrDataUrl ? (
                                     // eslint-disable-next-line @next/next/no-img-element
@@ -905,6 +995,44 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                                   </div>
                                 </details>
                               </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-xs font-semibold text-slate-200">Aktueller Code</div>
+                                  <div className="mt-1 text-[11px] text-slate-400">
+                                    Aktualisiert automatisch (Standard: 30 Sekunden).
+                                  </div>
+                                </div>
+                                <span className="rounded-full border border-white/10 bg-slate-950/30 px-2 py-0.5 text-[11px] text-slate-200">
+                                  Next in: <span className="font-semibold">{Math.max(0, totpSecondsLeft)}</span>s
+                                </span>
+                              </div>
+                              <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-950/30 px-4 py-3">
+                                <div className="font-mono text-xl tracking-[0.25em] text-slate-100">
+                                  {totpLiveAvailable ? (totpLiveCode || "------") : "------"}
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-9 text-[11px] border-white/20 text-slate-200"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(totpLiveCode || "")
+                                    } catch {}
+                                  }}
+                                  disabled={!totpLiveAvailable || !totpLiveCode}
+                                >
+                                  <Copy className="h-3.5 w-3.5 mr-2" />
+                                  Copy
+                                </Button>
+                              </div>
+                              {!totpLiveAvailable ? (
+                                <div className="mt-2 text-[11px] text-slate-500">
+                                  Live‑Code kann in diesem Browser nicht berechnet werden. Nutze einfach den Code aus deiner Authenticator‑App.
+                                </div>
+                              ) : null}
                             </div>
 
                             <FormField
