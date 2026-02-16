@@ -377,7 +377,7 @@ def _run_deal_won_automation(db: Session, deal: Deal, actor: User) -> None:
         return
 
     for rule in rules:
-        tpl: ContentTemplate | None = None
+        tpl: Optional[ContentTemplate] = None
         if getattr(rule, "template_id", None):
             tpl = (
                 db.query(ContentTemplate)

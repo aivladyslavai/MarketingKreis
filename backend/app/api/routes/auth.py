@@ -10,6 +10,7 @@ from datetime import timedelta, datetime, timezone
 import uuid
 import secrets
 from jose import jwt
+from typing import Optional
 from app.api.deps import get_current_user, get_org_id, require_role
 from app.models.organization import Organization
 from app.models.user import User, UserRole
@@ -23,6 +24,9 @@ from app.core.rate_limit import (
     enforce_bruteforce_protection,
     record_login_failure,
     record_login_success,
+    enforce_2fa_bruteforce_protection,
+    record_2fa_failure,
+    record_2fa_success,
     get_client_ip,
 )
 
@@ -43,8 +47,8 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _get_session_id_from_cookies(request: Request, settings) -> str | None:
-    sid: str | None = None
+def _get_session_id_from_cookies(request: Request, settings) -> Optional[str]:
+    sid: Optional[str] = None
     raw_access = request.cookies.get(settings.cookie_access_name)
     if raw_access:
         try:
@@ -320,7 +324,7 @@ def login_2fa(body: Login2FARequest, request: Request, response: Response, db: S
     enforce_rate_limit(
         request,
         scope="auth_2fa_ip",
-        limit=30,
+        limit=int(getattr(settings, "auth_2fa_rl_ip_per_minute", 30)),
         window_seconds=60,
     )
     try:
@@ -340,6 +344,23 @@ def login_2fa(body: Login2FARequest, request: Request, response: Response, db: S
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if user.role != UserRole.admin or not bool(getattr(user, "totp_enabled", False)):
         raise HTTPException(status_code=403, detail="2FA not enabled")
+
+    # Additional brute-force protection for 2FA code guessing (separate counters).
+    enforce_rate_limit(
+        request,
+        scope="auth_2fa_user",
+        limit=int(getattr(settings, "auth_2fa_rl_user_per_minute", 10)),
+        window_seconds=60,
+        discriminator=str(user_id),
+    )
+    enforce_2fa_bruteforce_protection(
+        request,
+        user_id=int(user_id),
+        max_failures=int(getattr(settings, "auth_bruteforce_max_failures", 8)),
+        window_seconds=int(getattr(settings, "auth_bruteforce_window_seconds", 15 * 60)),
+        lockout_seconds=int(getattr(settings, "auth_bruteforce_lockout_seconds", 15 * 60)),
+    )
+
     secret = decrypt_text(getattr(user, "totp_secret_enc", None))
     if not secret:
         raise HTTPException(status_code=500, detail="2FA misconfigured for this user")
@@ -362,11 +383,19 @@ def login_2fa(body: Login2FARequest, request: Request, response: Response, db: S
         if used_recovery:
             user.totp_recovery_codes = new_codes
         else:
+            record_2fa_failure(
+                request,
+                user_id=int(user_id),
+                max_failures=int(getattr(settings, "auth_bruteforce_max_failures", 8)),
+                window_seconds=int(getattr(settings, "auth_bruteforce_window_seconds", 15 * 60)),
+                lockout_seconds=int(getattr(settings, "auth_bruteforce_lockout_seconds", 15 * 60)),
+            )
             raise HTTPException(status_code=401, detail="Invalid 2FA code")
 
     # anti-replay: advance last_used_step
     if not used_recovery:
         user.totp_last_used_step = int(r.matched_step)
+    record_2fa_success(request, user_id=int(user_id))
     db.add(user)
 
     now = _utcnow()
@@ -449,9 +478,16 @@ def totp_enable(body: TotpEnableRequest, request: Request, db: Session = Depends
     user.totp_enabled = True
     user.totp_confirmed_at = _utcnow()
     user.totp_last_used_step = int(r.matched_step)
+    # Generate recovery codes on first enable if missing.
+    existing = getattr(user, "totp_recovery_codes", None)
+    recovery_codes: list[str] = []
+    if not (isinstance(existing, list) and len(existing) > 0):
+        recovery_codes = _generate_recovery_codes(10)
+        stored = [{"hash": hmac_sha256_hex(c.replace("-", "")), "used_at": None} for c in recovery_codes]
+        user.totp_recovery_codes = stored
     db.add(user)
     db.commit()
-    return {"ok": True, "enabled": True}
+    return {"ok": True, "enabled": True, "recovery_codes": recovery_codes}
 
 
 class TotpDisableRequest(BaseModel):
@@ -632,8 +668,8 @@ def refresh_session(request: Request, response: Response, db: Session = Depends(
 class RegisterRequest(BaseModel):
     email: str
     password: str = Field(min_length=6)
-    name: str | None = None
-    token: str | None = None  # invite token when invite_only
+    name: Optional[str] = None
+    token: Optional[str] = None  # invite token when invite_only
 
 def _hash_password(pw: str) -> str:
     return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
@@ -675,7 +711,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
 
     # Mode enforcement / invited role
     invited_role = settings.default_role
-    invited_org_id: int | None = None
+    invited_org_id: Optional[int] = None
     create_new_org = False
     if settings.signup_mode == "invite_only":
         if not body.token:
@@ -739,7 +775,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
                 role = UserRole.user
 
     # Organization assignment
-    org_id: int | None = None
+    org_id: Optional[int] = None
     if total_users == 0:
         # Bootstrap default org (created by migration/bootstrap); create if missing.
         org = db.query(Organization).filter(Organization.id == 1).first()
@@ -952,7 +988,7 @@ def revoke_all_sessions(
 
 class InviteRequest(BaseModel):
     email: str
-    role: str | None = None
+    role: Optional[str] = None
     expires_minutes: int = 60 * 24 * 7  # 7 days
 
 @router.post("/invite")

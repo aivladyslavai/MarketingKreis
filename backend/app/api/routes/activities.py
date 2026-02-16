@@ -116,7 +116,7 @@ def create_activity(
             weight=activity_data.get("weight"),
             start_date=parse_date(activity_data.get("start")),
             end_date=parse_date(activity_data.get("end")),
-            status=(activity_data.get("status") or "ACTIVE").upper(),
+            status=normalize_activity_status_in(activity_data.get("status") or "ACTIVE"),
             owner_id=current_user.id,
             organization_id=org,
         )
@@ -183,7 +183,7 @@ def update_activity(
             activity.type = map_category_to_activity_type(raw_cat)
             activity.category_name = str(raw_cat)
         if "status" in activity_data:
-            activity.status = (activity_data.get("status") or "ACTIVE").upper()
+            activity.status = normalize_activity_status_in(activity_data.get("status") or "ACTIVE")
         if "start" in activity_data:
             activity.start_date = parse_date(activity_data.get("start"))
         if "end" in activity_data:
@@ -275,7 +275,21 @@ def map_activity_status(status: Optional[str]) -> str:
     if not status:
         return "ACTIVE"
     value = status.upper()
+    # Internal uses DONE, frontend expects COMPLETED
+    if value == "DONE":
+        return "COMPLETED"
+    allowed = {"PLANNED", "ACTIVE", "PAUSED", "CANCELLED", "COMPLETED"}
+    return value if value in allowed else "ACTIVE"
+
+
+def normalize_activity_status_in(status: Optional[str]) -> str:
+    """Normalize incoming status to DB values (backward compatible)."""
+    if not status:
+        return "ACTIVE"
+    value = str(status).upper()
     allowed = {"PLANNED", "ACTIVE", "PAUSED", "DONE", "CANCELLED", "COMPLETED"}
+    if value not in allowed:
+        return "ACTIVE"
     if value == "COMPLETED":
         return "DONE"
-    return value if value in allowed else "ACTIVE"
+    return value

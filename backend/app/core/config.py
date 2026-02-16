@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     admin_bootstrap_token: Optional[str] = Field(default=None, env="ADMIN_BOOTSTRAP_TOKEN")
     # Feature flags
     skip_email_verify: bool = Field(default=False, env="SKIP_EMAIL_VERIFY")
+    section_access_enabled: bool = Field(default=True, env="SECTION_ACCESS_ENABLED")
 
     # Content reminders (cron-safe)
     reminders_cron_token: Optional[str] = Field(default=None, env="REMINDERS_CRON_TOKEN")
@@ -110,6 +111,10 @@ class Settings(BaseSettings):
     auth_reset_confirm_rl_ip_per_hour: int = Field(default=60, env="AUTH_RESET_CONFIRM_RL_IP_PER_HOUR")
     auth_verify_rl_ip_per_hour: int = Field(default=120, env="AUTH_VERIFY_RL_IP_PER_HOUR")
     auth_refresh_rl_ip_per_minute: int = Field(default=60, env="AUTH_REFRESH_RL_IP_PER_MINUTE")
+
+    # 2FA (TOTP) step-up rate limits
+    auth_2fa_rl_ip_per_minute: int = Field(default=30, env="AUTH_2FA_RL_IP_PER_MINUTE")
+    auth_2fa_rl_user_per_minute: int = Field(default=10, env="AUTH_2FA_RL_USER_PER_MINUTE")
 
     # Brute-force protection (login failures)
     auth_bruteforce_max_failures: int = Field(default=8, env="AUTH_BRUTEFORCE_MAX_FAILURES")

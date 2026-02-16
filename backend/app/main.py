@@ -70,7 +70,8 @@ def create_app() -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
 
     # RBAC-lite (per section) enforcement
-    app.add_middleware(SectionAccessMiddleware)
+    if getattr(settings, "section_access_enabled", True):
+        app.add_middleware(SectionAccessMiddleware)
 
     # CSRF middleware (prod-only)
     if settings.environment in {"production", "staging"}:

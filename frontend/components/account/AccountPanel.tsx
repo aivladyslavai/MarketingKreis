@@ -720,7 +720,11 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                               onClick={async () => {
                                 try {
                                   setTotpError(null)
-                                  await api("/auth/2fa/enable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpCode }) })
+                                  const j = await api("/auth/2fa/enable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpCode }) })
+                                  const rc = Array.isArray((j as any)?.recovery_codes)
+                                    ? (j as any).recovery_codes.map(String)
+                                    : []
+                                  if (rc.length) setRecoveryCodes(rc)
                                   setTotpCode("")
                                   setTotpSetupSecret("")
                                   setTotpSetupUri("")

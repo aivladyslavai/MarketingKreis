@@ -245,3 +245,92 @@ def record_login_success(request: Request, *, email: str) -> None:
         _mem_counters.pop(fail_key, None)
         _mem_counters.pop(lock_key, None)
 
+
+def enforce_2fa_bruteforce_protection(
+    request: Request,
+    *,
+    user_id: int,
+    max_failures: int,
+    window_seconds: int,
+    lockout_seconds: int,
+) -> None:
+    """
+    Best-effort protection against guessing 2FA codes.
+    Uses separate keys from password login counters.
+    """
+    settings = get_settings()
+    if getattr(settings, "auth_rate_limit_enabled", True) is False:
+        return
+
+    ip = get_client_ip(request)
+    uid = _hash(str(user_id))
+    lock_key = f"mk:2fa:bf:lock:{uid}:{ip}"
+
+    client = _get_redis_client()
+    if client is not None:
+        try:
+            if client.exists(lock_key):
+                ttl = int(client.ttl(lock_key))
+                headers = {"Retry-After": str(max(0, ttl))} if ttl > 0 else None
+                raise HTTPException(status_code=429, detail="Too many 2FA attempts", headers=headers)
+            return
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    now = time.time()
+    with _mem_lock:
+        reset_at, _count = _mem_counters.get(lock_key, (0.0, 0))
+        if reset_at and now < reset_at:
+            retry_after = int(reset_at - now)
+            raise HTTPException(status_code=429, detail="Too many 2FA attempts", headers={"Retry-After": str(retry_after)})
+
+
+def record_2fa_failure(
+    request: Request,
+    *,
+    user_id: int,
+    max_failures: int,
+    window_seconds: int,
+    lockout_seconds: int,
+) -> None:
+    ip = get_client_ip(request)
+    uid = _hash(str(user_id))
+    fail_key = f"mk:2fa:bf:fail:{uid}:{ip}"
+    lock_key = f"mk:2fa:bf:lock:{uid}:{ip}"
+
+    client = _get_redis_client()
+    if client is not None:
+        try:
+            n = int(client.incr(fail_key))
+            if n == 1:
+                client.expire(fail_key, int(window_seconds))
+            if n >= max_failures:
+                client.set(lock_key, "1", ex=int(lockout_seconds))
+        except Exception:
+            pass
+
+    res = _mem_hit(fail_key, max_failures, window_seconds)
+    if not res.allowed:
+        with _mem_lock:
+            _mem_counters[lock_key] = (time.time() + lockout_seconds, 1)
+
+
+def record_2fa_success(request: Request, *, user_id: int) -> None:
+    ip = get_client_ip(request)
+    uid = _hash(str(user_id))
+    fail_key = f"mk:2fa:bf:fail:{uid}:{ip}"
+    lock_key = f"mk:2fa:bf:lock:{uid}:{ip}"
+
+    client = _get_redis_client()
+    if client is not None:
+        try:
+            client.delete(fail_key, lock_key)
+        except Exception:
+            pass
+
+    with _mem_lock:
+        _mem_counters.pop(fail_key, None)
+        _mem_counters.pop(lock_key, None)
+

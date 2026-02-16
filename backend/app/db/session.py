@@ -1,6 +1,7 @@
 import threading
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
@@ -9,7 +10,11 @@ from app.core.config import get_settings
 settings = get_settings()
 
 db_url = settings.database_url
-is_sqlite = db_url.startswith("sqlite:")
+try:
+    is_sqlite = make_url(db_url).get_backend_name() == "sqlite"
+except Exception:
+    # Fallback: handle values like "sqlite+pysqlite:///:memory:"
+    is_sqlite = db_url.startswith("sqlite")
 
 # Create engine — tune params for SQLite vs. others
 if is_sqlite:

@@ -3,13 +3,14 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Response
 from sqlalchemy import text
+from typing import Optional
 
 from app.core.config import get_settings
 from app.db.session import engine
 
 router = APIRouter(tags=["health"])
 
-def _release() -> str | None:
+def _release() -> Optional[str]:
     # Render provides commit SHA in RENDER_GIT_COMMIT for connected repos
     return os.getenv("RENDER_GIT_COMMIT") or os.getenv("GIT_SHA") or None
 
