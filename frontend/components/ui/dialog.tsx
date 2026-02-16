@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 
 type DialogProps = {
   open?: boolean
@@ -10,10 +11,14 @@ type DialogProps = {
 
 export function Dialog({ open = false, onOpenChange, children }: DialogProps) {
   if (!open) return null
-  return (
+  // Render in a portal to avoid clipping by parent containers (overflow/transform)
+  // e.g. account drawers / side panels.
+  if (typeof document === "undefined") return null
+
+  const node = (
     <div
-      // Mobile UX: bottom-sheet style on small screens, centered on >=sm.
-      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-3 sm:p-6 overscroll-contain"
+      // Centered modal on all screen sizes (user-requested).
+      className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6 overscroll-contain"
       onClick={() => onOpenChange?.(false)}
     >
       <div className="absolute inset-0 bg-black/50" />
@@ -29,12 +34,14 @@ export function Dialog({ open = false, onOpenChange, children }: DialogProps) {
           paddingBottom: "max(env(safe-area-inset-bottom), 12px)",
           paddingTop: "max(env(safe-area-inset-top), 0px)",
         }}
-        onClick={(e)=> e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         {children}
       </div>
     </div>
   )
+
+  return createPortal(node, document.body)
 }
 
 export function DialogContent({ children, className }: { children?: React.ReactNode; className?: string }) {
