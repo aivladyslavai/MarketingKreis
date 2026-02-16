@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     # Auth & signup
     signup_mode: str = Field(default="invite_only", env="SIGNUP_MODE")  # invite_only | open
     default_role: str = Field(default="user", env="DEFAULT_ROLE")
+    # Admin step-up (2FA) window for sensitive operations
+    admin_step_up_max_age_minutes: int = Field(default=12 * 60, env="ADMIN_STEP_UP_MAX_AGE_MINUTES")
 
     # SMTP (optional)
     smtp_host: Optional[str] = Field(default=None, env="SMTP_HOST")

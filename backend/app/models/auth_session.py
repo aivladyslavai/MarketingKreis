@@ -26,6 +26,8 @@ class AuthSession(Base):
     revoked_reason = Column(String(255), nullable=True)
 
     last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    # When an admin successfully completes a 2FA step-up for this session.
+    mfa_verified_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

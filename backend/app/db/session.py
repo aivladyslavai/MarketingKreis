@@ -125,6 +125,8 @@ def _ensure_production_schema() -> None:
 
                 # Upload ownership (new hardening)
                 conn.execute(text("alter table if exists uploads add column if not exists owner_id integer;"))
+                # Admin 2FA step-up tracking on sessions
+                conn.execute(text("alter table auth_sessions add column if not exists mfa_verified_at timestamptz;"))
                 # Indexes are intentionally not created here to keep this path fast.
                 # Proper indexes should be applied via Alembic or DB_BOOTSTRAP_ON_STARTUP.
         except Exception:

@@ -54,6 +54,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
   const [totpError, setTotpError] = React.useState<string | null>(null)
   const [totpSetupOpen, setTotpSetupOpen] = React.useState(false)
   const [totpSetupLoading, setTotpSetupLoading] = React.useState(false)
+  const [totpStepUpLoading, setTotpStepUpLoading] = React.useState(false)
   const [totpSetupSecret, setTotpSetupSecret] = React.useState<string>("")
   const [totpSetupUri, setTotpSetupUri] = React.useState<string>("")
   const [totpCode, setTotpCode] = React.useState<string>("")
@@ -789,6 +790,33 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                             Remaining: <span className="font-semibold">{recoveryRemaining}</span>
                           </span>
                         </div>
+                        <Button
+                          variant="outline"
+                          className="h-11 w-full border-white/20 bg-white/5 hover:bg-white/10 text-slate-100"
+                          onClick={async () => {
+                            try {
+                              setTotpError(null)
+                              setTotpStepUpLoading(true)
+                              await api("/auth/2fa/stepup", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ code: totpCode }),
+                              })
+                              setTotpCode("")
+                              // Refresh status so UI stays consistent
+                              await loadTotpStatus()
+                            } catch (e: any) {
+                              setTotpError(e?.message || "Step-up failed")
+                            } finally {
+                              setTotpStepUpLoading(false)
+                            }
+                          }}
+                          disabled={!totpCode || totpStepUpLoading}
+                        >
+                          <Shield className="h-4 w-4 mr-2" />
+                          Für Admin‑Aktionen bestätigen
+                        </Button>
+
                         <Button
                           variant="outline"
                           className="h-11 w-full border-rose-400/30 bg-rose-500/10 hover:bg-rose-500/15 text-rose-100"

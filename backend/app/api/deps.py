@@ -67,6 +67,66 @@ def require_role(*allowed_roles: UserRole) -> Callable:
     return role_checker
 
 
+def require_admin_step_up() -> Callable:
+    """
+    Require a recent 2FA step-up for sensitive admin operations.
+
+    - If user is not admin -> 403 (shouldn't be used).
+    - If admin has no TOTP enabled -> allow (backward compatible).
+    - If admin has TOTP enabled -> require session.mfa_verified_at within configured window.
+    """
+
+    def checker(request: Request, db: Session = Depends(get_db_session), user: User = Depends(require_role(UserRole.admin))) -> User:
+        # If 2FA is not enabled, do not block legacy admins.
+        if not bool(getattr(user, "totp_enabled", False)):
+            return user
+
+        settings = get_settings()
+        token = request.cookies.get(settings.cookie_access_name)
+        if not token:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+            if payload.get("typ") != "access":
+                raise HTTPException(status_code=401, detail="Invalid token")
+            sid = str(payload.get("sid") or "")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        if not sid:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        sess = db.get(AuthSession, sid)
+        if not sess or sess.revoked_at is not None:
+            raise HTTPException(status_code=401, detail="Session revoked")
+
+        verified_at = getattr(sess, "mfa_verified_at", None)
+        if not verified_at:
+            raise HTTPException(status_code=428, detail="2FA step-up required")
+
+        try:
+            max_age = int(getattr(settings, "admin_step_up_max_age_minutes", 12 * 60))
+        except Exception:
+            max_age = 12 * 60
+
+        now = datetime.now(timezone.utc)
+        # Ensure timezone-aware comparison
+        try:
+            if verified_at.tzinfo is None:
+                verified_at = verified_at.replace(tzinfo=timezone.utc)
+        except Exception:
+            pass
+
+        if max_age > 0 and (now - verified_at) > timedelta(minutes=max_age):
+            raise HTTPException(status_code=428, detail="2FA step-up required")
+
+        return user
+
+    return checker
+
+
 def is_demo_user(user: User) -> bool:
     """Return True if the user is configured as demo read-only."""
     settings = get_settings()

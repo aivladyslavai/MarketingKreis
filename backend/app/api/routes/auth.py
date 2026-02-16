@@ -11,7 +11,7 @@ import uuid
 import secrets
 from jose import jwt
 from typing import Optional
-from app.api.deps import get_current_user, get_org_id, require_role
+from app.api.deps import get_current_user, get_org_id, require_admin_step_up, require_role
 from app.models.organization import Organization
 from app.models.user import User, UserRole
 from app.models.auth_session import AuthSession, AuthRefreshToken
@@ -414,6 +414,8 @@ def login_2fa(body: Login2FARequest, request: Request, response: Response, db: S
         issued_at=now,
         expires_at=now + timedelta(minutes=settings.refresh_token_expire_minutes),
     )
+    # Mark this session as 2FA-verified (admin step-up)
+    sess.mfa_verified_at = now
     db.add(sess)
     db.add(rt)
     db.commit()
@@ -485,9 +487,101 @@ def totp_enable(body: TotpEnableRequest, request: Request, db: Session = Depends
         recovery_codes = _generate_recovery_codes(10)
         stored = [{"hash": hmac_sha256_hex(c.replace("-", "")), "used_at": None} for c in recovery_codes]
         user.totp_recovery_codes = stored
+
+    # "2FA as a product": when enabling, revoke other active sessions so no legacy sessions survive.
+    settings = get_settings()
+    current_sid = _get_session_id_from_cookies(request, settings)
+    now = _utcnow()
+    revoked_count = 0
+    try:
+        q = db.query(AuthSession).filter(AuthSession.user_id == int(user.id), AuthSession.revoked_at.is_(None))
+        if current_sid:
+            q = q.filter(AuthSession.id != current_sid)
+        rows = q.all()
+        for s in rows:
+            s.revoked_at = now
+            s.revoked_reason = "2fa_enabled"
+            db.add(s)
+        session_ids = [s.id for s in rows]
+        if session_ids:
+            db.query(AuthRefreshToken).filter(
+                AuthRefreshToken.session_id.in_(session_ids),
+                AuthRefreshToken.revoked_at.is_(None),
+            ).update({"revoked_at": now}, synchronize_session=False)
+        revoked_count = len(rows)
+    except Exception:
+        # best-effort; never block enabling 2FA
+        revoked_count = 0
+
+    # Mark current session as 2FA-verified too (since the user just entered a valid code).
+    try:
+        if current_sid:
+            sess = db.get(AuthSession, current_sid)
+            if sess and sess.revoked_at is None:
+                sess.mfa_verified_at = now
+                db.add(sess)
+    except Exception:
+        pass
+
     db.add(user)
     db.commit()
-    return {"ok": True, "enabled": True, "recovery_codes": recovery_codes}
+    return {"ok": True, "enabled": True, "recovery_codes": recovery_codes, "revoked_other_sessions": revoked_count}
+
+
+class TotpStepUpRequest(BaseModel):
+    code: str
+
+
+@router.post("/2fa/stepup")
+def totp_stepup(body: TotpStepUpRequest, request: Request, db: Session = Depends(get_db_session)):
+    """
+    Step-up endpoint for already authenticated admins.
+    Verifies a TOTP/recovery code and marks the current session as 2FA-verified.
+    """
+    settings = get_settings()
+    user = get_current_user(request, db)
+    if user.role != UserRole.admin or not bool(getattr(user, "totp_enabled", False)):
+        raise HTTPException(status_code=403, detail="2FA not enabled")
+
+    sid = _get_session_id_from_cookies(request, settings)
+    if not sid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    sess = db.get(AuthSession, sid)
+    if not sess or sess.revoked_at is not None:
+        raise HTTPException(status_code=401, detail="Session revoked")
+
+    secret = decrypt_text(getattr(user, "totp_secret_enc", None))
+    if not secret:
+        raise HTTPException(status_code=500, detail="2FA misconfigured for this user")
+
+    r = verify_totp(secret, body.code, window=1, last_used_step=getattr(user, "totp_last_used_step", None))
+    used_recovery = False
+    if not r.ok or r.matched_step is None:
+        norm = str(body.code or "").strip().replace(" ", "").replace("-", "")
+        digest = hmac_sha256_hex(norm)
+        codes = getattr(user, "totp_recovery_codes", None) or []
+        new_codes = []
+        for item in codes if isinstance(codes, list) else []:
+            h = (item or {}).get("hash")
+            if h == digest and not (item or {}).get("used_at"):
+                new_codes.append({**(item or {}), "used_at": _utcnow().isoformat()})
+                used_recovery = True
+            else:
+                new_codes.append(item)
+        if used_recovery:
+            user.totp_recovery_codes = new_codes
+        else:
+            raise HTTPException(status_code=401, detail="Invalid 2FA code")
+
+    # anti-replay: advance last_used_step
+    if not used_recovery and r.matched_step is not None:
+        user.totp_last_used_step = int(r.matched_step)
+
+    sess.mfa_verified_at = _utcnow()
+    db.add(user)
+    db.add(sess)
+    db.commit()
+    return {"ok": True, "verified_at": sess.mfa_verified_at}
 
 
 class TotpDisableRequest(BaseModel):
@@ -995,7 +1089,7 @@ class InviteRequest(BaseModel):
 def create_invite(
     body: InviteRequest,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_admin_step_up()),
 ):
     settings = get_settings()
     role = body.role or settings.default_role

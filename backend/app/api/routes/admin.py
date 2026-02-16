@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.api.deps import get_db_session, get_current_user, get_org_id, require_role
+from app.api.deps import get_db_session, get_current_user, get_org_id, require_admin_step_up, require_role
 from app.models.user import User, UserRole
 from app.models.company import Company
 from app.models.contact import Contact
@@ -240,7 +240,7 @@ def update_user_admin(
     user_id: int,
     payload: AdminUserUpdate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_admin_step_up()),
 ) -> AdminUserOut:
     org = get_org_id(current_user)
     user = db.query(User).filter(User.id == user_id, User.organization_id == org).first()
@@ -346,7 +346,7 @@ def list_sessions_admin(
 def revoke_session_admin(
     session_id: str,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_admin_step_up()),
 ) -> Dict[str, Any]:
     org = get_org_id(current_user)
     sess = (
@@ -373,7 +373,7 @@ def revoke_session_admin(
 def revoke_all_sessions_for_user(
     user_id: int,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_admin_step_up()),
 ) -> Dict[str, Any]:
     org = get_org_id(current_user)
     u = db.query(User).filter(User.id == int(user_id), User.organization_id == org).first()
@@ -441,7 +441,7 @@ def run_ops_alerts_system(request: Request, db: Session = Depends(get_db_session
 def delete_user_admin(
     user_id: int,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_admin_step_up()),
 ) -> Dict[str, Any]:
     org = get_org_id(current_user)
     user = db.query(User).filter(User.id == user_id, User.organization_id == org).first()
@@ -512,7 +512,7 @@ class SeedDemoPayload(BaseModel):
 def seed_demo_admin(
     payload: SeedDemoPayload,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_admin_step_up()),
 ) -> Dict[str, Any]:
     """
     Create (or refresh) a full demo dataset and a demo account.
