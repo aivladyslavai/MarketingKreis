@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import get_settings
+from app.core.alerts import record_5xx_and_maybe_alert
 
 try:
     from prometheus_client import Counter, Histogram  # type: ignore
@@ -65,12 +66,22 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "path": request.url.path,
                 "route": route,
                 "status_code": response.status_code,
+                "status_class": int(response.status_code // 100),
                 "duration_ms": duration_ms,
                 "client_ip": request.client.host if request.client else None,
                 "user_agent": request.headers.get("user-agent"),
                 "release": os.getenv("RENDER_GIT_COMMIT") or os.getenv("GIT_SHA"),
             }
-            logging.getLogger("mk.http").info(json.dumps(payload, ensure_ascii=False))
+
+            # Log level by status family (focus on 4xx/5xx for аварийность)
+            logger = logging.getLogger("mk.http")
+            if response.status_code >= 500:
+                logger.error(json.dumps(payload, ensure_ascii=False))
+                record_5xx_and_maybe_alert(payload)
+            elif response.status_code >= 400:
+                logger.warning(json.dumps(payload, ensure_ascii=False))
+            else:
+                logger.info(json.dumps(payload, ensure_ascii=False))
 
             # Prometheus metrics (skip self-scrape + health)
             if route not in ("/metrics", "/health", "/healthz", "/readyz"):
@@ -91,12 +102,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "method": request.method,
                 "path": request.url.path,
                 "route": route,
+                "status_code": 500,
+                "status_class": 5,
                 "duration_ms": duration_ms,
                 "client_ip": request.client.host if request.client else None,
                 "user_agent": request.headers.get("user-agent"),
                 "release": os.getenv("RENDER_GIT_COMMIT") or os.getenv("GIT_SHA"),
             }
             logging.getLogger("mk.http").exception(json.dumps(payload, ensure_ascii=False))
+            # Also trigger ops alerting for unhandled exceptions
+            record_5xx_and_maybe_alert(payload)
             raise
 
 

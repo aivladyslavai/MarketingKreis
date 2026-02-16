@@ -31,6 +31,17 @@ services:
       # Optional
       - key: OPENAI_API_KEY
         value: ""
+      # Observability / alerts
+      - key: SENTRY_DSN
+        value: ""
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.05"
+      - key: METRICS_TOKEN
+        value: ""
+      - key: OPS_ALERTS_ENABLED
+        value: "false"
+      - key: OPS_ALERT_EMAILS
+        value: ""
 
   # Staging backend (production-like hardening, separate secrets/DB).
   # Create a separate Render service from this block and set real values in dashboard.
@@ -65,6 +76,17 @@ services:
         value: ""
       # Optional
       - key: OPENAI_API_KEY
+        value: ""
+      # Observability / alerts
+      - key: SENTRY_DSN
+        value: ""
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.05"
+      - key: METRICS_TOKEN
+        value: ""
+      - key: OPS_ALERTS_ENABLED
+        value: "false"
+      - key: OPS_ALERT_EMAILS
         value: ""
 
 
