@@ -3,6 +3,15 @@ import { NextRequest, NextResponse } from "next/server"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
+function getCookie(cookieHeader: string, name: string): string {
+  try {
+    const m = cookieHeader.match(new RegExp(`(?:^|; )${name.replace(/[-[\\]{}()*+?.,\\\\^$|#\\s]/g, "\\\\$&")}=([^;]*)`))
+    return m ? decodeURIComponent(m[1]) : ""
+  } catch {
+    return ""
+  }
+}
+
 function getBackendUrl() {
   const fromEnv = process.env.BACKEND_URL
   if (fromEnv) return fromEnv.replace(/\/$/, "")
@@ -19,7 +28,11 @@ async function forward(req: NextRequest, pathSegments: string[]) {
     const method = req.method.toUpperCase()
     const cookie = req.headers.get("cookie") || ""
     const contentType = req.headers.get("content-type") || ""
-    const csrf = req.headers.get("x-csrf-token") || ""
+    const csrfHeader = req.headers.get("x-csrf-token") || ""
+    // CSRF double-submit: if client forgot to set header, derive from cookie.
+    // This makes cookie-auth flows more robust (e.g. 2FA setup/enable).
+    const csrfCookie = cookie ? getCookie(cookie, "csrf_token") : ""
+    const csrf = csrfHeader || csrfCookie
 
     const headers: Record<string, string> = {}
     if (cookie) headers.cookie = cookie

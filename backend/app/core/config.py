@@ -3,6 +3,7 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings
 from pydantic import Field, validator
 from typing import Optional, Union
+from cryptography.fernet import Fernet
 
 
 class Settings(BaseSettings):
@@ -149,6 +150,14 @@ class Settings(BaseSettings):
             if not v or len(v.strip()) < 32:
                 raise ValueError(
                     "TOTP_ENCRYPTION_KEY must be set in production/staging (Fernet key). "
+                    "Generate with: python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+                )
+            # Validate it's actually a Fernet key (urlsafe base64 32 bytes)
+            try:
+                Fernet(v.strip().encode("utf-8"))
+            except Exception:
+                raise ValueError(
+                    "TOTP_ENCRYPTION_KEY is not a valid Fernet key. "
                     "Generate with: python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
                 )
         return v.strip() if isinstance(v, str) else v

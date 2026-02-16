@@ -4,6 +4,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from app.core.config import get_settings
 import re
+import logging
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):
@@ -38,6 +39,17 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             csrf_cookie = (request.cookies.get(settings.cookie_csrf_name) or "").strip()
             csrf_header = (request.headers.get("x-csrf-token") or "").strip()
             if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+                try:
+                    logging.getLogger("mk.http").warning(
+                        "csrf_blocked token_mismatch method=%s path=%s has_auth=%s cookie_present=%s header_present=%s",
+                        request.method,
+                        request.url.path,
+                        True,
+                        bool(csrf_cookie),
+                        bool(csrf_header),
+                    )
+                except Exception:
+                    pass
                 return Response("Forbidden (CSRF token)", status_code=403)
 
         origin = request.headers.get("origin") or ""
@@ -48,6 +60,15 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 # explicitly allowed by regex
                 pass
             elif not any(origin.startswith(a) for a in self.allowed):
+                try:
+                    logging.getLogger("mk.http").warning(
+                        "csrf_blocked origin method=%s path=%s origin=%s",
+                        request.method,
+                        request.url.path,
+                        origin,
+                    )
+                except Exception:
+                    pass
                 return Response("Forbidden (CSRF origin)", status_code=403)
 
         if referer:
@@ -55,6 +76,15 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 # explicitly allowed by regex
                 pass
             elif not any(referer.startswith(a) for a in self.allowed):
+                try:
+                    logging.getLogger("mk.http").warning(
+                        "csrf_blocked referer method=%s path=%s referer=%s",
+                        request.method,
+                        request.url.path,
+                        referer,
+                    )
+                except Exception:
+                    pass
                 return Response("Forbidden (CSRF referer)", status_code=403)
 
         return await call_next(request)
