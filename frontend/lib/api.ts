@@ -5,6 +5,21 @@
 const envBase = process.env.NEXT_PUBLIC_API_URL
 export const apiBase = envBase && envBase.startsWith("/") ? envBase : "/api"
 
+// Guardrail: absolute NEXT_PUBLIC_API_URL in production is almost always a bug.
+// It breaks cookie auth (especially Safari/iOS) because cookies will not be sent
+// cross-site, and can bypass our Next.js proxy hardening.
+if (
+  process.env.NODE_ENV === "production" &&
+  envBase &&
+  !envBase.startsWith("/") &&
+  // tolerate undefined / empty
+  String(envBase || "").trim() !== ""
+) {
+  throw new Error(
+    `Invalid NEXT_PUBLIC_API_URL="${envBase}". In production it must be a relative path like "/api" (same-origin).`
+  )
+}
+
 const MK_ADMIN_STEPUP_EVENT = "mk:admin-stepup-required"
 
 function getCookie(name: string): string | null {
