@@ -15,6 +15,7 @@ import { ResponsiveContainer, AreaChart, Area } from "recharts"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { reportsAPI } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function ReportsPage() {
   const toYMD = (d: Date) => {
@@ -35,6 +36,7 @@ export default function ReportsPage() {
   const [genLoading, setGenLoading] = useState(false)
   const [reportHtml, setReportHtml] = useState<string>("")
   const { openModal, closeModal } = useModal()
+  const { toast } = useToast()
   const { user } = useAuth()
   const canManageReports = user?.role === "admin" || user?.role === "editor"
   const [compare, setCompare] = useState<"none" | "prev" | "yoy">("none")
@@ -509,7 +511,7 @@ export default function ReportsPage() {
             try {
               setGenLoading(true)
               const ff = (()=>{ try { return JSON.parse(localStorage.getItem('featureFlags')||'{}') } catch { return {} } })()
-              const res = await fetch('/api/reports/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+              const res = await authFetch('/reports/generate', { method: 'POST', body: JSON.stringify({
                 from, to,
                 options: {
                   compare,
@@ -525,9 +527,13 @@ export default function ReportsPage() {
                   },
                 },
               }) })
-              const j = await res.json()
-              if (!res.ok) throw new Error(j?.error || res.statusText)
+              const j = await res.json().catch(() => ({}))
+              if (!res.ok) throw new Error((j as any)?.error || (j as any)?.detail || res.statusText)
               setReportHtml(String(j?.html || ''))
+              toast({
+                title: "Report generiert",
+                description: "Preview öffnen oder HTML/PDF herunterladen.",
+              })
               // Persist run history for audit/executive repeatability
               try {
                 const tplId = selectedTemplateId ? Number(selectedTemplateId) : null
@@ -543,7 +549,11 @@ export default function ReportsPage() {
                 // best-effort; do not block UX
               }
             } catch (e) {
-              alert((e as any)?.message || 'Report generation failed')
+              toast({
+                title: "Report fehlgeschlagen",
+                description: (e as any)?.message || "Report generation failed",
+                variant: "destructive",
+              })
             } finally { setGenLoading(false) }
           }}>
             {genLoading ? 'Generiere…' : 'Report generieren'}
