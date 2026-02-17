@@ -664,6 +664,11 @@ export const reportsAPI = {
     update: (id: number, payload: Partial<ReportScheduleDTO>) =>
       request<ReportScheduleDTO>(`/reports/schedules/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
     delete: (id: number) => request<{ ok: boolean; id: number }>(`/reports/schedules/${id}`, { method: "DELETE" }),
+    runNow: (id: number) =>
+      request<{ ok: boolean; schedule_id: number; run_id: number; delivery: string; emails_sent: number; recipients: string[]; error?: string | null }>(
+        `/reports/schedules/${id}/run`,
+        { method: "POST" },
+      ),
   },
 }
 

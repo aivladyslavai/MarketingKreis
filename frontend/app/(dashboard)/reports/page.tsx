@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown, Eye, Settings2, Mail, Check, Search, Filter } from "lucide-react"
+import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown, Eye, Settings2, Mail, Check, Search, Filter, PlayCircle } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { authFetch } from "@/lib/api"
 import { useActivities } from "@/hooks/use-activities"
@@ -282,6 +282,85 @@ export default function ReportsPage() {
     if (c.brand && typeof c.brand === "object") setBrand((b) => ({ ...b, ...c.brand }))
   }
 
+  const applyRunParams = (params: any) => {
+    if (!params) return
+    if (params?.from) setFrom(String(params.from))
+    if (params?.to) setTo(String(params.to))
+    if (params?.options?.compare) setCompare(params.options.compare)
+    if (params?.options?.sections) setSections((s) => ({ ...s, ...params.options.sections }))
+    if (params?.options?.language) setLanguage(params.options.language)
+    if (params?.options?.tone) setTone(params.options.tone)
+    if (params?.options?.brand) setBrand((b) => ({ ...b, ...params.options.brand }))
+  }
+
+  const previewHtml = (title: string, html: string) => {
+    openModal({
+      type: "custom",
+      title,
+      content: (
+        <div className="px-1">
+          <ReportIFrame html={html} height={window.innerHeight ? Math.round(window.innerHeight * 0.8) : 700} />
+        </div>
+      ),
+    })
+  }
+
+  const downloadHtml = (filename: string, html: string) => {
+    const blob = new Blob(
+      [
+        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>${html}</body></html>`,
+      ],
+      { type: "text/html;charset=utf-8" },
+    )
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const generateReport = async (payload: { from: string; to: string; options: any; template_id?: number | null }) => {
+    const ff = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("featureFlags") || "{}")
+      } catch {
+        return {}
+      }
+    })()
+
+    const options = { ...(payload.options || {}), deterministic: !!ff?.aiReportDeterministic }
+
+    const res = await authFetch("/reports/generate", {
+      method: "POST",
+      body: JSON.stringify({ from: payload.from, to: payload.to, options }),
+    })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((j as any)?.error || (j as any)?.detail || res.statusText)
+    const html = String((j as any)?.html || "")
+    setReportHtml(html)
+
+    // Persist run history (best-effort)
+    try {
+      const tplId = payload.template_id != null ? Number(payload.template_id) : null
+      await reportsAPI.runs.create({
+        template_id: Number.isFinite(tplId as any) ? (tplId as any) : null,
+        params: { from: payload.from, to: payload.to, options: { compare, sections, language, tone, brand } },
+        kpi_snapshot: { ...kpiSnapshot, generatedAt: new Date().toISOString() },
+        html,
+        status: "ok",
+      })
+      await loadTemplatesAndRuns()
+    } catch {
+      // best-effort
+    }
+
+    toast({
+      title: "Report generiert",
+      description: "Preview öffnen oder HTML/PDF herunterladen.",
+    })
+  }
+
   const renderStatus = (raw: string) => {
     const v = String(raw || '').toUpperCase()
     const base = 'inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-medium'
@@ -510,44 +589,23 @@ export default function ReportsPage() {
             onClick={async()=>{
             try {
               setGenLoading(true)
-              const ff = (()=>{ try { return JSON.parse(localStorage.getItem('featureFlags')||'{}') } catch { return {} } })()
-              const res = await authFetch('/reports/generate', { method: 'POST', body: JSON.stringify({
-                from, to,
+              await generateReport({
+                from,
+                to,
+                template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
                 options: {
                   compare,
                   sections,
                   language,
                   tone,
                   brand,
-                  deterministic: !!ff?.aiReportDeterministic,
                   linkBase: {
-                    deal: '/crm?focus=deal:',
-                    activity: '/activities?id=',
-                    event: '/calendar?event=',
+                    deal: "/crm?focus=deal:",
+                    activity: "/activities?id=",
+                    event: "/calendar?event=",
                   },
                 },
-              }) })
-              const j = await res.json().catch(() => ({}))
-              if (!res.ok) throw new Error((j as any)?.error || (j as any)?.detail || res.statusText)
-              setReportHtml(String(j?.html || ''))
-              toast({
-                title: "Report generiert",
-                description: "Preview öffnen oder HTML/PDF herunterladen.",
               })
-              // Persist run history for audit/executive repeatability
-              try {
-                const tplId = selectedTemplateId ? Number(selectedTemplateId) : null
-                await reportsAPI.runs.create({
-                  template_id: Number.isFinite(tplId as any) ? (tplId as any) : null,
-                  params: { from, to, options: { compare, sections, language, tone, brand } },
-                  kpi_snapshot: { ...kpiSnapshot, generatedAt: new Date().toISOString() },
-                  html: String(j?.html || ""),
-                  status: "ok",
-                })
-                await loadTemplatesAndRuns()
-              } catch {
-                // best-effort; do not block UX
-              }
             } catch (e) {
               toast({
                 title: "Report fehlgeschlagen",
@@ -738,17 +796,15 @@ export default function ReportsPage() {
                         variant="outline"
                         className="h-9 text-xs border-white/20 text-slate-200"
                         onClick={async () => {
-                          const full = await reportsAPI.runs.get(r.id)
-                          const html = String((full as any)?.html || "")
-                          if (html) setReportHtml(html)
-                          const params = (full as any)?.params
-                          if (params?.from) setFrom(params.from)
-                          if (params?.to) setTo(params.to)
-                          if (params?.options?.compare) setCompare(params.options.compare)
-                          if (params?.options?.sections) setSections((s) => ({ ...s, ...params.options.sections }))
-                          if (params?.options?.language) setLanguage(params.options.language)
-                          if (params?.options?.tone) setTone(params.options.tone)
-                          if (params?.options?.brand) setBrand((b) => ({ ...b, ...params.options.brand }))
+                          try {
+                            const full = await reportsAPI.runs.get(r.id)
+                            const html = String((full as any)?.html || "")
+                            if (html) setReportHtml(html)
+                            applyRunParams((full as any)?.params)
+                            toast({ title: "Run geladen", description: "Einstellungen wurden übernommen." })
+                          } catch (e: any) {
+                            toast({ title: "Laden fehlgeschlagen", description: e?.message || "Run konnte nicht geladen werden", variant: "destructive" })
+                          }
                         }}
                       >
                         Laden
@@ -759,21 +815,68 @@ export default function ReportsPage() {
                         className="h-9 text-xs border-white/20 text-slate-200"
                         disabled={!r.id}
                         onClick={async () => {
-                          const full = await reportsAPI.runs.get(r.id)
-                          const html = String((full as any)?.html || "")
-                          if (!html) return
-                          openModal({
-                            type: "custom",
-                            title: `Report Run #${r.id}`,
-                            content: (
-                              <div className="px-1">
-                                <ReportIFrame html={html} height={window.innerHeight ? Math.round(window.innerHeight * 0.8) : 700} />
-                              </div>
-                            ),
-                          })
+                          try {
+                            const full = await reportsAPI.runs.get(r.id)
+                            const html = String((full as any)?.html || "")
+                            if (!html) {
+                              toast({ title: "Kein HTML gespeichert", description: "Dieser Run enthält kein HTML (z.B. E-Mail-only schedule run)." })
+                              return
+                            }
+                            previewHtml(`Report Run #${r.id}`, html)
+                          } catch (e: any) {
+                            toast({ title: "Preview fehlgeschlagen", description: e?.message || "Preview konnte nicht geöffnet werden", variant: "destructive" })
+                          }
                         }}
                       >
                         <Eye className="h-3.5 w-3.5 mr-2" /> Preview
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 text-xs border-white/20 text-slate-200"
+                        onClick={async () => {
+                          try {
+                            const full = await reportsAPI.runs.get(r.id)
+                            const html = String((full as any)?.html || "")
+                            if (!html) {
+                              toast({ title: "Kein HTML gespeichert", description: "Dieser Run enthält kein HTML." })
+                              return
+                            }
+                            downloadHtml(`report-run-${r.id}.html`, html)
+                          } catch (e: any) {
+                            toast({ title: "Download fehlgeschlagen", description: e?.message || "HTML konnte nicht geladen werden", variant: "destructive" })
+                          }
+                        }}
+                      >
+                        <Download className="h-3.5 w-3.5 mr-2" /> HTML
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 text-xs border-white/20 text-slate-200"
+                        onClick={async () => {
+                          try {
+                            const full = await reportsAPI.runs.get(r.id)
+                            const params = (full as any)?.params || null
+                            if (!params?.from || !params?.to) {
+                              toast({ title: "Run again nicht möglich", description: "Dieser Run enthält keine vollständigen Parameter." })
+                              return
+                            }
+                            setGenLoading(true)
+                            await generateReport({
+                              from: String(params.from),
+                              to: String(params.to),
+                              template_id: (full as any)?.template_id ?? null,
+                              options: params?.options || {},
+                            })
+                          } catch (e: any) {
+                            toast({ title: "Run again fehlgeschlagen", description: e?.message || "Run konnte nicht wiederholt werden", variant: "destructive" })
+                          } finally {
+                            setGenLoading(false)
+                          }
+                        }}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-2" /> Run again
                       </Button>
                     </div>
                   </div>
@@ -860,22 +963,27 @@ export default function ReportsPage() {
                 <Button
                   className="h-11 w-full"
                   onClick={async () => {
-                    const recipients = scheduleRecipients
-                      .split(/[,;\\s]+/g)
-                      .map((s) => s.trim())
-                      .filter(Boolean)
-                    await reportsAPI.schedules.create({
-                      name: scheduleName || "Weekly Executive",
-                      template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
-                      is_active: scheduleActive,
-                      weekday: scheduleWeekday,
-                      hour: scheduleHour,
-                      minute: scheduleMinute,
-                      timezone: "Europe/Zurich",
-                      recipients,
-                    } as any)
-                    setScheduleRecipients("")
-                    await loadSchedules()
+                    try {
+                      const recipients = scheduleRecipients
+                        .split(/[,;\\s]+/g)
+                        .map((s) => s.trim())
+                        .filter(Boolean)
+                      await reportsAPI.schedules.create({
+                        name: scheduleName || "Weekly Executive",
+                        template_id: selectedTemplateId ? Number(selectedTemplateId) : null,
+                        is_active: scheduleActive,
+                        weekday: scheduleWeekday,
+                        hour: scheduleHour,
+                        minute: scheduleMinute,
+                        timezone: "Europe/Zurich",
+                        recipients,
+                      } as any)
+                      setScheduleRecipients("")
+                      toast({ title: "Schedule gespeichert", description: "Wöchentlicher Versand wurde angelegt." })
+                      await loadSchedules()
+                    } catch (e: any) {
+                      toast({ title: "Schedule fehlgeschlagen", description: e?.message || "Schedule konnte nicht gespeichert werden", variant: "destructive" })
+                    }
                   }}
                 >
                   Schedule speichern
@@ -921,18 +1029,68 @@ export default function ReportsPage() {
                             {String(s.hour).padStart(2, "0")}:{String(s.minute).padStart(2, "0")} · {Array.isArray(s.recipients) ? s.recipients.join(", ") : ""}
                           </div>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-9 text-xs border-red-500/30 text-red-200 hover:bg-red-500/10"
-                          onClick={async () => {
-                            if (!confirm(`Schedule „${String(s.name || s.id)}“ wirklich löschen?`)) return
-                            await reportsAPI.schedules.delete(s.id)
-                            await loadSchedules()
-                          }}
-                        >
-                          Löschen
-                        </Button>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                          <div className="flex items-center justify-between rounded-lg border border-white/10 bg-slate-950/30 px-3 py-2">
+                            <div className="text-[11px] text-slate-300 mr-3">Active</div>
+                            <Switch
+                              checked={!!s.is_active}
+                              onCheckedChange={async (v) => {
+                                try {
+                                  await reportsAPI.schedules.update(s.id, { is_active: !!v } as any)
+                                  toast({ title: "Schedule aktualisiert", description: v ? "Aktiviert." : "Pausiert." })
+                                  await loadSchedules()
+                                } catch (e: any) {
+                                  toast({ title: "Update fehlgeschlagen", description: e?.message || "Konnte Schedule nicht aktualisieren", variant: "destructive" })
+                                }
+                              }}
+                            />
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-9 text-xs border-white/20 text-slate-200"
+                            onClick={async () => {
+                              try {
+                                const out = await reportsAPI.schedules.runNow(s.id)
+                                if ((out as any)?.delivery === "disabled") {
+                                  toast({
+                                    title: "Test-Run erstellt",
+                                    description: "E-Mail Versand ist serverseitig deaktiviert (REPORTS_EMAIL_ENABLED=false).",
+                                  })
+                                } else if ((out as any)?.ok) {
+                                  toast({
+                                    title: "E-Mail gesendet",
+                                    description: `${(out as any)?.emails_sent || 0} E-Mails gesendet.`,
+                                  })
+                                } else {
+                                  toast({
+                                    title: "E-Mail fehlgeschlagen",
+                                    description: (out as any)?.error || "email_failed",
+                                    variant: "destructive",
+                                  })
+                                }
+                                await loadTemplatesAndRuns()
+                              } catch (e: any) {
+                                toast({ title: "Test-Run fehlgeschlagen", description: e?.message || "Konnte Schedule nicht ausführen", variant: "destructive" })
+                              }
+                            }}
+                          >
+                            <PlayCircle className="h-3.5 w-3.5 mr-2" /> Test now
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-9 text-xs border-red-500/30 text-red-200 hover:bg-red-500/10"
+                            onClick={async () => {
+                              if (!confirm(`Schedule „${String(s.name || s.id)}“ wirklich löschen?`)) return
+                              await reportsAPI.schedules.delete(s.id)
+                              toast({ title: "Schedule gelöscht" })
+                              await loadSchedules()
+                            }}
+                          >
+                            Löschen
+                          </Button>
+                        </div>
                       </div>
                     ))
                   )}

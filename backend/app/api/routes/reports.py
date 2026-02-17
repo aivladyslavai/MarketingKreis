@@ -306,6 +306,98 @@ def delete_schedule(
     return {"ok": True, "id": schedule_id}
 
 
+@router.post("/schedules/{schedule_id}/run")
+def run_schedule_now(
+    schedule_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_role(UserRole.editor)),
+):
+    """
+    Manual runner for a single schedule (UX: "send test now").
+    Uses normal auth (no cron token) and therefore works via the /api proxy.
+    """
+    settings = get_settings()
+    org = get_org_id(current_user)
+    sch = db.query(ReportSchedule).filter(ReportSchedule.id == schedule_id, ReportSchedule.organization_id == org).first()
+    if not sch:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    recipients = _norm_emails(sch.recipients or [])
+    if not recipients:
+        raise HTTPException(status_code=400, detail="Schedule has no recipients")
+
+    # Minimal KPI snapshot (same formulas as /crm/stats)
+    deals = db.query(Deal).filter(Deal.organization_id == org).all()
+    total_deals = len(deals)
+    open_deals = [d for d in deals if (getattr(d, "stage", "") or "").lower() not in ("lost",)]
+    won_deals = [d for d in deals if (getattr(d, "stage", "") or "").lower() == "won"]
+    pipeline_value = sum(float(getattr(d, "value", 0) or 0) for d in open_deals)
+    won_value = sum(float(getattr(d, "value", 0) or 0) for d in won_deals)
+    conversion_rate = (len(won_deals) / total_deals * 100.0) if total_deals else 0.0
+
+    kpi = {
+        "pipelineValue": pipeline_value,
+        "wonValue": won_value,
+        "totalDeals": total_deals,
+        "conversionRate": conversion_rate,
+        "generatedAt": _now_utc().isoformat(),
+        "source": "manual_schedule_run",
+        "schedule_id": sch.id,
+    }
+
+    subject = f"MarketingKreis – Executive Report (test) ({_now_utc().strftime('%Y-%m-%d')})"
+    body = (
+        "Executive KPIs\n"
+        f"- Pipeline: CHF {round(pipeline_value):,}\n"
+        f"- Won: CHF {round(won_value):,}\n"
+        f"- Deals: {total_deals}\n"
+        f"- Conversion: {conversion_rate:.1f}%\n"
+    ).replace(",", "'")
+
+    delivery = "disabled"
+    emails_sent = 0
+    ok = True
+    error: Optional[str] = None
+
+    if getattr(settings, "reports_email_enabled", False):
+        delivery = "sent"
+        for to in recipients:
+            try:
+                sent_ok = send_email(to=to, subject=subject, text=body)
+                if sent_ok:
+                    emails_sent += 1
+                else:
+                    ok = False
+            except Exception:
+                ok = False
+        if not ok:
+            error = "email_failed"
+
+    run = ReportRun(
+        organization_id=org,
+        template_id=sch.template_id,
+        created_by=current_user.id,
+        params={"schedule_id": sch.id, "type": "manual_test"},
+        kpi_snapshot=kpi,
+        html=None,
+        status="ok" if ok else "error",
+        error=error,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    return {
+        "ok": ok,
+        "schedule_id": sch.id,
+        "run_id": run.id,
+        "delivery": delivery,
+        "emails_sent": emails_sent,
+        "recipients": recipients,
+        "error": error,
+    }
+
+
 # --- Cron runner (email) ---
 
 
