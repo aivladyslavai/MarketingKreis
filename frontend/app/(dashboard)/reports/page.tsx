@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown, Eye, Settings2, Mail, Check, Search, Filter, PlayCircle } from "lucide-react"
+import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown, Eye, Settings2, Mail, Check, Search, Filter, PlayCircle, FileDown } from "lucide-react"
+import Image from "next/image"
 import { Switch } from "@/components/ui/switch"
 import { authFetch } from "@/lib/api"
 import { useActivities } from "@/hooks/use-activities"
@@ -16,6 +17,9 @@ import { useModal } from "@/components/ui/modal/ModalProvider"
 import { reportsAPI } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/components/ui/use-toast"
+import type { ReportDocumentV1 } from "@/lib/reports/report-types"
+import { exportReportToPDF } from "@/lib/reports/export-pdf"
+import { exportReportToDOCX } from "@/lib/reports/export-docx"
 
 export default function ReportsPage() {
   const toYMD = (d: Date) => {
@@ -35,6 +39,7 @@ export default function ReportsPage() {
   const [to, setTo] = useState<string>(() => toYMD(new Date()))
   const [genLoading, setGenLoading] = useState(false)
   const [reportHtml, setReportHtml] = useState<string>("")
+  const [reportDoc, setReportDoc] = useState<ReportDocumentV1 | null>(null)
   const { openModal, closeModal } = useModal()
   const { toast } = useToast()
   const { user } = useAuth()
@@ -43,12 +48,16 @@ export default function ReportsPage() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sections, setSections] = useState({
     kpi: true,
+    changes: true,
+    insights: true,
     pipeline: true,
     activities: true,
     calendar: true,
     crm: true,
     uploads: true,
     risks: true,
+    conclusion: true,
+    appendix: true,
   })
   const [language, setLanguage] = useState<"de" | "en">("de")
   const [tone, setTone] = useState<"executive" | "neutral" | "marketing">("executive")
@@ -125,7 +134,13 @@ export default function ReportsPage() {
         {brand.logoUrl ? (
           <div className="flex items-center justify-between h-full px-2">
             <div className="text-xs text-slate-300 truncate mr-2">Logo ausgewählt</div>
-            <img src={brand.logoUrl} alt="Logo Preview" className="h-7 max-w-[120px] object-contain rounded-sm" />
+            <Image
+              src={brand.logoUrl}
+              alt="Logo Preview"
+              width={140}
+              height={40}
+              className="h-7 w-auto max-w-[120px] object-contain rounded-sm"
+            />
           </div>
         ) : (
           <div className="flex items-center justify-center h-full text-xs text-slate-400">
@@ -148,7 +163,7 @@ export default function ReportsPage() {
   const { uploads, error: uploadsError, refresh: refreshUploads } = useUploadsApi()
   const { jobs, error: jobsError, refresh: refreshJobs } = useJobsApi()
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true)
       setLoadError(null)
@@ -164,9 +179,9 @@ export default function ReportsPage() {
       setCrmStats({})
       setLoadError(e?.message || "Failed to load CRM stats")
     } finally { setLoading(false) }
-  }
+  }, [])
 
-  const loadTemplatesAndRuns = async () => {
+  const loadTemplatesAndRuns = useCallback(async () => {
     try {
       setTemplatesLoading(true)
       setRunsLoading(true)
@@ -177,9 +192,9 @@ export default function ReportsPage() {
       setTemplatesLoading(false)
       setRunsLoading(false)
     }
-  }
+  }, [])
 
-  const loadSchedules = async () => {
+  const loadSchedules = useCallback(async () => {
     try {
       setSchedulesLoading(true)
       const rows = await reportsAPI.schedules.list().catch(() => [])
@@ -187,7 +202,7 @@ export default function ReportsPage() {
     } finally {
       setSchedulesLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     load()
@@ -201,12 +216,12 @@ export default function ReportsPage() {
       sync.on('crm:companies:changed', () => { load() }),
     ]
     return () => { unsub.forEach(fn => fn && (fn as any)()) }
-  }, [])
+  }, [load, loadTemplatesAndRuns, refetchActivities, refreshCalendar, refreshUploads, refreshJobs])
 
   useEffect(() => {
     if (!canManageReports) return
     loadSchedules()
-  }, [canManageReports])
+  }, [canManageReports, loadSchedules])
 
   const filteredRuns = useMemo(() => {
     const q = (historyQ || "").trim().toLowerCase()
@@ -339,6 +354,8 @@ export default function ReportsPage() {
     if (!res.ok) throw new Error((j as any)?.error || (j as any)?.detail || res.statusText)
     const html = String((j as any)?.html || "")
     setReportHtml(html)
+    const doc = (j as any)?.report as ReportDocumentV1 | undefined
+    setReportDoc(doc && (doc as any)?.version === 1 ? doc : null)
 
     // Persist run history (best-effort)
     try {
@@ -375,6 +392,36 @@ export default function ReportsPage() {
       'bg-white/10 text-slate-200 border-white/15'
     return <span className={`${base} ${cls}`}>{v}</span>
   }
+
+  const sectionLabels = useMemo(() => {
+    const de: Record<string, string> = {
+      kpi: "KPIs",
+      changes: "Was hat sich verändert",
+      insights: "AI Insights & Ergebnisse",
+      pipeline: "Pipeline & Deals",
+      activities: "Aktivitäten",
+      calendar: "Kalender",
+      crm: "CRM (Unternehmen/Kontakte)",
+      uploads: "Uploads & Jobs",
+      risks: "Risiken & Empfehlungen",
+      conclusion: "Fazit",
+      appendix: "Anhang (Datenbasis)",
+    }
+    const en: Record<string, string> = {
+      kpi: "KPIs",
+      changes: "What changed",
+      insights: "AI insights & results",
+      pipeline: "Pipeline & deals",
+      activities: "Activities",
+      calendar: "Calendar",
+      crm: "CRM (companies/contacts)",
+      uploads: "Uploads & jobs",
+      risks: "Risks & recommendations",
+      conclusion: "Conclusion",
+      appendix: "Appendix (data sources)",
+    }
+    return language === "de" ? de : en
+  }, [language])
 
   if (loading) {
     return (
@@ -661,15 +708,44 @@ export default function ReportsPage() {
                 variant="outline"
                 size="sm"
                 className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
-                onClick={()=>{
-                const wrapper = `<!doctype html><html><head><meta charset='utf-8'><meta name="viewport" content="width=device-width, initial-scale=1"><title>Report</title>
-                <style>@page{margin:18mm} body{background:#0b1220;color:#e5e7eb} @media print{body{background:white;color:black}}</style>
-                </head><body>${reportHtml}<script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 500)}</script></body></html>`
-                const blob = new Blob([wrapper], { type: 'text/html;charset=utf-8' })
-                const url = URL.createObjectURL(blob)
-                window.open(url, '_blank')
-              }}>
-                <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" /> <span className="hidden sm:inline">Download PDF</span>
+                onClick={async()=>{
+                  try {
+                    const base = `report-${from||'all'}_${to||'all'}`
+                    if (!reportDoc) {
+                      // Fallback: open print preview if structured doc isn't available (older runs).
+                      const wrapper = `<!doctype html><html><head><meta charset='utf-8'><meta name="viewport" content="width=device-width, initial-scale=1"><title>Report</title>
+                      <style>@page{margin:18mm} body{background:#0b1220;color:#e5e7eb} @media print{body{background:white;color:black}}</style>
+                      </head><body>${reportHtml}<script>window.onload=()=>{window.print(); setTimeout(()=>window.close(), 500)}</script></body></html>`
+                      const blob = new Blob([wrapper], { type: 'text/html;charset=utf-8' })
+                      const url = URL.createObjectURL(blob)
+                      window.open(url, '_blank')
+                      return
+                    }
+                    await exportReportToPDF(reportDoc, base)
+                  } catch (e: any) {
+                    toast({ title: "PDF fehlgeschlagen", description: e?.message || "PDF konnte nicht erstellt werden", variant: "destructive" })
+                  }
+                }}>
+                <FileDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" /> <span className="hidden sm:inline">Download PDF</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/20 text-slate-200 h-11 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
+                onClick={async()=>{
+                  try {
+                    if (!reportDoc) {
+                      toast({ title: "DOC nicht verfügbar", description: "Bitte Report erneut generieren (neue Version speichert strukturierte Daten)." })
+                      return
+                    }
+                    const base = `report-${from||'all'}_${to||'all'}`
+                    await exportReportToDOCX(reportDoc, base)
+                  } catch (e: any) {
+                    toast({ title: "DOC fehlgeschlagen", description: e?.message || "DOC konnte nicht erstellt werden", variant: "destructive" })
+                  }
+                }}
+              >
+                <FileDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" /> <span className="hidden sm:inline">Download DOC</span>
               </Button>
             </>
           )}
@@ -1131,7 +1207,7 @@ export default function ReportsPage() {
                       >
                         {on ? <Check className="h-3 w-3 text-emerald-200" /> : null}
                       </span>
-                      <span className="capitalize">{k}</span>
+                      <span>{sectionLabels[k] || k}</span>
                     </label>
                   )
                 })}

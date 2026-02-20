@@ -1,5 +1,248 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+type Lang = 'de' | 'en'
+type Tone = 'executive' | 'neutral' | 'marketing'
+
+function safeText(v: any) {
+  return String(v ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function toNumber(v: any) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+function fmtChf(v: any, lang: Lang) {
+  const n = toNumber(v)
+  try {
+    const s = Math.round(n).toLocaleString(lang === 'de' ? 'de-CH' : 'en-US')
+    return `CHF ${s}`
+  } catch {
+    return `CHF ${Math.round(n)}`
+  }
+}
+
+function dateLabel(d: any, lang: Lang) {
+  try {
+    const dt = new Date(d)
+    if (!Number.isFinite(dt.getTime())) return safeText(d)
+    if (lang === 'de') return dt.toLocaleDateString('de-CH')
+    return dt.toISOString().slice(0, 10)
+  } catch {
+    return safeText(d)
+  }
+}
+
+function pickTop<T>(arr: T[], n: number, score: (x: T) => number) {
+  return (Array.isArray(arr) ? arr : [])
+    .slice()
+    .sort((a, b) => score(b) - score(a))
+    .slice(0, n)
+}
+
+function inRangeFactory(fromDate: Date | null, toDate: Date | null) {
+  return (d: any) => {
+    const dt = d ? new Date(d) : null
+    if (!dt || !Number.isFinite(dt.getTime())) return false
+    if (fromDate && dt < fromDate) return false
+    if (toDate && dt > toDate) return false
+    return true
+  }
+}
+
+function renderReportHtml(opts: {
+  style: string
+  meta: { title: string; company?: string; logoUrl?: string; periodText: string; generatedAtText: string; lang: Lang }
+  kpis: { pipelineValue: number; wonValue: number; totalDeals: number; uploads: number; jobs: number; activities: number; events: number }
+  deltas: { label: string; prev?: number | null; value: number; delta?: number | null }[]
+  narrative: {
+    executiveSummary: string[]
+    whatChanged: string[]
+    keyInsights: string[]
+    results: string[]
+    risks: string[]
+    recommendations: string[]
+    conclusion: string
+  }
+  sections: Record<string, boolean>
+  tables: {
+    topDeals: any[]
+    recentActivities: any[]
+    keyEvents: any[]
+    recentCompanies: any[]
+    recentContacts: any[]
+    uploads: any[]
+    jobs: any[]
+  }
+}) {
+  const { style, meta, kpis, deltas, narrative, sections, tables } = opts
+
+  const esc = (s: any) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+
+  const list = (items: string[]) => {
+    const rows = (items || []).map((x) => `<li>${esc(x)}</li>`).join('')
+    return rows ? `<ul>${rows}</ul>` : `<div class="muted">${meta.lang === 'de' ? '—' : '—'}</div>`
+  }
+
+  const deltaPill = (d?: number | null) => {
+    if (d == null || !Number.isFinite(d)) return ''
+    const cls = d > 0 ? 'badge' : d < 0 ? 'badge' : 'badge'
+    const sign = d > 0 ? '+' : ''
+    return `<span class="${cls}">${sign}${Math.round(d)}</span>`
+  }
+
+  const table = (title: string, rows: any[], cols: { key: string; label: string }[]) => {
+    const r = Array.isArray(rows) ? rows : []
+    const body =
+      r.length === 0
+        ? `<div class="muted">${meta.lang === 'de' ? 'Keine Daten' : 'No data'}</div>`
+        : `<table><thead><tr>${cols.map((c) => `<th>${esc(c.label)}</th>`).join('')}</tr></thead><tbody>${r
+            .slice(0, 10)
+            .map((row) => `<tr>${cols.map((c) => `<td>${esc((row as any)?.[c.key] ?? '')}</td>`).join('')}</tr>`)
+            .join('')}</tbody></table>`
+    return `<div class="card"><div class="card-h">${esc(title)}</div><div class="card-b">${body}</div></div>`
+  }
+
+  const kpiCards = [
+    { k: 'pipeline', label: meta.lang === 'de' ? 'Pipeline' : 'Pipeline', value: fmtChf(kpis.pipelineValue, meta.lang) },
+    { k: 'won', label: meta.lang === 'de' ? 'Won' : 'Won', value: fmtChf(kpis.wonValue, meta.lang) },
+    { k: 'deals', label: meta.lang === 'de' ? 'Deals' : 'Deals', value: String(kpis.totalDeals) },
+    { k: 'activities', label: meta.lang === 'de' ? 'Aktivitäten' : 'Activities', value: String(kpis.activities) },
+    { k: 'events', label: meta.lang === 'de' ? 'Events' : 'Events', value: String(kpis.events) },
+  ]
+
+  const include = (k: string) => (sections?.[k] ?? true) !== false
+
+  const changesBlock =
+    include('changes') && deltas?.length
+      ? `<div class="card"><div class="card-h">${esc(meta.lang === 'de' ? 'Was hat sich verändert' : 'What changed')}</div><div class="card-b">
+          <table>
+            <thead><tr><th>${esc(meta.lang === 'de' ? 'Metrik' : 'Metric')}</th><th>${esc(meta.lang === 'de' ? 'Vorher' : 'Previous')}</th><th>${esc(meta.lang === 'de' ? 'Jetzt' : 'Now')}</th><th>${esc(meta.lang === 'de' ? 'Delta' : 'Delta')}</th></tr></thead>
+            <tbody>
+              ${deltas
+                .map((d) => `<tr><td>${esc(d.label)}</td><td>${esc(d.prev ?? '')}</td><td>${esc(d.value)}</td><td>${deltaPill(d.delta)}</td></tr>`)
+                .join('')}
+            </tbody>
+          </table>
+        </div></div>`
+      : ''
+
+  const html = `
+<style>${style}</style>
+<main>
+  <div class="cover">
+    <div class="brandbar">
+      <div>
+        <div class="title">${esc(meta.title)}</div>
+        <div class="meta muted">${esc(meta.company ? `${meta.company} · ${meta.periodText}` : meta.periodText)}</div>
+        <div class="meta muted">${esc(meta.lang === 'de' ? 'Generiert am' : 'Generated on')}: ${esc(meta.generatedAtText)}</div>
+      </div>
+      ${meta.logoUrl ? `<img class="logo" alt="Logo" src="${esc(meta.logoUrl)}" />` : `<div></div>`}
+    </div>
+  </div>
+
+  ${include('kpi') ? `<div class="kpi-grid">
+    ${kpiCards.map((k) => `<div class="kpi"><div class="label">${esc(k.label)}</div><div class="value">${esc(k.value)}</div></div>`).join('')}
+  </div>` : ''}
+
+  ${changesBlock}
+
+  <h2>${esc(meta.lang === 'de' ? 'Zusammenfassung' : 'Executive Summary')}</h2>
+  ${list(narrative.executiveSummary)}
+
+  ${include('insights') ? `<h2>${esc(meta.lang === 'de' ? 'AI Insights' : 'AI Insights')}</h2>${list(narrative.keyInsights)}` : ''}
+  ${include('insights') ? `<h2>${esc(meta.lang === 'de' ? 'Ergebnisse' : 'Results')}</h2>${list(narrative.results)}` : ''}
+
+  ${include('risks') ? `<h2>${esc(meta.lang === 'de' ? 'Risiken' : 'Risks')}</h2>${list(narrative.risks)}` : ''}
+
+  <h2>${esc(meta.lang === 'de' ? 'Empfehlungen' : 'Recommendations')}</h2>
+  ${list(narrative.recommendations)}
+
+  ${include('conclusion') ? `<h2>${esc(meta.lang === 'de' ? 'Fazit' : 'Conclusion')}</h2><div class="card"><div class="card-b">${esc(narrative.conclusion)}</div></div>` : ''}
+
+  ${include('pipeline') ? table(meta.lang === 'de' ? 'Top Deals' : 'Top Deals', tables.topDeals, [
+    { key: 'ID', label: 'ID' },
+    { key: meta.lang === 'de' ? 'Titel' : 'Title', label: meta.lang === 'de' ? 'Titel' : 'Title' },
+    { key: meta.lang === 'de' ? 'Stufe' : 'Stage', label: meta.lang === 'de' ? 'Stufe' : 'Stage' },
+    { key: meta.lang === 'de' ? 'Wert' : 'Value', label: meta.lang === 'de' ? 'Wert' : 'Value' },
+  ]) : ''}
+
+  ${include('activities') ? table(meta.lang === 'de' ? 'Aktivitäten (Auszug)' : 'Activities (excerpt)', tables.recentActivities, [
+    { key: 'ID', label: 'ID' },
+    { key: meta.lang === 'de' ? 'Titel' : 'Title', label: meta.lang === 'de' ? 'Titel' : 'Title' },
+    { key: meta.lang === 'de' ? 'Status' : 'Status', label: meta.lang === 'de' ? 'Status' : 'Status' },
+    { key: meta.lang === 'de' ? 'Datum' : 'Date', label: meta.lang === 'de' ? 'Datum' : 'Date' },
+  ]) : ''}
+
+  ${include('calendar') ? table(meta.lang === 'de' ? 'Kalender (Auszug)' : 'Calendar (excerpt)', tables.keyEvents, [
+    { key: 'ID', label: 'ID' },
+    { key: meta.lang === 'de' ? 'Titel' : 'Title', label: meta.lang === 'de' ? 'Titel' : 'Title' },
+    { key: meta.lang === 'de' ? 'Datum' : 'Date', label: meta.lang === 'de' ? 'Datum' : 'Date' },
+    { key: meta.lang === 'de' ? 'Kategorie' : 'Category', label: meta.lang === 'de' ? 'Kategorie' : 'Category' },
+  ]) : ''}
+
+  ${include('crm') ? table(meta.lang === 'de' ? 'Unternehmen (neu/aktualisiert)' : 'Companies (new/updated)', tables.recentCompanies, [
+    { key: 'ID', label: 'ID' },
+    { key: meta.lang === 'de' ? 'Name' : 'Name', label: meta.lang === 'de' ? 'Name' : 'Name' },
+    { key: meta.lang === 'de' ? 'Update' : 'Updated', label: meta.lang === 'de' ? 'Update' : 'Updated' },
+    { key: meta.lang === 'de' ? 'Notiz' : 'Note', label: meta.lang === 'de' ? 'Notiz' : 'Note' },
+  ]) : ''}
+
+  ${include('crm') ? table(meta.lang === 'de' ? 'Kontakte (neu/aktualisiert)' : 'Contacts (new/updated)', tables.recentContacts, [
+    { key: 'ID', label: 'ID' },
+    { key: meta.lang === 'de' ? 'Name' : 'Name', label: meta.lang === 'de' ? 'Name' : 'Name' },
+    { key: meta.lang === 'de' ? 'E-Mail' : 'Email', label: meta.lang === 'de' ? 'E-Mail' : 'Email' },
+    { key: meta.lang === 'de' ? 'Update' : 'Updated', label: meta.lang === 'de' ? 'Update' : 'Updated' },
+  ]) : ''}
+
+  ${include('uploads') ? table(meta.lang === 'de' ? 'Uploads (Auszug)' : 'Uploads (excerpt)', tables.uploads, [
+    { key: 'ID', label: 'ID' },
+    { key: meta.lang === 'de' ? 'Name' : 'Name', label: meta.lang === 'de' ? 'Name' : 'Name' },
+    { key: meta.lang === 'de' ? 'Typ' : 'Type', label: meta.lang === 'de' ? 'Typ' : 'Type' },
+    { key: meta.lang === 'de' ? 'Datum' : 'Date', label: meta.lang === 'de' ? 'Datum' : 'Date' },
+  ]) : ''}
+
+  ${include('uploads') ? table(meta.lang === 'de' ? 'Jobs (Auszug)' : 'Jobs (excerpt)', tables.jobs, [
+    { key: 'ID', label: 'ID' },
+    { key: meta.lang === 'de' ? 'Typ' : 'Type', label: meta.lang === 'de' ? 'Typ' : 'Type' },
+    { key: meta.lang === 'de' ? 'Status' : 'Status', label: meta.lang === 'de' ? 'Status' : 'Status' },
+    { key: meta.lang === 'de' ? 'Datum' : 'Date', label: meta.lang === 'de' ? 'Datum' : 'Date' },
+  ]) : ''}
+
+  ${include('appendix') ? `<h2>${esc(meta.lang === 'de' ? 'Datenbasis & Annahmen' : 'Data sources & assumptions')}</h2>
+    <div class="card">
+      <div class="card-h">${esc(meta.lang === 'de' ? 'Datenquellen' : 'Data sources')}</div>
+      <div class="card-b">
+        <table>
+          <thead><tr><th>${esc(meta.lang === 'de' ? 'KPI' : 'KPI')}</th><th>${esc(meta.lang === 'de' ? 'Quelle' : 'Source')}</th><th>${esc(meta.lang === 'de' ? 'Berechnung' : 'How')}</th></tr></thead>
+          <tbody>
+            ${[
+              { name: 'pipelineValue', endpoint: '/crm/stats', how: 'sum(value) stage != lost' },
+              { name: 'wonValue', endpoint: '/crm/stats', how: 'sum(value) stage == won' },
+              { name: 'totalDeals', endpoint: '/crm/stats', how: 'count(deals)' },
+              { name: 'uploads', endpoint: '/uploads', how: 'count(created_at in period)' },
+              { name: 'jobs', endpoint: '/jobs', how: 'count(created_at in period)' },
+              { name: 'activities', endpoint: '/activities', how: 'count(start/end in period)' },
+              { name: 'events', endpoint: '/calendar', how: 'count(start in period)' },
+            ]
+              .map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.endpoint)}</td><td>${esc(r.how)}</td></tr>`)
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ''}
+
+</main>`
+
+  return html
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { from, to, options } = await req.json().catch(() => ({ from: null, to: null, options: {} }))
@@ -56,18 +299,22 @@ export async function POST(req: NextRequest) {
     if (toDate && Number.isFinite(toDate.getTime())) {
       toDate.setHours(23, 59, 59, 999)
     }
-    const inRange = (d: any) => {
-      const dt = d ? new Date(d) : null
-      if (!dt) return true
-      if (fromDate && dt < fromDate) return false
-      if (toDate && dt > toDate) return false
-      return true
-    }
+    const inRange = inRangeFactory(fromDate, toDate)
 
     const act = activities.filter(a => inRange(a.start) || inRange(a.end))
     const ev = events.filter(e => inRange(e.start))
     const up = uploads.filter(u => inRange(u.created_at))
     const jb = jobs.filter(j => inRange(j.created_at))
+
+    const createdInRange = (obj: any) => inRange(obj?.created_at || obj?.createdAt)
+    const updatedInRange = (obj: any) => inRange(obj?.updated_at || obj?.updatedAt)
+
+    const companiesCreated = companies.filter(createdInRange)
+    const companiesUpdated = companies.filter(updatedInRange)
+    const contactsCreated = contacts.filter(createdInRange)
+    const contactsUpdated = contacts.filter(updatedInRange)
+    const dealsCreated = deals.filter(createdInRange)
+    const dealsUpdated = deals.filter(updatedInRange)
 
     // Comparison (previous period or YoY)
     let compareBlock: any = null
@@ -108,7 +355,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Labels based on language
-    const lang = (options?.language || 'de') as 'de' | 'en'
+    const lang = (options?.language || 'de') as Lang
+    const tone = (options?.tone || 'executive') as Tone
     const generatedAtText = (() => {
       const d = new Date(generatedAt)
       if (!Number.isFinite(d.getTime())) return generatedAt
@@ -208,93 +456,165 @@ export async function POST(req: NextRequest) {
     .badge{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; border:1px solid var(--border); }
     `
 
-    const system = `You are a senior executive reporting assistant for a marketing CRM platform. Produce a PROFESSIONAL, PRINT‑READY report as pure HTML. Dark theme, typographic hierarchy, generous spacing.
+    const system = `You are a senior executive reporting analyst for a marketing CRM platform.
 
-REQUIREMENTS
-- Layout for A4 portrait, with print CSS (page-breaks between major sections, margins 18mm, page numbers in footer).
-- Top cover: title "MarketingKreis – Executive Report", company placeholder, period (from–to) and generation timestamp (use the provided "generatedAtText" value; do NOT output placeholders like "[DATUM]").
-- KPI grid: Pipeline Value, Won Value, Deals, Uploads, Jobs (big numbers, small trend captions – text only).
-- Sections (use clear anchors and <h2>):
-  1) Executive Summary (5–8 bullets)
-  2) Pipeline & Deals (table of top deals if present)
-  3) Activities (group by status/category with counts and a compact table)
-  4) Calendar Highlights (upcoming and past key events for the period)
-  5) CRM – Companies & Contacts (top items by recent changes)
-  6) Uploads & Jobs (counts + latest items)
-  7) Risks & Recommendations (bullets)
-  8) KPI Transparency / Data Sources (small table: KPI, how calculated, data source endpoint, assumptions)
+TASK
+- Create high-signal narrative content for an executive report: changes, AI insights, results, risks, recommendations, and conclusion.
 
-STYLE
-- Use CSS variables, fonts: system-ui; colors tuned for dark background; subtle dividers; cards with rounded corners. Provide :root variables and print @media.
-- Table style: zebra rows, condensed on print.
-- Include a small legend of statuses.
+OUTPUT FORMAT (STRICT)
+- Return ONLY valid JSON (no markdown, no prose outside JSON).
+- Language: ${lang}. Write everything strictly in this language. Do not mix languages.
+- Tone: ${tone}. Keep it crisp, actionable, non-fluffy.
 
-OUTPUT
-- Return a single HTML fragment: FIRST include EXACTLY the provided <style> content (from user payload "style") inside a <style> block, THEN include one <main> element with the markup. No outer <html> wrapper is needed.
-- Do NOT wrap the response in code fences.
-- No <script> tags.
-- Language: ${lang}. Write ALL headings, labels and sentences strictly in this language. Translate where necessary. Do NOT mix languages.
-- Use labels provided in "labels" for headings and KPI captions.
-- Sections visibility: ${JSON.stringify(options?.sections || {})}.
-- Branding: company="${options?.brand?.company || ''}", logo="${options?.brand?.logoUrl ? (options?.brand?.logoUrl.length>2000 ? '__REPORT_LOGO__' : options?.brand?.logoUrl) : ''}".
-- If branding.logo is provided, render on cover a row <div class="brandbar"> with the company name on the left and <img class="logo" src="..."> aligned right (height ~46px, auto width).
-- Drill-down links: If you list an item with id, wrap its title with an <a> using base templates:
-   deals -> ${options?.linkBase?.deal || '/crm?focus=deal:'}<ID>
-   activities -> ${options?.linkBase?.activity || '/activities?id='}<ID>
-   events -> ${options?.linkBase?.event || '/calendar?event='}<ID>
-- If arrays 'sparklines' are provided, render inline SVG sparkline with a polyline; size 100x30, stroke color var(--muted).`
+JSON SCHEMA
+{
+  "executive_summary": string[5..8],
+  "what_changed": string[4..8],
+  "key_insights": string[4..8],
+  "results": string[3..7],
+  "risks": string[3..7],
+  "recommendations": string[4..8],
+  "conclusion": string
+}
 
-    // Reduce payload size: limit long arrays
-    const limit = (arr: any[], n: number) => Array.isArray(arr) ? arr.slice(0, n) : []
-    const max = { activities: 250, events: 250, deals: 120, companies: 120, contacts: 120, uploads: 120, jobs: 120 }
+RULES
+- Be specific: cite numbers from the provided metrics and deltas.
+- If compare is null, avoid “vs previous period” language; instead describe absolute performance & signals.
+- Do not invent data. If something is unknown, acknowledge uncertainty and propose what to measure next.
+- Recommendations must be concrete next actions (owner/when suggestions are ok).`
+
+    // Note: we intentionally keep the AI input compact (high-signal summaries + top lists),
+    // so we don't need to stream full arrays into the prompt.
     const originalLogo: string = options?.brand?.logoUrl || ''
     const largeInlineLogo = originalLogo.startsWith('data:') && originalLogo.length > 2000
     const logoToken = largeInlineLogo ? '__REPORT_LOGO__' : originalLogo
 
     const temperature = options?.deterministic ? 0.2 : 0.7
+    const baseSections = options?.sections && typeof options.sections === 'object' ? options.sections : {}
+    const sections = {
+      kpi: true,
+      changes: true,
+      insights: true,
+      pipeline: true,
+      activities: true,
+      calendar: true,
+      crm: true,
+      uploads: true,
+      risks: true,
+      conclusion: true,
+      appendix: true,
+      ...baseSections,
+    } as Record<string, boolean>
+
+    // Build “top tables” for both HTML and exports
+    const topDeals = pickTop(deals, 10, (d: any) => toNumber(d?.value)).map((d: any) => ({
+      ID: d?.id ?? '',
+      [lang === 'de' ? 'Titel' : 'Title']: safeText(d?.title || ''),
+      [lang === 'de' ? 'Stufe' : 'Stage']: safeText(d?.stage || ''),
+      [lang === 'de' ? 'Wert' : 'Value']: fmtChf(d?.value || 0, lang),
+    }))
+    const recentActivities = pickTop(act, 10, (a: any) => {
+      const t = a?.start ? new Date(a.start).getTime() : 0
+      return Number.isFinite(t) ? t : 0
+    }).map((a: any) => ({
+      ID: a?.id ?? '',
+      [lang === 'de' ? 'Titel' : 'Title']: safeText(a?.title || ''),
+      [lang === 'de' ? 'Status' : 'Status']: safeText(a?.status || ''),
+      [lang === 'de' ? 'Datum' : 'Date']: dateLabel(a?.start || a?.end || '', lang),
+    }))
+    const keyEvents = pickTop(ev, 10, (e: any) => {
+      const t = e?.start ? new Date(e.start).getTime() : 0
+      return Number.isFinite(t) ? t : 0
+    }).map((e: any) => ({
+      ID: e?.id ?? '',
+      [lang === 'de' ? 'Titel' : 'Title']: safeText(e?.title || ''),
+      [lang === 'de' ? 'Datum' : 'Date']: dateLabel(e?.start || '', lang),
+      [lang === 'de' ? 'Kategorie' : 'Category']: safeText(e?.category || ''),
+    }))
+    const recentCompanies = pickTop(companies, 10, (c: any) => {
+      const t = c?.updated_at ? new Date(c.updated_at).getTime() : (c?.created_at ? new Date(c.created_at).getTime() : 0)
+      return Number.isFinite(t) ? t : 0
+    }).map((c: any) => ({
+      ID: c?.id ?? '',
+      [lang === 'de' ? 'Name' : 'Name']: safeText(c?.name || ''),
+      [lang === 'de' ? 'Update' : 'Updated']: dateLabel(c?.updated_at || c?.created_at || '', lang),
+      [lang === 'de' ? 'Notiz' : 'Note']: safeText(c?.notes || '').slice(0, 90),
+    }))
+    const recentContacts = pickTop(contacts, 10, (c: any) => {
+      const t = c?.updated_at ? new Date(c.updated_at).getTime() : (c?.created_at ? new Date(c.created_at).getTime() : 0)
+      return Number.isFinite(t) ? t : 0
+    }).map((c: any) => ({
+      ID: c?.id ?? '',
+      [lang === 'de' ? 'Name' : 'Name']: safeText(c?.name || ''),
+      [lang === 'de' ? 'E-Mail' : 'Email']: safeText(c?.email || ''),
+      [lang === 'de' ? 'Update' : 'Updated']: dateLabel(c?.updated_at || c?.created_at || '', lang),
+    }))
+    const uploadsTbl = pickTop(up, 10, (u: any) => {
+      const t = u?.created_at ? new Date(u.created_at).getTime() : 0
+      return Number.isFinite(t) ? t : 0
+    }).map((u: any) => ({
+      ID: u?.id ?? '',
+      [lang === 'de' ? 'Name' : 'Name']: safeText(u?.original_name || u?.name || ''),
+      [lang === 'de' ? 'Typ' : 'Type']: safeText(u?.file_type || ''),
+      [lang === 'de' ? 'Datum' : 'Date']: dateLabel(u?.created_at || '', lang),
+    }))
+    const jobsTbl = pickTop(jb, 10, (j: any) => {
+      const t = j?.created_at ? new Date(j.created_at).getTime() : 0
+      return Number.isFinite(t) ? t : 0
+    }).map((j: any) => ({
+      ID: j?.id ?? '',
+      [lang === 'de' ? 'Typ' : 'Type']: safeText(j?.type || ''),
+      [lang === 'de' ? 'Status' : 'Status']: safeText(j?.status || ''),
+      [lang === 'de' ? 'Datum' : 'Date']: dateLabel(j?.created_at || '', lang),
+    }))
+
+    const deltas = (() => {
+      if (!compareBlock?.period) return []
+      const periodTxt = `${compareBlock.period.from}–${compareBlock.period.to}`
+      const items = [
+        { label: lang === 'de' ? 'Aktivitäten' : 'Activities', value: act.length, prev: act.length - toNumber(compareBlock?.counts?.activities), delta: toNumber(compareBlock?.counts?.activities) },
+        { label: lang === 'de' ? 'Events' : 'Events', value: ev.length, prev: ev.length - toNumber(compareBlock?.counts?.events), delta: toNumber(compareBlock?.counts?.events) },
+        { label: lang === 'de' ? 'Uploads' : 'Uploads', value: up.length, prev: up.length - toNumber(compareBlock?.counts?.uploads), delta: toNumber(compareBlock?.counts?.uploads) },
+        { label: lang === 'de' ? 'Jobs' : 'Jobs', value: jb.length, prev: jb.length - toNumber(compareBlock?.counts?.jobs), delta: toNumber(compareBlock?.counts?.jobs) },
+      ]
+      return items.map((x) => ({ ...x, periodTxt }))
+    })()
+
     const payload = {
       model,
       temperature,
+      response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: options?.deterministic ? (system + "\\n\\nSTYLE VARIATION\\n- Use deterministic, concise wording. Avoid randomness and verbose language.") : system },
+        { role: 'system', content: system },
         { role: 'user', content: JSON.stringify({
           period: { from, to },
-          generatedAt,
-          generatedAtText,
+          compare: compareBlock,
+          deltas: deltas.map((d: any) => ({ label: d.label, prev: d.prev, value: d.value, delta: d.delta })),
           kpis: {
             pipelineValue: crmStats?.pipelineValue || 0,
             wonValue: crmStats?.wonValue || 0,
             totalDeals: crmStats?.totalDeals || 0,
+            activities: act.length,
+            events: ev.length,
             uploads: up.length,
             jobs: jb.length,
           },
-          kpi_sources: {
-            pipelineValue: { endpoint: "/crm/stats", howCalculated: "sum(value) of deals where stage != lost" },
-            wonValue: { endpoint: "/crm/stats", howCalculated: "sum(value) of deals where stage == won" },
-            totalDeals: { endpoint: "/crm/stats", howCalculated: "count(all deals)" },
-            uploads: { endpoint: "/uploads", howCalculated: "count(uploads within selected period)" },
-            jobs: { endpoint: "/jobs", howCalculated: "count(jobs within selected period)" },
+          changes: {
+            companies: { created: companiesCreated.length, updated: companiesUpdated.length },
+            contacts: { created: contactsCreated.length, updated: contactsUpdated.length },
+            deals: { created: dealsCreated.length, updated: dealsUpdated.length },
           },
-          assumptions: [
-            "`to` date is treated as inclusive end-of-day for date inputs",
-            "Pipeline excludes stage=lost; Won includes stage=won",
-            "Uploads/Jobs/Calendar/Activities are filtered by created/start timestamps when available",
+          highlights: {
+            topDeals,
+            recentActivities,
+            keyEvents,
+            recentCompanies,
+            recentContacts,
+          },
+          notes: [
+            "CRM KPI stats (/crm/stats) are global (not period-filtered). Period comparisons are based on time-filtered entities (activities/events/uploads/jobs).",
+            "Deals stage transitions are not tracked historically; avoid claiming exact 'moved to won' counts unless explicitly available.",
           ],
-          compare: compareBlock,
-          totals: {
-            activities: act.length, events: ev.length, uploads: up.length, jobs: jb.length,
-            companies: companies.length, contacts: contacts.length, deals: deals.length,
-          },
-          activities: limit(act, max.activities),
-          calendar: limit(ev, max.events),
-          uploads: limit(up, max.uploads),
-          jobs: limit(jb, max.jobs),
-          companies: limit(companies, max.companies),
-          contacts: limit(contacts, max.contacts),
-          deals: limit(deals, max.deals),
-          labels,
-          style: baseStyle,
-          logoToken: logoToken || '',
         }) },
       ],
     }
@@ -310,12 +630,158 @@ OUTPUT
       return NextResponse.json({ error: text }, { status: resp.status })
     }
     const j = await resp.json()
-    let html = j?.choices?.[0]?.message?.content || '<p>Empty report</p>'
-    if (largeInlineLogo) {
-      html = html.replace(/__REPORT_LOGO__/g, originalLogo)
+    const raw = j?.choices?.[0]?.message?.content || '{}'
+    let ai: any = {}
+    try { ai = JSON.parse(raw) } catch { ai = {} }
+
+    const narrative = {
+      executiveSummary: Array.isArray(ai?.executive_summary) ? ai.executive_summary : [],
+      whatChanged: Array.isArray(ai?.what_changed) ? ai.what_changed : [],
+      keyInsights: Array.isArray(ai?.key_insights) ? ai.key_insights : [],
+      results: Array.isArray(ai?.results) ? ai.results : [],
+      risks: Array.isArray(ai?.risks) ? ai.risks : [],
+      recommendations: Array.isArray(ai?.recommendations) ? ai.recommendations : [],
+      conclusion: safeText(ai?.conclusion || ''),
     }
 
-    return NextResponse.json({ html })
+    // Heuristic fallback if AI returns empty
+    const fallback = (arr: string[], def: string[]) => (arr && arr.length ? arr : def)
+    narrative.executiveSummary = fallback(narrative.executiveSummary, [
+      lang === 'de' ? `Überblick für ${safeText(from)}–${safeText(to)}.` : `Overview for ${safeText(from)}–${safeText(to)}.`,
+      lang === 'de' ? `Pipeline aktuell: ${fmtChf(crmStats?.pipelineValue || 0, lang)}.` : `Current pipeline: ${fmtChf(crmStats?.pipelineValue || 0, lang)}.`,
+      lang === 'de' ? `Won aktuell: ${fmtChf(crmStats?.wonValue || 0, lang)}.` : `Current won: ${fmtChf(crmStats?.wonValue || 0, lang)}.`,
+      lang === 'de' ? `Aktivitäten im Zeitraum: ${act.length}.` : `Activities in period: ${act.length}.`,
+      lang === 'de' ? `Events im Zeitraum: ${ev.length}.` : `Events in period: ${ev.length}.`,
+    ])
+    narrative.whatChanged = fallback(narrative.whatChanged, compareBlock ? [
+      lang === 'de' ? `Aktivitäten: ${act.length} (Δ ${toNumber(compareBlock?.counts?.activities)}).` : `Activities: ${act.length} (Δ ${toNumber(compareBlock?.counts?.activities)}).`,
+      lang === 'de' ? `Events: ${ev.length} (Δ ${toNumber(compareBlock?.counts?.events)}).` : `Events: ${ev.length} (Δ ${toNumber(compareBlock?.counts?.events)}).`,
+      lang === 'de' ? `Uploads: ${up.length} (Δ ${toNumber(compareBlock?.counts?.uploads)}).` : `Uploads: ${up.length} (Δ ${toNumber(compareBlock?.counts?.uploads)}).`,
+      lang === 'de' ? `Jobs: ${jb.length} (Δ ${toNumber(compareBlock?.counts?.jobs)}).` : `Jobs: ${jb.length} (Δ ${toNumber(compareBlock?.counts?.jobs)}).`,
+    ] : [])
+    narrative.keyInsights = fallback(narrative.keyInsights, [
+      lang === 'de' ? `Fokus: Conversion von Pipeline zu Won erhöhen (aktuell Won ${fmtChf(crmStats?.wonValue || 0, lang)}).` : `Focus: increase conversion from pipeline to won (won ${fmtChf(crmStats?.wonValue || 0, lang)}).`,
+      lang === 'de' ? `Aktivitäten/Events als Hebel: plane Follow-ups zu Top-Deals.` : `Use activities/events as a lever: plan follow-ups for top deals.`,
+    ])
+    narrative.results = fallback(narrative.results, [
+      lang === 'de' ? `Aktivitätstakt im Zeitraum: ${act.length}.` : `Activity cadence in period: ${act.length}.`,
+      lang === 'de' ? `Operative Outputs: Uploads ${up.length}, Jobs ${jb.length}.` : `Operational outputs: uploads ${up.length}, jobs ${jb.length}.`,
+    ])
+    narrative.risks = fallback(narrative.risks, [
+      lang === 'de' ? `Datenlücke: KPI-Stats sind nicht zeitgefiltert; Trends sollten mit periodischen Snapshots ergänzt werden.` : `Data gap: KPI stats are not period-filtered; add period snapshots for trends.`,
+    ])
+    narrative.recommendations = fallback(narrative.recommendations, [
+      lang === 'de' ? `1–2 Top-Deals auswählen und nächste Schritte terminieren (Kalender + Aktivität).` : `Pick 1–2 top deals and schedule next steps (calendar + activity).`,
+      lang === 'de' ? `Wöchentlichen Versand aktivieren, damit Management konsistent up-to-date bleibt.` : `Enable weekly email schedule for consistent management updates.`,
+    ])
+    if (!narrative.conclusion) {
+      narrative.conclusion = lang === 'de'
+        ? `In Summe zeigt der Zeitraum einen klaren Aktivitäts- und Output‑Überblick. Der nächste Schritt ist, Pipeline‑Arbeit stärker in “Won” zu konvertieren – mit konsequenten Follow‑ups zu den größten Opportunities.`
+        : `Overall, this period provides a clear view of activity and outputs. Next, focus on converting pipeline work into “won” with consistent follow-ups on the biggest opportunities.`
+    }
+
+    const periodText = `${safeText(from || '')} – ${safeText(to || '')}`.trim()
+    const companyName = safeText(options?.brand?.company || '')
+    const logo = String(options?.brand?.logoUrl || '')
+    const html = renderReportHtml({
+      style: baseStyle,
+      meta: {
+        title: labels.title,
+        company: companyName || undefined,
+        logoUrl: logo ? (largeInlineLogo ? originalLogo : logoToken) : undefined,
+        periodText: periodText,
+        generatedAtText,
+        lang,
+      },
+      kpis: {
+        pipelineValue: toNumber(crmStats?.pipelineValue || 0),
+        wonValue: toNumber(crmStats?.wonValue || 0),
+        totalDeals: toNumber(crmStats?.totalDeals || 0),
+        uploads: up.length,
+        jobs: jb.length,
+        activities: act.length,
+        events: ev.length,
+      },
+      deltas: deltas.map((d: any) => ({ label: d.label, prev: d.prev, value: d.value, delta: d.delta })),
+      narrative,
+      sections,
+      tables: {
+        topDeals,
+        recentActivities,
+        keyEvents,
+        recentCompanies,
+        recentContacts,
+        uploads: uploadsTbl,
+        jobs: jobsTbl,
+      },
+    })
+
+    const report = {
+      version: 1,
+      meta: {
+        title: labels.title,
+        company: companyName || undefined,
+        period: { from: from || null, to: to || null },
+        generatedAt,
+        generatedAtText,
+        language: lang,
+        tone,
+        logoUrl: logo ? (largeInlineLogo ? originalLogo : logoToken) : undefined,
+      },
+      sections,
+      kpis: {
+        pipelineValue: toNumber(crmStats?.pipelineValue || 0),
+        wonValue: toNumber(crmStats?.wonValue || 0),
+        totalDeals: toNumber(crmStats?.totalDeals || 0),
+        uploads: up.length,
+        jobs: jb.length,
+        activities: act.length,
+        events: ev.length,
+      },
+      deltas: compareBlock?.period
+        ? {
+            compareType: String(compareBlock?.period?.type || 'none') as any,
+            period: { from: compareBlock.period.from, to: compareBlock.period.to },
+            items: deltas.map((d: any) => ({ label: d.label, value: d.value, prev: d.prev, delta: d.delta })),
+          }
+        : undefined,
+      narrative: {
+        executiveSummary: narrative.executiveSummary,
+        whatChanged: narrative.whatChanged,
+        keyInsights: narrative.keyInsights,
+        results: narrative.results,
+        risks: narrative.risks,
+        recommendations: narrative.recommendations,
+        conclusion: narrative.conclusion,
+      },
+      tables: {
+        topDeals,
+        recentActivities,
+        keyEvents,
+        recentCompanies,
+        recentContacts,
+        uploads: uploadsTbl,
+        jobs: jobsTbl,
+      },
+      dataSources: {
+        kpis: [
+          { name: 'pipelineValue', endpoint: '/crm/stats', how: 'sum(value) where stage != lost' },
+          { name: 'wonValue', endpoint: '/crm/stats', how: 'sum(value) where stage == won' },
+          { name: 'totalDeals', endpoint: '/crm/stats', how: 'count(deals)' },
+          { name: 'activities', endpoint: '/activities', how: 'count(start/end within period)' },
+          { name: 'events', endpoint: '/calendar', how: 'count(start within period)' },
+          { name: 'uploads', endpoint: '/uploads', how: 'count(created_at within period)' },
+          { name: 'jobs', endpoint: '/jobs', how: 'count(created_at within period)' },
+        ],
+        assumptions: [
+          '`to` date is treated as inclusive end-of-day for date inputs',
+          'CRM KPI stats are not period-filtered in /crm/stats (current snapshot)',
+          'Period comparisons are computed from time-filtered entities (activities/events/uploads/jobs)',
+        ],
+      },
+    }
+
+    return NextResponse.json({ html, report })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Unexpected error' }, { status: 500 })
   }
