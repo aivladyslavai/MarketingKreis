@@ -22,20 +22,19 @@ function getBackendUrl() {
 }
 
 export async function POST(req: NextRequest) {
+  const controller = new AbortController()
+  const timeoutMs = 25_000
+  const t = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const apiUrl = getBackendUrl()
-    // Use explicit AbortController to avoid platform 10s timeouts (set to 9s)
-    const controller = new AbortController()
-    const t = setTimeout(() => controller.abort(), 9000)
     const r = await fetch(`${apiUrl}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: await req.text(),
-      credentials: 'include',
-      cache: 'no-store',
+      credentials: "include",
+      cache: "no-store",
       signal: controller.signal,
     })
-    clearTimeout(t)
     const text = await r.text()
 
     // Try to parse and auto-verify on the server to avoid exposing raw token to the client
@@ -69,7 +68,14 @@ export async function POST(req: NextRequest) {
     appendSetCookies(r, resp)
     return resp
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Unexpected error" }, { status: 500 })
+    const isAbort = e?.name === "AbortError"
+    const msg = isAbort
+      ? "Der Server startet gerade (Cold Start). Bitte 20–30 Sekunden warten und erneut versuchen."
+      : e?.message || "Unexpected error"
+    const status = isAbort ? 504 : 500
+    return NextResponse.json({ detail: msg }, { status })
+  } finally {
+    clearTimeout(t)
   }
 }
 

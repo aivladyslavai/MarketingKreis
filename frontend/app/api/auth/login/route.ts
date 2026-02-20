@@ -23,10 +23,11 @@ function getBackendUrl() {
 
 // Simple proxy for login to the backend.
 export async function POST(req: NextRequest) {
+  const controller = new AbortController()
+  const timeoutMs = 25_000
+  const t = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const apiUrl = getBackendUrl()
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 9000)
 
     const backendRes = await fetch(`${apiUrl}/auth/login`, {
       method: "POST",
@@ -37,20 +38,26 @@ export async function POST(req: NextRequest) {
       signal: controller.signal,
     })
 
-    clearTimeout(timeout)
-
     const text = await backendRes.text()
     const resp = new NextResponse(text, { status: backendRes.status })
     appendSetCookies(backendRes, resp)
 
-    // Forward backend redirect hint, if any
     const redirectTo = backendRes.headers.get("X-Redirect-To")
     if (redirectTo) resp.headers.set("X-Redirect-To", redirectTo)
 
     return resp
   } catch (err: any) {
+    const isAbort = err?.name === "AbortError"
+    const msg = isAbort
+      ? "Der Server startet gerade (Cold Start). Bitte 20–30 Sekunden warten und erneut versuchen."
+      : err?.message || "Proxy error"
+    const status = isAbort ? 504 : 500
     console.error("Login proxy error (api/auth/login):", err)
-    return NextResponse.json({ detail: err?.message || "Internal error" }, { status: 500 })
+    const resp = NextResponse.json({ detail: msg }, { status })
+    if (isAbort) resp.headers.set("retry-after", "10")
+    return resp
+  } finally {
+    clearTimeout(t)
   }
 }
 

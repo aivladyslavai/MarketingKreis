@@ -57,6 +57,18 @@ function SignupInner() {
     }
   }, [])
 
+  // Warm up backend (Render free tier often sleeps; first request can be slow).
+  useEffect(() => {
+    if (mode !== "login") return
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 3000)
+    fetch("/api/health", { cache: "no-store", signal: ctrl.signal }).catch(() => {})
+    return () => {
+      clearTimeout(t)
+      ctrl.abort()
+    }
+  }, [mode])
+
   const passwordStrength = useMemo(() => {
     if (!password) return { score: 0, label: "", color: "" }
     let score = 0
@@ -140,7 +152,7 @@ function SignupInner() {
       /bad gateway|service unavailable|gateway timeout/i.test(trimmed) ||
       trimmed.includes("<title>502</title>")
     ) {
-      return `Der Server ist gerade nicht erreichbar (Status ${status}). Bitte in 30 Sekunden erneut versuchen.`
+      return `Der Server startet gerade (Cold Start, Status ${status}). Bitte 20–30 Sekunden warten und erneut versuchen.`
     }
 
     // If backend returned HTML, avoid dumping it into UI

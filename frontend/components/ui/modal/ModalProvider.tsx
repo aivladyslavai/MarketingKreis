@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useContext, useState, useCallback } from "react"
+import React, { createContext, useContext, useState, useCallback, useRef } from "react"
 import { Modal } from "./Modal"
 import type { ModalProps } from "./types"
 
@@ -14,13 +14,21 @@ const ModalContext = createContext<ModalContextType | undefined>(undefined)
 export function ModalProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false)
   const [modalProps, setModalProps] = useState<ModalProps | null>(null)
+  const modalPropsRef = useRef<ModalProps | null>(null)
 
   const openModal = useCallback((modal: ModalProps) => {
+    modalPropsRef.current = modal
     setModalProps(modal)
     setIsOpen(true)
   }, [])
 
   const closeModal = useCallback(() => {
+    try {
+      modalPropsRef.current?.onDismiss?.()
+    } catch {
+      /* noop */
+    }
+    modalPropsRef.current = null
     setIsOpen(false)
     setModalProps(null)
   }, [])

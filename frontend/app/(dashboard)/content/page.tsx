@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect, useId } from "react"
+import { useMemo, useState, useEffect, useId, useRef, Suspense } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -9,8 +9,10 @@ import {
   ArrowLeft,
   Filter,
   Download,
-  Image,
-  Video,
+  CheckSquare,
+  Square,
+  X,
+  Image as ImageIcon,
   CalendarDays,
   Clock,
   Tag,
@@ -29,10 +31,9 @@ import {
   Files,
 } from "lucide-react"
 import Link from "next/link"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useModal } from "@/components/ui/modal/ModalProvider"
-import { motion } from "framer-motion"
 import { sync } from "@/lib/sync"
-import { ResponsiveContainer, AreaChart, Area } from "recharts"
 import { GlassSelect } from "@/components/ui/glass-select"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
@@ -47,25 +48,27 @@ import KanbanBoard, { type TaskStatus as KanbanStatus } from "@/components/kanba
 import { useContentData, type ContentTask } from "@/hooks/use-content-data"
 import { useContentItems } from "@/hooks/use-content-items"
 import { useAuth } from "@/hooks/use-auth"
-import { adminAPI, type AdminUser } from "@/lib/api"
+import { adminAPI, contentItemsAPI, contentTemplatesAPI, type AdminUser, type ContentItemStatus, type ContentTemplateDTO } from "@/lib/api"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ContentItemEditor } from "@/components/content/ContentItemEditor"
 import { EditorialCalendar } from "@/components/content/EditorialCalendar"
+import { ContentItemsPlannerBoard } from "@/components/content/ContentItemsPlannerBoard"
 import { ContentTemplatesAdmin } from "@/components/content/ContentTemplatesAdmin"
 import { NotificationsPanel } from "@/components/content/NotificationsPanel"
 
-type ContentStatus = "idea" | "draft" | "review" | "approved" | "published"
+type ItemStatusFilter = "ALL" | ContentItemStatus
 
-interface ContentItem {
-  id: number
-  title: string
-  type: "blog" | "social" | "video" | "email" | "asset"
-  status: ContentStatus
-  assignee: string
-  dueDate: string
-  tags: string[]
-  priority: "low" | "medium" | "high"
-}
+const ITEM_STATUS_OPTIONS: Array<{ value: ItemStatusFilter; label: string }> = [
+  { value: "ALL", label: "Alle Status" },
+  { value: "IDEA", label: "IDEA" },
+  { value: "DRAFT", label: "DRAFT" },
+  { value: "REVIEW", label: "REVIEW" },
+  { value: "APPROVED", label: "APPROVED" },
+  { value: "SCHEDULED", label: "SCHEDULED" },
+  { value: "PUBLISHED", label: "PUBLISHED" },
+  { value: "ARCHIVED", label: "ARCHIVED" },
+  { value: "BLOCKED", label: "BLOCKED" },
+]
 
 type TwoLevelTaxonomy = {
   channels: string[]
@@ -607,9 +610,324 @@ function TaskEditForm({
   )
 }
 
-export default function ContentPage() {
+type SavedItemView = {
+  id: string
+  name: string
+  q: string
+  status: ItemStatusFilter
+  sort: string
+  scope: "mine" | "all"
+  ownerFilter: string
+  channel: string
+  format: string
+  createdAt: number
+}
+
+function SaveItemViewForm({
+  defaultName,
+  onSave,
+}: {
+  defaultName?: string
+  onSave: (name: string) => void | Promise<void>
+}) {
+  const { closeModal } = useModal()
+  const [name, setName] = useState(defaultName || "")
+  const [saving, setSaving] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const n = name.trim()
+    if (!n) return
+    setSaving(true)
+    try {
+      await onSave(n)
+      closeModal()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Name</label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="z.B. Reviews / Diese Woche" autoFocus />
+      </div>
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+        <Button type="button" variant="outline" onClick={closeModal}>
+          Abbrechen
+        </Button>
+        <Button type="submit" disabled={saving || !name.trim()}>
+          {saving ? "Speichere..." : "Speichern"}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function ManageItemViews({
+  views,
+  onApply,
+  onDelete,
+}: {
+  views: SavedItemView[]
+  onApply: (v: SavedItemView) => void
+  onDelete: (id: string) => void
+}) {
+  const { closeModal } = useModal()
+
+  return (
+    <div className="space-y-3">
+      {views.length === 0 ? (
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">Noch keine gespeicherten Views.</div>
+      ) : (
+        <div className="space-y-2">
+          {views
+            .slice()
+            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+            .map((v) => (
+              <div key={v.id} className="rounded-xl border border-white/10 bg-white/5 p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-100 truncate">{v.name}</div>
+                  <div className="mt-0.5 text-[11px] text-slate-400 truncate">
+                    Suche: {v.q ? `"${v.q}"` : "—"} · Status: {String(v.status)} · Sort: {String(v.sort)} · Scope: {v.scope} · Channel: {v.channel} · Format: {v.format}
+                  </div>
+                </div>
+                <div className="sm:ml-auto flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="glass-card"
+                    onClick={() => {
+                      onApply(v)
+                      closeModal()
+                    }}
+                  >
+                    Anwenden
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="glass-card border-red-500/30 text-red-300 hover:bg-red-500/10"
+                    onClick={() => {
+                      if (!confirm(`View löschen: "${v.name}"?`)) return
+                      onDelete(v.id)
+                      closeModal()
+                    }}
+                  >
+                    Löschen
+                  </Button>
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+      <div className="flex justify-end pt-2 border-t border-white/10">
+        <Button variant="outline" className="glass-card" onClick={closeModal}>
+          Schließen
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function BulkReviewRequestForm({
+  count,
+  onRun,
+}: {
+  count: number
+  onRun: (note?: string) => void | Promise<void>
+}) {
+  const { closeModal } = useModal()
+  const [note, setNote] = useState("")
+  const [running, setRunning] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRunning(true)
+    try {
+      const n = note.trim()
+      await onRun(n ? n : undefined)
+      closeModal()
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <div className="text-sm text-slate-200">
+        Review anfragen für <span className="font-semibold">{count}</span> Items.
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Notiz (optional)</label>
+        <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="z.B. Bitte bis Freitag prüfen." />
+      </div>
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+        <Button type="button" variant="outline" onClick={closeModal}>
+          Abbrechen
+        </Button>
+        <Button type="submit" disabled={running}>
+          {running ? "Starte…" : "Review anfragen"}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function BulkApplyTemplateForm({
+  count,
+  onApply,
+}: {
+  count: number
+  onApply: (tpl: ContentTemplateDTO) => void | Promise<void>
+}) {
+  const { closeModal } = useModal()
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [templates, setTemplates] = useState<ContentTemplateDTO[]>([])
+  const [tplId, setTplId] = useState<string>("")
+  const [running, setRunning] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const res = await contentTemplatesAPI.list()
+        if (cancelled) return
+        setTemplates(Array.isArray(res) ? res : [])
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || "Templates konnten nicht geladen werden.")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const id = Number(tplId)
+    if (!tplId || Number.isNaN(id)) return
+    const tpl = templates.find((t) => t.id === id)
+    if (!tpl) return
+
+    setRunning(true)
+    try {
+      await onApply(tpl)
+      closeModal()
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const options = useMemo(() => {
+    const base = templates
+      .slice()
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "de"))
+      .map((t) => ({ value: String(t.id), label: t.name }))
+    return [{ value: "", label: loading ? "Lade Templates…" : "Template auswählen…" }, ...base]
+  }, [templates, loading])
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <div className="text-sm text-slate-200">
+        Template anwenden auf <span className="font-semibold">{count}</span> Items.
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Template</label>
+        <GlassSelect value={tplId} onChange={(v) => setTplId(v)} options={options} />
+        {error && <div className="text-[11px] text-amber-200 mt-1">{error}</div>}
+      </div>
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+        <Button type="button" variant="outline" onClick={closeModal}>
+          Abbrechen
+        </Button>
+        <Button type="submit" disabled={running || !tplId}>
+          {running ? "Wende an…" : "Anwenden"}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function BulkSetDateForm({
+  count,
+  mode,
+  onApply,
+}: {
+  count: number
+  mode: "due" | "publish"
+  onApply: (isoOrNull: string | null) => void | Promise<void>
+}) {
+  const { closeModal } = useModal()
+  const [value, setValue] = useState("")
+  const [clear, setClear] = useState(false)
+  const [running, setRunning] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRunning(true)
+    try {
+      if (clear) {
+        await onApply(null)
+        closeModal()
+        return
+      }
+      const s = String(value || "").trim()
+      if (!s) return
+      const d = new Date(s)
+      if (Number.isNaN(d.getTime())) return
+      await onApply(d.toISOString())
+      closeModal()
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const label = mode === "due" ? "Fällig bis" : "Publish (geplant)"
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <div className="text-sm text-slate-200">
+        {label} setzen für <span className="font-semibold">{count}</span> Items.
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-slate-500 dark:text-slate-300">{label}</label>
+        <Input type="datetime-local" value={value} onChange={(e) => setValue(e.target.value)} disabled={clear} />
+        <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+          <input
+            type="checkbox"
+            checked={clear}
+            onChange={(e) => setClear(e.target.checked)}
+            className="h-4 w-4 accent-white"
+          />
+          Datum entfernen
+        </label>
+      </div>
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+        <Button type="button" variant="outline" onClick={closeModal}>
+          Abbrechen
+        </Button>
+        <Button type="submit" disabled={running || (!clear && !value)}>
+          {running ? "Speichere…" : "Anwenden"}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function ContentPageInner() {
   const { openModal, closeModal } = useModal()
   const { toast } = useToast()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const openedItemIdRef = useRef<number | null>(null)
   const { user } = useAuth()
   const isAdmin = user?.role === "admin" || user?.role === "editor"
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
@@ -621,16 +939,10 @@ export default function ContentPage() {
   const [ownerFilter, setOwnerFilter] = useState<string>("all") // all | unassigned | <id>
   const [taskQ, setTaskQ] = useState<string>("")
   const [showPlanner, setShowPlanner] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [dealsLoading, setDealsLoading] = useState(false)
+  const [dealsError, setDealsError] = useState<string | null>(null)
   const [deals, setDeals] = useState<any[]>([])
-  // локальный список контент‑элементов как раньше (для KPI + Grid),
-  // но тасковая система теперь опирается на useContentData
-  const [contents, setContents] = useState<ContentItem[]>([
-    { id: 1, title: "Q1 Marketing Blog Post", type: "blog", status: "draft", assignee: "Anna Schmidt", dueDate: "2024-01-20", tags: ["Marketing", "Blog"], priority: "high" },
-    { id: 2, title: "Instagram Carousel - Product Launch", type: "social", status: "review", assignee: "Peter Weber", dueDate: "2024-01-18", tags: ["Social Media", "Product"], priority: "high" },
-    { id: 3, title: "Welcome Email Template", type: "email", status: "approved", assignee: "Hans Müller", dueDate: "2024-01-22", tags: ["Email", "Onboarding"], priority: "medium" },
-  ])
+  const [dealPick, setDealPick] = useState<string>("")
   const {
     tasks,
     loading: tasksLoading,
@@ -658,8 +970,8 @@ export default function ContentPage() {
   const twoLevelTaxonomy = useMemo(() => buildTwoLevelTaxonomy(tasks), [tasks])
 
   const [hubTab, setHubTab] = useState<"items" | "calendar" | "tasks" | "templates" | "notifications">(() => {
-    if (typeof window === "undefined") return "tasks"
-    return (localStorage.getItem("contentHubTab") as any) || "tasks"
+    if (typeof window === "undefined") return "items"
+    return (localStorage.getItem("contentHubTab") as any) || "items"
   })
   useEffect(() => {
     try {
@@ -668,7 +980,16 @@ export default function ContentPage() {
   }, [hubTab])
 
   const [itemQ, setItemQ] = useState<string>("")
-  const [itemStatus, setItemStatus] = useState<string>("ALL")
+  const [itemStatus, setItemStatus] = useState<ItemStatusFilter>(() => {
+    if (typeof window === "undefined") return "ALL"
+    try {
+      const v = String(localStorage.getItem("content:itemStatus") || "ALL").toUpperCase()
+      const allowed = new Set(ITEM_STATUS_OPTIONS.map((o) => String(o.value)))
+      return allowed.has(v) ? (v as ItemStatusFilter) : "ALL"
+    } catch {
+      return "ALL"
+    }
+  })
   const [itemSort, setItemSort] = useState<string>(() => {
     if (typeof window === "undefined") return "updated_desc"
     return localStorage.getItem("content:itemSort") || "updated_desc"
@@ -678,12 +999,72 @@ export default function ContentPage() {
     const v = localStorage.getItem("content:itemScope")
     return v === "all" || v === "mine" ? (v as any) : "mine"
   })
-  const [itemOwnerFilter, setItemOwnerFilter] = useState<string>("all")
+  const [itemOwnerFilter, setItemOwnerFilter] = useState<string>(() => {
+    if (typeof window === "undefined") return "all"
+    try {
+      const v = localStorage.getItem("content:itemOwnerFilter")
+      return v ? String(v) : "all"
+    } catch {
+      return "all"
+    }
+  })
+  const [itemChannel, setItemChannel] = useState<string>(() => {
+    if (typeof window === "undefined") return "all"
+    try {
+      const v = localStorage.getItem("content:itemChannel")
+      return v ? String(v) : "all"
+    } catch {
+      return "all"
+    }
+  })
+  const [itemFormat, setItemFormat] = useState<string>(() => {
+    if (typeof window === "undefined") return "all"
+    try {
+      const v = localStorage.getItem("content:itemFormat")
+      return v ? String(v) : "all"
+    } catch {
+      return "all"
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem("content:itemStatus", String(itemStatus))
+    } catch {}
+  }, [itemStatus])
   useEffect(() => {
     try {
       localStorage.setItem("content:itemScope", itemScope)
     } catch {}
   }, [itemScope])
+  useEffect(() => {
+    try {
+      localStorage.setItem("content:itemOwnerFilter", String(itemOwnerFilter))
+    } catch {}
+  }, [itemOwnerFilter])
+  useEffect(() => {
+    try {
+      localStorage.setItem("content:itemChannel", String(itemChannel))
+    } catch {}
+  }, [itemChannel])
+  useEffect(() => {
+    try {
+      localStorage.setItem("content:itemFormat", String(itemFormat))
+    } catch {}
+  }, [itemFormat])
+
+  useEffect(() => {
+    if (!showPlanner) return
+    try {
+      setHubTab("items")
+      setItemStatus("ALL")
+      setSelectMode(false)
+      requestAnimationFrame(() => {
+        document.getElementById("mk-planner")?.scrollIntoView({ behavior: "smooth", block: "start" })
+      })
+    } catch {
+      /* noop */
+    }
+  }, [showPlanner])
 
   const {
     items: contentItems,
@@ -716,6 +1097,42 @@ export default function ContentPage() {
     } catch {}
   }, [itemSort])
 
+  const itemTaxonomy = useMemo(() => buildTwoLevelTaxonomy(contentItems as any), [contentItems])
+  const channelOptions = useMemo(() => {
+    return [
+      { value: "all", label: "Alle Channels" },
+      ...itemTaxonomy.channels.map((c) => ({ value: c, label: c })),
+    ]
+  }, [itemTaxonomy])
+  const formatOptions = useMemo(() => {
+    const all = new Set<string>()
+
+    if (itemChannel && itemChannel !== "all") {
+      const key = itemChannel.toLowerCase()
+      const match = itemTaxonomy.channels.find((c) => c.toLowerCase() === key)
+      const list = match ? itemTaxonomy.formatsByChannel[match] || [] : []
+      return [
+        { value: "all", label: "Alle Formate" },
+        ...list.map((f) => ({ value: f, label: f })),
+      ]
+    }
+
+    for (const list of Object.values(itemTaxonomy.formatsByChannel || {})) {
+      for (const f of list || []) all.add(f)
+    }
+    const arr = Array.from(all).sort((a, b) => a.localeCompare(b, "de"))
+    return [{ value: "all", label: "Alle Formate" }, ...arr.map((f) => ({ value: f, label: f }))]
+  }, [itemTaxonomy, itemChannel])
+  useEffect(() => {
+    if (!itemChannel || itemChannel === "all") return
+    if (!itemFormat || itemFormat === "all") return
+    const key = itemChannel.toLowerCase()
+    const match = itemTaxonomy.channels.find((c) => c.toLowerCase() === key)
+    const list = match ? itemTaxonomy.formatsByChannel[match] || [] : []
+    const ok = list.some((f) => f.toLowerCase() === itemFormat.toLowerCase())
+    if (!ok) setItemFormat("all")
+  }, [itemChannel, itemFormat, itemTaxonomy])
+
   const fmtDate = (v: any) => {
     if (!v) return ""
     try {
@@ -725,6 +1142,32 @@ export default function ContentPage() {
     } catch {
       return ""
     }
+  }
+
+  const relDays = (v: any) => {
+    if (!v) return ""
+    try {
+      const d = v instanceof Date ? v : new Date(v)
+      if (Number.isNaN(d.getTime())) return ""
+      const ms = d.getTime() - Date.now()
+      const days = Math.ceil(ms / 86_400_000)
+      if (days === 0) return "today"
+      if (days > 0) return `in ${days}d`
+      return `${Math.abs(days)}d overdue`
+    } catch {
+      return ""
+    }
+  }
+
+  const datePill = (v: any, kind: "due" | "publish") => {
+    const d = v instanceof Date ? v : v ? new Date(v) : null
+    if (!d || Number.isNaN(d.getTime())) return "border-white/10 bg-white/5 text-slate-200"
+    const ms = d.getTime() - Date.now()
+    const day = 86_400_000
+    if (ms < 0) return "bg-rose-500/15 text-rose-200 border-rose-400/30"
+    if (ms <= 2 * day) return kind === "publish" ? "bg-violet-500/15 text-violet-200 border-violet-400/30" : "bg-amber-500/15 text-amber-200 border-amber-400/30"
+    if (ms <= 7 * day) return kind === "publish" ? "bg-violet-500/10 text-violet-200 border-violet-400/20" : "bg-sky-500/10 text-sky-200 border-sky-400/20"
+    return "border-white/10 bg-white/5 text-slate-200"
   }
 
   const statusChip = (s: string) => {
@@ -754,6 +1197,8 @@ export default function ContentPage() {
 
   const sortedItems = useMemo(() => {
     const arr = Array.isArray(contentItems) ? [...contentItems] : []
+    const chKey = itemChannel && itemChannel !== "all" ? String(itemChannel).toLowerCase() : ""
+    const fmtKey = itemFormat && itemFormat !== "all" ? String(itemFormat).toLowerCase() : ""
     const statusRank: Record<string, number> = {
       IDEA: 1,
       DRAFT: 2,
@@ -766,7 +1211,13 @@ export default function ContentPage() {
     }
     const dateOr = (fallback: number, d?: Date) => (d ? d.getTime() : fallback)
 
-    arr.sort((a: any, b: any) => {
+    const filtered = arr.filter((it: any) => {
+      const chOk = !chKey || String(it?.channel || "").toLowerCase() === chKey
+      const fmtOk = !fmtKey || String(it?.format || "").toLowerCase() === fmtKey
+      return chOk && fmtOk
+    })
+
+    filtered.sort((a: any, b: any) => {
       const sa = String(a?.status || "").toUpperCase()
       const sb = String(b?.status || "").toUpperCase()
       switch (itemSort) {
@@ -788,8 +1239,371 @@ export default function ContentPage() {
           return dateOr(0, b.updatedAt) - dateOr(0, a.updatedAt)
       }
     })
-    return arr
-  }, [contentItems, itemSort])
+    return filtered
+  }, [contentItems, itemSort, itemChannel, itemFormat])
+
+  const [savedItemViews, setSavedItemViews] = useState<SavedItemView[]>(() => {
+    if (typeof window === "undefined") return []
+    try {
+      const raw = localStorage.getItem("content:itemViews")
+      const arr = JSON.parse(raw || "[]")
+      if (!Array.isArray(arr)) return []
+      return arr
+        .map((v: any) => {
+          const status = String(v?.status || "ALL").toUpperCase() as ItemStatusFilter
+          const allowed = new Set(ITEM_STATUS_OPTIONS.map((o) => String(o.value)))
+          return {
+            id: String(v?.id || ""),
+            name: String(v?.name || ""),
+            q: String(v?.q || ""),
+            status: allowed.has(status) ? status : "ALL",
+            sort: String(v?.sort || "updated_desc"),
+            scope: v?.scope === "all" ? "all" : "mine",
+            ownerFilter: String(v?.ownerFilter || "all"),
+            channel: String(v?.channel || "all") || "all",
+            format: String(v?.format || "all") || "all",
+            createdAt: Number(v?.createdAt || 0) || 0,
+          } satisfies SavedItemView
+        })
+        .filter((v: SavedItemView) => Boolean(v.id) && Boolean(v.name))
+    } catch {
+      return []
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem("content:itemViews", JSON.stringify(savedItemViews))
+    } catch {}
+  }, [savedItemViews])
+
+  const applyItemView = (v: SavedItemView) => {
+    setItemQ(v.q || "")
+    setItemStatus(v.status)
+    setItemSort(v.sort)
+    setItemScope(v.scope)
+    setItemOwnerFilter(v.ownerFilter)
+    setItemChannel(v.channel || "all")
+    setItemFormat(v.format || "all")
+    toast({ title: "View angewendet", description: v.name })
+  }
+
+  const resetItemFilters = () => {
+    setItemQ("")
+    setItemStatus("ALL")
+    setItemSort("updated_desc")
+    setItemScope("mine")
+    setItemOwnerFilter("all")
+    setItemChannel("all")
+    setItemFormat("all")
+    toast({ title: "Zurückgesetzt", description: "Filter wurden zurückgesetzt." })
+  }
+
+  const openSaveViewModal = () => {
+    openModal({
+      type: "custom",
+      title: "View speichern",
+      description: "Speichert Suche/Status/Sort/Scope/Owner/Channel/Format als schnelle Ansicht.",
+      content: (
+        <SaveItemViewForm
+          onSave={async (name) => {
+            const norm = name.trim()
+            if (!norm) return
+            const makeId = () => `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+            setSavedItemViews((prev) => {
+              const existing = prev.find((x) => x.name.trim().toLowerCase() === norm.toLowerCase())
+              const id = existing?.id || makeId()
+              const next: SavedItemView = {
+                id,
+                name: norm,
+                q: itemQ.trim(),
+                status: itemStatus,
+                sort: itemSort,
+                scope: itemScope,
+                ownerFilter: itemOwnerFilter,
+                channel: itemChannel,
+                format: itemFormat,
+                createdAt: Date.now(),
+              }
+              return [next, ...prev.filter((x) => x.id !== id)]
+            })
+            toast({ title: "Gespeichert", description: `"${norm}" wurde gespeichert.` })
+          }}
+        />
+      ),
+    })
+  }
+
+  const openManageViewsModal = () => {
+    openModal({
+      type: "custom",
+      title: "Views verwalten",
+      content: (
+        <ManageItemViews
+          views={savedItemViews}
+          onApply={(v) => applyItemView(v)}
+          onDelete={(id) => {
+            setSavedItemViews((prev) => prev.filter((x) => x.id !== id))
+            toast({ title: "Gelöscht", description: "View wurde gelöscht." })
+          }}
+        />
+      ),
+    })
+  }
+
+  const exportItemsCsv = () => {
+    const csvEscape = (v: any) => {
+      const s = String(v ?? "")
+      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+      return s
+    }
+    const rows = sortedItems
+    const header = ["id", "title", "status", "channel", "format", "due_at", "scheduled_at", "owner", "tags"]
+    const lines = [header.map(csvEscape).join(",")]
+    for (const it of rows as any[]) {
+      lines.push(
+        [
+          it.id,
+          it.title,
+          it.status,
+          it.channel,
+          it.format || "",
+          it.dueAt ? new Date(it.dueAt).toISOString() : "",
+          it.scheduledAt ? new Date(it.scheduledAt).toISOString() : "",
+          it.owner?.email || (it.ownerId != null ? `#${it.ownerId}` : ""),
+          Array.isArray(it.tags) ? it.tags.join("|") : "",
+        ]
+          .map(csvEscape)
+          .join(",")
+      )
+    }
+    const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `content-items-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    toast({ title: "Export bereit", description: `${rows.length} Items als CSV heruntergeladen.` })
+  }
+
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkStatus, setBulkStatus] = useState<ContentItemStatus | "">("")
+  const [bulkOwnerId, setBulkOwnerId] = useState<string>("")
+
+  useEffect(() => {
+    if (hubTab !== "items") setSelectMode(false)
+  }, [hubTab])
+  useEffect(() => {
+    if (!selectMode) setSelectedItemIds(new Set())
+  }, [selectMode])
+  useEffect(() => {
+    setSelectedItemIds((prev) => {
+      if (prev.size === 0) return prev
+      const allowed = new Set(sortedItems.map((it) => it.id))
+      let changed = false
+      const next = new Set<number>()
+      for (const id of prev) {
+        if (allowed.has(id)) next.add(id)
+        else changed = true
+      }
+      return changed ? next : prev
+    })
+  }, [sortedItems])
+
+  const toggleSelected = (id: number) => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const clearSelection = () => setSelectedItemIds(new Set())
+  const selectAll = () => setSelectedItemIds(new Set(sortedItems.map((it) => it.id)))
+
+  const runBulkAction = async (
+    label: string,
+    ids: number[],
+    action: (id: number) => Promise<unknown>,
+    confirmText?: string | null
+  ) => {
+    if (ids.length === 0) return
+    if (confirmText !== null) {
+      if (!confirm(confirmText || `${label} für ${ids.length} Items?`)) return
+    }
+
+    setBulkBusy(true)
+    let ok = 0
+    let fail = 0
+    try {
+      for (const id of ids) {
+        try {
+          await action(id)
+          ok += 1
+        } catch {
+          fail += 1
+        }
+      }
+    } finally {
+      setBulkBusy(false)
+    }
+    try {
+      sync.emit("content:changed")
+    } catch {
+      await refetchItems()
+    }
+    toast({
+      title: label,
+      description: `${ok}/${ids.length} erfolgreich${fail ? `, ${fail} fehlgeschlagen` : ""}`,
+      variant: fail ? ("destructive" as any) : undefined,
+    })
+    clearSelection()
+    setBulkStatus("")
+    setBulkOwnerId("")
+  }
+
+  const runBulkUpdate = async (label: string, updates: any) => {
+    const ids = Array.from(selectedItemIds)
+    return runBulkAction(label, ids, (id) => contentItemsAPI.update(id, updates))
+  }
+
+  const openBulkReviewModal = () => {
+    const ids = Array.from(selectedItemIds)
+    if (ids.length === 0) return
+    openModal({
+      type: "custom",
+      title: "Review anfragen",
+      description: `Für ${ids.length} Items`,
+      content: (
+        <BulkReviewRequestForm
+          count={ids.length}
+          onRun={(note) =>
+            runBulkAction(
+              "Review anfragen",
+              ids,
+              (id) => contentItemsAPI.review.request(id, note),
+              null
+            )
+          }
+        />
+      ),
+    })
+  }
+
+  const openBulkApplyTemplateModal = () => {
+    const ids = Array.from(selectedItemIds)
+    if (ids.length === 0) return
+    openModal({
+      type: "custom",
+      title: "Template anwenden",
+      description: `Für ${ids.length} Items`,
+      content: (
+        <BulkApplyTemplateForm
+          count={ids.length}
+          onApply={(tpl) =>
+            runBulkAction(
+              `Template: ${tpl.name}`,
+              ids,
+              (id) => contentItemsAPI.applyTemplate(id, tpl.id),
+              null
+            )
+          }
+        />
+      ),
+    })
+  }
+
+  const openBulkSetDueModal = () => {
+    const ids = Array.from(selectedItemIds)
+    if (ids.length === 0) return
+    openModal({
+      type: "custom",
+      title: "Fälligkeitsdatum setzen",
+      description: `Für ${ids.length} Items`,
+      content: (
+        <BulkSetDateForm
+          count={ids.length}
+          mode="due"
+          onApply={(isoOrNull) =>
+            runBulkAction(
+              "Fälligkeitsdatum setzen",
+              ids,
+              (id) => contentItemsAPI.update(id, { due_at: isoOrNull } as any),
+              null
+            )
+          }
+        />
+      ),
+    })
+  }
+
+  const openBulkSetPublishModal = () => {
+    const ids = Array.from(selectedItemIds)
+    if (ids.length === 0) return
+    openModal({
+      type: "custom",
+      title: "Publish planen",
+      description: `Für ${ids.length} Items`,
+      content: (
+        <BulkSetDateForm
+          count={ids.length}
+          mode="publish"
+          onApply={(isoOrNull) =>
+            runBulkAction(
+              "Publish planen",
+              ids,
+              (id) =>
+                contentItemsAPI.update(
+                  id,
+                  { scheduled_at: isoOrNull, ...(isoOrNull ? { status: "SCHEDULED" } : {}) } as any
+                ),
+              null
+            )
+          }
+        />
+      ),
+    })
+  }
+
+  const openReviewRequestItemModal = (itemId: number) => {
+    openModal({
+      type: "custom",
+      title: "Review anfragen",
+      description: `Item #${itemId}`,
+      content: (
+        <BulkReviewRequestForm
+          count={1}
+          onRun={async (note) => {
+            await contentItemsAPI.review.request(itemId, note)
+            toast({ title: "OK", description: "Review wurde angefragt." })
+            await refetchItems()
+          }}
+        />
+      ),
+    })
+  }
+
+  const openApplyTemplateItemModal = (itemId: number) => {
+    openModal({
+      type: "custom",
+      title: "Template anwenden",
+      description: `Item #${itemId}`,
+      content: (
+        <BulkApplyTemplateForm
+          count={1}
+          onApply={async (tpl) => {
+            await contentItemsAPI.applyTemplate(itemId, tpl.id)
+            toast({ title: "OK", description: `Template "${tpl.name}" angewendet.` })
+            await refetchItems()
+          }}
+        />
+      ),
+    })
+  }
 
   const copyToClipboard = async (text: string, okMsg: string) => {
     try {
@@ -798,6 +1612,12 @@ export default function ContentPage() {
     } catch {
       toast({ title: "Kopieren fehlgeschlagen", description: "Bitte im Browser Clipboard erlauben.", variant: "destructive" as any })
     }
+  }
+
+  const copyItemLink = (id: number) => {
+    const origin = typeof window !== "undefined" ? window.location.origin : ""
+    const url = `${origin}/content?item=${encodeURIComponent(String(id))}`
+    return copyToClipboard(url, `Link für #${id}`)
   }
 
   const toggleArchiveItem = async (it: any) => {
@@ -835,13 +1655,6 @@ export default function ContentPage() {
       toast({ title: "Fehler", description: e?.message || "Duplizieren fehlgeschlagen", variant: "destructive" as any })
     }
   }
-  const [view, setView] = useState<"grid" | "kanban">(() => {
-    if (typeof window === "undefined") return "grid"
-    return (localStorage.getItem("contentView") as "grid" | "kanban") || "grid"
-  })
-  useEffect(() => {
-    try { localStorage.setItem("contentView", view) } catch {}
-  }, [view])
   useEffect(() => {
     try {
       localStorage.setItem("content:taskScope", taskScope)
@@ -872,119 +1685,95 @@ export default function ContentPage() {
       cancelled = true
     }
   }, [isAdmin])
-  const [statusTab, setStatusTab] = useState<"ALL" | ContentStatus>("ALL")
-  const [q, setQ] = useState<string>("")
-  const [typeFilter, setTypeFilter] = useState<"all" | ContentItem["type"]>("all")
-  const [assignee, setAssignee] = useState<"all" | string>("all")
 
   const load = async () => {
     try {
-      setLoading(true)
-      setError(null)
-      const response = await fetch('/api/crm/deals', { credentials: 'include' })
+      setDealsLoading(true)
+      setDealsError(null)
+      const response = await fetch("/api/crm/deals", { credentials: "include" })
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       const data = await response.json()
       setDeals(data || [])
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      setDealsError(err instanceof Error ? err.message : "Unknown error")
       setDeals([])
-    } finally { setLoading(false) }
+    } finally {
+      setDealsLoading(false)
+    }
   }
   useEffect(() => {
     load()
     const unsub = [
-      sync.on('global:refresh', load),
-      sync.on('crm:companies:changed', load),
-      sync.on('activities:changed', load),
+      sync.on("global:refresh", load),
+      sync.on("crm:companies:changed", load),
+      sync.on("activities:changed", load),
     ]
     return () => { unsub.forEach(fn => fn && (fn as any)()) }
   }, [])
 
-  const campaigns = [
-    {
-      title: "Q4 Marketing Campaign",
-      channel: "LinkedIn",
-      description: "Social media campaign for Q4 product launch",
-      due: "2024-12-15",
-      slug: "q4-marketing-campaign",
-    },
-    {
-      title: "Product Newsletter",
-      channel: "Email",
-      description: "Monthly newsletter featuring new features",
-      due: "2024-12-10",
-      slug: "product-newsletter",
-    },
-  ] as const
-
   const iconForChannel = (channel: string) => {
     const c = channel.toLowerCase()
     if (c.includes("email")) return <FileText className="h-5 w-5 text-blue-500" />
-    if (c.includes("linked")) return <Image className="h-5 w-5 text-sky-400" />
-    if (c.includes("insta")) return <Image className="h-5 w-5 text-pink-400" />
+    if (c.includes("linked")) return <ImageIcon className="h-5 w-5 text-sky-400" />
+    if (c.includes("insta")) return <ImageIcon className="h-5 w-5 text-pink-400" />
     if (c.includes("web")) return <File className="h-5 w-5 text-indigo-400" />
     return <FileText className="h-5 w-5 text-slate-300" />
   }
 
-  const getTypeIcon = (type: ContentItem["type"]) => {
-    switch (type) {
-      case "blog": return <FileText className="h-4 w-4" />
-      case "social": return <Image className="h-4 w-4" />
-      case "video": return <Video className="h-4 w-4" />
-      case "email": return <File className="h-4 w-4" />
-      case "asset": return <File className="h-4 w-4" />
+  const dealOptions = useMemo(() => {
+    const out: Array<{ value: string; label: string }> = [
+      { value: "", label: dealsLoading ? "Lade Deals…" : "Deal auswählen…" },
+    ]
+    const arr = Array.isArray(deals) ? deals : []
+    for (const d of arr.slice(0, 80)) {
+      const id = (d as any)?.id ?? (d as any)?.deal_id ?? (d as any)?.dealId
+      if (id == null) continue
+      const value = String(id)
+      const title = String((d as any)?.title || (d as any)?.name || "").trim()
+      out.push({ value, label: title ? title : `Deal #${value}` })
+    }
+    return out
+  }, [deals, dealsLoading])
+
+  const replaceItemParam = (id?: number) => {
+    try {
+      const params = new URLSearchParams(searchParams ? searchParams.toString() : "")
+      if (id == null) params.delete("item")
+      else params.set("item", String(id))
+      const qs = params.toString()
+      const base = pathname || "/content"
+      router.replace(qs ? `${base}?${qs}` : base, { scroll: false })
+    } catch {
+      /* noop */
     }
   }
 
-  const getColumnColor = (id: ContentStatus) => {
-    switch (id) {
-      case "idea": return "#94a3b8"
-      case "draft": return "#60a5fa"
-      case "review": return "#f59e0b"
-      case "approved": return "#a78bfa"
-      case "published": return "#34d399"
-    }
-  }
-
-  const makeSeries = (base: number) =>
-    Array.from({ length: 12 }, (_, i) => ({ y: Math.max(1, Math.round((base || 1) * (0.6 + 0.4 * Math.sin((i + 1) / 1.5)))) }))
-
-  const statuses: ContentStatus[] = ["idea", "draft", "review", "approved", "published"]
-  const nextStatus = (s: ContentStatus): ContentStatus => {
-    const idx = statuses.indexOf(s)
-    return statuses[(idx + 1) % statuses.length]
-  }
-  const updateStatus = (id: number, s: ContentStatus) => {
-    setContents(prev => prev.map(c => (c.id === id ? { ...c, status: s } : c)))
-  }
-  const onDragStart = (id: number) => (e: React.DragEvent) => {
-    e.dataTransfer.setData("text/plain", String(id))
-    e.dataTransfer.effectAllowed = "move"
-  }
-  const onDropTo = (s: ContentStatus) => (e: React.DragEvent) => {
-    e.preventDefault()
-    const id = Number(e.dataTransfer.getData("text/plain"))
-    if (!Number.isNaN(id)) updateStatus(id, s)
-  }
-  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = "move" }
-
-  const assignees = Array.from(new Set(contents.map(c => c.assignee))).sort()
-  const matchesFilters = (c: ContentItem) => {
-    const qMatch = !q || c.title.toLowerCase().includes(q.toLowerCase()) || c.tags.join(" ").toLowerCase().includes(q.toLowerCase())
-    const tMatch = typeFilter === "all" || c.type === typeFilter
-    const aMatch = assignee === "all" || c.assignee === assignee
-    const sMatch = statusTab === "ALL" || c.status === statusTab
-    return qMatch && tMatch && aMatch && sMatch
-  }
-  const filteredContents = contents.filter(matchesFilters)
-
-  const openContentItem = (id?: number) => {
+  const openContentItem = (id?: number, initial?: any, opts?: { syncUrl?: boolean }) => {
+    if (opts?.syncUrl !== false && id != null) replaceItemParam(id)
+    if (id != null) openedItemIdRef.current = id
     openModal({
       type: "custom",
       title: id ? `Content Item #${id}` : "Neues Content Item",
-      content: <ContentItemEditor itemId={id} onClose={closeModal} />,
+      onDismiss: () => {
+        openedItemIdRef.current = null
+        replaceItemParam(undefined)
+      },
+      content: <ContentItemEditor itemId={id} initial={initial} onClose={closeModal} />,
     })
   }
+
+  const openFromUrlRef = useRef<(id: number) => void>(() => {})
+  openFromUrlRef.current = (id: number) => openContentItem(id, undefined, { syncUrl: false })
+
+  const itemParam = searchParams ? searchParams.get("item") : null
+  useEffect(() => {
+    if (!itemParam) return
+    const id = Number(itemParam)
+    if (Number.isNaN(id) || id <= 0) return
+    if (openedItemIdRef.current === id) return
+    openedItemIdRef.current = id
+    openFromUrlRef.current(id)
+  }, [itemParam])
 
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 md:p-8 min-h-[100dvh]">
@@ -1022,8 +1811,15 @@ export default function ContentPage() {
               <Filter className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
               <span className="hidden sm:inline">{showPlanner ? "Planner ausblenden" : "Planner anzeigen"}</span>
               <span className="sm:hidden">{showPlanner ? "Planner" : "Planner"}</span>
+              {dealsLoading && <span className="ml-2 hidden sm:inline text-[10px] text-white/70">Sync…</span>}
+              {!dealsLoading && dealsError && <span className="ml-2 hidden sm:inline text-[10px] text-amber-200">Error</span>}
             </Button>
-            <Button variant="ghost" size="sm" className="bg-white/10 text-white hover:bg-white/20 h-11 sm:h-8 text-xs sm:text-sm">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="bg-white/10 text-white hover:bg-white/20 h-11 sm:h-8 text-xs sm:text-sm"
+              onClick={exportItemsCsv}
+            >
               <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
               <span className="hidden sm:inline">Export</span>
             </Button>
@@ -1105,7 +1901,7 @@ export default function ContentPage() {
             </div>
             <div className="relative flex items-center gap-2 text-[11px] text-slate-300">
               <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                {itemsLoading ? "Lade…" : `${contentItems.length} Items`}
+                {itemsLoading ? "Lade…" : `${sortedItems.length} Items`}
               </span>
               <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
                 {tasksLoading ? "…" : `${tasks.length} Tasks`}
@@ -1125,7 +1921,7 @@ export default function ContentPage() {
                   <FileText className="h-4 w-4 text-slate-300" />
                   Items
                   <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-slate-200/80">
-                    {contentItems.length}
+                    {sortedItems.length}
                   </span>
                 </span>
               </TabsTrigger>
@@ -1186,18 +1982,8 @@ export default function ContentPage() {
                     </div>
                     <GlassSelect
                       value={itemStatus}
-                      onChange={(v) => setItemStatus(v)}
-                      options={[
-                        { value: "ALL", label: "Alle Status" },
-                        { value: "IDEA", label: "IDEA" },
-                        { value: "DRAFT", label: "DRAFT" },
-                        { value: "REVIEW", label: "REVIEW" },
-                        { value: "APPROVED", label: "APPROVED" },
-                        { value: "SCHEDULED", label: "SCHEDULED" },
-                        { value: "PUBLISHED", label: "PUBLISHED" },
-                        { value: "ARCHIVED", label: "ARCHIVED" },
-                        { value: "BLOCKED", label: "BLOCKED" },
-                      ]}
+                      onChange={(v) => setItemStatus(v as ItemStatusFilter)}
+                      options={ITEM_STATUS_OPTIONS}
                       className="sm:w-48 min-w-0"
                     />
                     <GlassSelect
@@ -1212,6 +1998,18 @@ export default function ContentPage() {
                         { value: "title_asc", label: "Sort: Titel (A–Z)" },
                         { value: "status_asc", label: "Sort: Status" },
                       ]}
+                      className="sm:w-56 min-w-0"
+                    />
+                    <GlassSelect
+                      value={itemChannel}
+                      onChange={(v) => setItemChannel(v)}
+                      options={channelOptions}
+                      className="sm:w-56 min-w-0"
+                    />
+                    <GlassSelect
+                      value={itemFormat}
+                      onChange={(v) => setItemFormat(v)}
+                      options={formatOptions}
                       className="sm:w-56 min-w-0"
                     />
                     {isAdmin && (
@@ -1251,6 +2049,101 @@ export default function ContentPage() {
                       />
                     )}
                     <div className="sm:ml-auto flex items-stretch gap-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="glass-card shrink-0 whitespace-nowrap h-11 border-white/15 bg-white/5 hover:bg-white/10"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Filter className="h-4 w-4 mr-2" /> Views
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="border-white/10 bg-slate-950/95 text-slate-100"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault()
+                              openSaveViewModal()
+                            }}
+                          >
+                            View speichern…
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault()
+                              openManageViewsModal()
+                            }}
+                          >
+                            Views verwalten…
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-white/10" />
+                          <DropdownMenuItem
+                            onSelect={(e) => {
+                              e.preventDefault()
+                              resetItemFilters()
+                            }}
+                          >
+                            Filter zurücksetzen
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-white/10" />
+                          {savedItemViews.length === 0 ? (
+                            <DropdownMenuItem disabled>Keine gespeicherten Views</DropdownMenuItem>
+                          ) : (
+                            savedItemViews
+                              .slice()
+                              .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+                              .slice(0, 12)
+                              .map((v) => (
+                                <DropdownMenuItem
+                                  key={v.id}
+                                  onSelect={(e) => {
+                                    e.preventDefault()
+                                    applyItemView(v)
+                                  }}
+                                >
+                                  {v.name}
+                                </DropdownMenuItem>
+                              ))
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="glass-card shrink-0 whitespace-nowrap h-11 border-white/15 bg-white/5 hover:bg-white/10"
+                        onClick={() => setSelectMode((v) => !v)}
+                      >
+                        {selectMode ? <X className="h-4 w-4 mr-2" /> : <CheckSquare className="h-4 w-4 mr-2" />}
+                        {selectMode ? "Fertig" : "Auswählen"}
+                      </Button>
+                      {selectMode && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="glass-card shrink-0 whitespace-nowrap h-11 border-white/15 bg-white/5 hover:bg-white/10"
+                            onClick={selectAll}
+                            disabled={sortedItems.length === 0}
+                          >
+                            <Square className="h-4 w-4 mr-2" /> All
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="glass-card shrink-0 whitespace-nowrap h-11 border-white/15 bg-white/5 hover:bg-white/10"
+                            onClick={clearSelection}
+                            disabled={selectedItemIds.size === 0}
+                          >
+                            Leeren
+                          </Button>
+                        </>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
@@ -1264,7 +2157,7 @@ export default function ContentPage() {
                         className="shrink-0 whitespace-nowrap h-11 bg-white text-slate-900 hover:bg-white/90"
                         onClick={() => openContentItem()}
                       >
-                        <Plus className="h-4 w-4 mr-2" /> New Item
+                        <Plus className="h-4 w-4 mr-2" /> Neues Item
                       </Button>
                     </div>
                   </div>
@@ -1307,13 +2200,20 @@ export default function ContentPage() {
                         <div className="mx-auto h-12 w-12 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center">
                           <FileText className="h-6 w-6 text-slate-300" />
                         </div>
-                        <div className="mt-3 text-sm font-semibold text-slate-100">Noch keine Items</div>
+                        <div className="mt-3 text-sm font-semibold text-slate-100">Keine Items gefunden</div>
                         <div className="mt-1 text-xs text-slate-400">
-                          Erstelle dein erstes Content Item und nutze Templates, um Checklists & Tasks automatisch zu erzeugen.
+                          Keine Treffer mit den aktuellen Filtern. Setze Filter zurück oder erstelle ein neues Item.
                         </div>
-                        <div className="mt-4 flex items-center justify-center">
+                        <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-2">
+                          <Button
+                            variant="outline"
+                            className="h-11 glass-card"
+                            onClick={() => resetItemFilters()}
+                          >
+                            Filter zurücksetzen
+                          </Button>
                           <Button className="h-11 bg-white text-slate-900 hover:bg-white/90" onClick={() => openContentItem()}>
-                            <Plus className="h-4 w-4 mr-2" /> New Item
+                            <Plus className="h-4 w-4 mr-2" /> Neues Item
                           </Button>
                         </div>
                       </div>
@@ -1322,14 +2222,17 @@ export default function ContentPage() {
                   {sortedItems.map((it) => (
                     <div
                       key={it.id}
-                      className="group relative rounded-2xl border border-white/10 bg-slate-950/30 backdrop-blur-xl p-4 text-left overflow-hidden transition-all hover:bg-slate-950/40 hover:ring-1 hover:ring-white/10 hover:shadow-[0_14px_36px_rgba(0,0,0,0.35)]"
+                      className={[
+                        "group relative rounded-2xl border border-white/10 bg-slate-950/30 backdrop-blur-xl p-4 text-left overflow-hidden transition-all hover:bg-slate-950/40 hover:ring-1 hover:ring-white/10 hover:shadow-[0_14px_36px_rgba(0,0,0,0.35)]",
+                        selectMode && selectedItemIds.has(it.id) ? "ring-1 ring-white/25 bg-slate-950/45" : "",
+                      ].join(" ")}
                       role="button"
                       tabIndex={0}
-                      onClick={() => openContentItem(it.id)}
+                      onClick={() => (selectMode ? toggleSelected(it.id) : openContentItem(it.id))}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault()
-                          openContentItem(it.id)
+                          selectMode ? toggleSelected(it.id) : openContentItem(it.id)
                         }
                       }}
                     >
@@ -1351,6 +2254,19 @@ export default function ContentPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
+                          {selectMode && (
+                            <button
+                              type="button"
+                              className="h-9 w-9 rounded-xl border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 inline-flex items-center justify-center"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleSelected(it.id)
+                              }}
+                              aria-label={selectedItemIds.has(it.id) ? "Deselect item" : "Select item"}
+                            >
+                              {selectedItemIds.has(it.id) ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                            </button>
+                          )}
                           <span className={statusChip(it.status)}>{String(it.status || "").toUpperCase()}</span>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -1376,6 +2292,22 @@ export default function ContentPage() {
                               >
                                 Öffnen
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  openReviewRequestItemModal(it.id)
+                                }}
+                              >
+                                Review anfragen…
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  openApplyTemplateItemModal(it.id)
+                                }}
+                              >
+                                Template anwenden…
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator className="bg-white/10" />
                               <DropdownMenuItem
                                 onSelect={(e) => {
@@ -1384,6 +2316,14 @@ export default function ContentPage() {
                                 }}
                               >
                                 <Copy className="h-4 w-4 mr-2 opacity-80" /> ID kopieren
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  copyItemLink(it.id)
+                                }}
+                              >
+                                <Copy className="h-4 w-4 mr-2 opacity-80" /> Link kopieren
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onSelect={(e) => {
@@ -1441,19 +2381,185 @@ export default function ContentPage() {
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
                         {it.dueAt && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
-                            <Clock className="h-3.5 w-3.5" /> Due: {fmtDate(it.dueAt)}
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${datePill(it.dueAt, "due")}`}>
+                            <Clock className="h-3.5 w-3.5" /> Due: {fmtDate(it.dueAt)}{" "}
+                            <span className="opacity-80">({relDays(it.dueAt)})</span>
                           </span>
                         )}
                         {it.scheduledAt && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
-                            <CalendarDays className="h-3.5 w-3.5" /> Publish: {fmtDate(it.scheduledAt)}
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${datePill(it.scheduledAt, "publish")}`}>
+                            <CalendarDays className="h-3.5 w-3.5" /> Publish: {fmtDate(it.scheduledAt)}{" "}
+                            <span className="opacity-80">({relDays(it.scheduledAt)})</span>
+                          </span>
+                        )}
+                        {isAdmin && (
+                          <span
+                            className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 max-w-[220px] truncate"
+                            title={it.owner?.email || undefined}
+                          >
+                            {it.owner?.email || (it.ownerId != null ? `User #${it.ownerId}` : "Unassigned")}
                           </span>
                         )}
                         <span className="ml-auto text-slate-300/70 group-hover:text-slate-200 transition">Öffnen →</span>
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {selectMode && selectedItemIds.size > 0 && (
+                <div className="fixed inset-x-0 bottom-3 z-50 px-4 sm:px-6">
+                  <div className="mx-auto max-w-6xl rounded-2xl border border-white/10 bg-slate-950/80 backdrop-blur-xl p-3 shadow-[0_18px_70px_rgba(0,0,0,0.55)]">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-100">
+                          {selectedItemIds.size} selected
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="glass-card h-9"
+                          disabled={bulkBusy}
+                          onClick={clearSelection}
+                        >
+                          Leeren
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="glass-card h-9"
+                          disabled={bulkBusy}
+                          onClick={() => setSelectMode(false)}
+                        >
+                          <X className="h-4 w-4 mr-2" /> Fertig
+                        </Button>
+                      </div>
+
+                      <div className="sm:ml-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <div className="flex items-center gap-2">
+                          <GlassSelect
+                            value={bulkStatus}
+                            onChange={(v) => setBulkStatus(v as any)}
+                            options={[
+                              { value: "", label: "Status…" },
+                              ...ITEM_STATUS_OPTIONS.filter((o) => o.value !== "ALL").map((o) => ({
+                                value: String(o.value),
+                                label: o.label,
+                              })),
+                            ]}
+                            className="w-full sm:w-48"
+                          />
+                          <Button
+                            size="sm"
+                            className="h-9 bg-white text-slate-900 hover:bg-white/90 shrink-0"
+                            disabled={bulkBusy || !bulkStatus}
+                            onClick={() => runBulkUpdate("Status setzen", { status: bulkStatus })}
+                          >
+                            Anwenden
+                          </Button>
+                        </div>
+
+                        {isAdmin && (
+                          <div className="flex items-center gap-2">
+                            <GlassSelect
+                              value={bulkOwnerId}
+                              onChange={(v) => setBulkOwnerId(v)}
+                              options={[
+                                { value: "", label: "Owner…" },
+                                { value: "unassigned", label: "Unassigned" },
+                                ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
+                              ]}
+                              className="w-full sm:w-64"
+                            />
+                            <Button
+                              size="sm"
+                              className="h-9 bg-white text-slate-900 hover:bg-white/90 shrink-0"
+                              disabled={bulkBusy || !bulkOwnerId}
+                              onClick={() =>
+                                runBulkUpdate("Owner setzen", {
+                                  owner_id: bulkOwnerId === "unassigned" ? null : Number(bulkOwnerId),
+                                })
+                              }
+                            >
+                              Anwenden
+                            </Button>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="glass-card h-9 shrink-0"
+                            disabled={bulkBusy}
+                            onClick={() => runBulkUpdate("Archivieren", { status: "ARCHIVED" })}
+                          >
+                            <Archive className="h-4 w-4 mr-2" /> Archivieren
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="glass-card h-9 shrink-0"
+                            disabled={bulkBusy}
+                            onClick={() => runBulkUpdate("Wiederherstellen", { status: "DRAFT" })}
+                          >
+                            <ArchiveRestore className="h-4 w-4 mr-2" /> Wiederherstellen
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="glass-card h-9 shrink-0"
+                                disabled={bulkBusy}
+                              >
+                                <MoreHorizontal className="h-4 w-4 mr-2" /> Mehr
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              className="border-white/10 bg-slate-950/95 text-slate-100"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  openBulkReviewModal()
+                                }}
+                              >
+                                Review anfragen…
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  openBulkApplyTemplateModal()
+                                }}
+                              >
+                                Template anwenden…
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator className="bg-white/10" />
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  openBulkSetDueModal()
+                                }}
+                              >
+                                Fälligkeitsdatum setzen…
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  openBulkSetPublishModal()
+                                }}
+                              >
+                                Publish planen…
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </TabsContent>
@@ -1519,227 +2625,123 @@ export default function ContentPage() {
       </Card>
 
       {showPlanner && (
-      <>
-      {/* Planner / Templates (optional) */}
-      {/* Toolbar: tabs + search/filters + view toggle */}
-      <div className="flex flex-col gap-3">
-        {/* Status tabs - horizontal scroll on mobile */}
-        <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-          <div className="flex gap-2 min-w-max">
-            {(["ALL", ...statuses] as const).map((t) => {
-              const count = t === "ALL" ? contents.length : contents.filter(c => c.status === t).length
-              const active = statusTab === t
-              return (
-                <button
-                  key={t}
-                  onClick={() => setStatusTab(t as any)}
-                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm border transition whitespace-nowrap ${active ? "bg-white/15 text-white border-white/30" : "bg-white/5 text-white/80 border-white/10 hover:bg-white/10"}`}
+        <Card id="mk-planner" className="glass-card overflow-hidden">
+          <CardHeader className="px-4 sm:px-6 pt-4 pb-3 border-b border-white/10">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                  Planner‑Board
+                  <span className="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-slate-200/80">
+                    Drag & Drop
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  Ziehe Items durch den Workflow. Änderungen werden sofort gespeichert.
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                  {itemsLoading ? "…" : `${sortedItems.length} Items`}
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                  Review: {sortedItems.filter((it) => String(it.status || "").toUpperCase() === "REVIEW").length}
+                </span>
+                {isAdmin && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                    Unassigned: {sortedItems.filter((it: any) => it.ownerId == null).length}
+                  </span>
+                )}
+              </div>
+            </div>
+            {isAdmin && (
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                <GlassSelect
+                  value={dealPick}
+                  onChange={(v) => setDealPick(v)}
+                  options={dealOptions}
+                  className="w-full sm:flex-1 min-w-0"
+                />
+                <Button
+                  size="sm"
+                  className="h-11 sm:h-9 bg-white text-slate-900 hover:bg-white/90 shrink-0"
+                  disabled={!dealPick || dealsLoading}
+                  onClick={async () => {
+                    const id = Number(dealPick)
+                    if (Number.isNaN(id)) return
+                    try {
+                      const res = await contentItemsAPI.generateFromDeal(id)
+                      toast({ title: "Erstellt", description: `Content Item #${res.item_id} wurde generiert.` })
+                      await refetchItems()
+                      openContentItem(res.item_id)
+                      setDealPick("")
+                    } catch (e: any) {
+                      toast({
+                        title: "Fehler",
+                        description: e?.message || "Generieren fehlgeschlagen.",
+                        variant: "destructive" as any,
+                      })
+                    }
+                  }}
                 >
-                  {t.toString().toUpperCase()} <span className="ml-0.5 sm:ml-1 text-white/60">({count})</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-        {/* Search and filters */}
-        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Suche Titel oder Tags..."
-            className="h-11 sm:h-10 w-full sm:w-56 lg:w-64 rounded-xl px-3 text-xs sm:text-sm bg-white/10 dark:bg-slate-900/50 text-white placeholder:text-white/60 border border-white/20 dark:border-slate-700 focus:ring-blue-500/40"
-          />
-          <div className="flex items-center gap-2 flex-1 sm:flex-none">
-            <GlassSelect
-              value={String(typeFilter)}
-              onChange={(v) => setTypeFilter(v as any)}
-              options={[
-                { value: "all", label: "Alle Typen" },
-                { value: "blog", label: "Blog" },
-                { value: "social", label: "Social" },
-                { value: "video", label: "Video" },
-                { value: "email", label: "Email" },
-                { value: "asset", label: "Asset" },
-              ]}
-              className="flex-1 sm:flex-none sm:w-36 lg:w-44"
-            />
-            <GlassSelect
-              value={String(assignee)}
-              onChange={(v) => setAssignee(v)}
-              options={[{ value: "all", label: "Alle Bearbeiter" }, ...assignees.map(a => ({ value: a, label: a }))]}
-              className="flex-1 sm:flex-none sm:w-40 lg:w-56"
-            />
-          </div>
-          <div className="inline-flex rounded-lg overflow-hidden border border-white/20 self-stretch sm:self-start w-full sm:w-auto">
-            <button
-              onClick={() => setView("grid")}
-              className={`flex-1 sm:flex-none px-2.5 sm:px-3 h-11 sm:h-9 text-xs sm:text-sm ${view === "grid" ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
-            >
-              Grid
-            </button>
-            <button
-              onClick={() => setView("kanban")}
-              className={`flex-1 sm:flex-none px-2.5 sm:px-3 h-11 sm:h-9 text-xs sm:text-sm ${view === "kanban" ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
-            >
-              Kanban
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI level with micro-sparklines */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {[
-          { key: "total", title: "Total Content", value: contents.length, color: "text-blue-400", stroke: "#93c5fd", fillFrom: "rgba(147,197,253,.35)", fillTo: "rgba(30,58,138,.05)" },
-          { key: "deals", title: "Deals as Content", value: deals.length, color: "text-cyan-400", stroke: "#67e8f9", fillFrom: "rgba(103,232,249,.35)", fillTo: "rgba(8,145,178,.05)" },
-          { key: "review", title: "Review", value: contents.filter(c=>c.status==='review').length, color: "text-amber-400", stroke: "#fbbf24", fillFrom: "rgba(251,191,36,.35)", fillTo: "rgba(146,64,14,.05)" },
-          { key: "pub", title: "Veröffentlicht", value: contents.filter(c=>c.status==='published').length, color: "text-emerald-400", stroke: "#34d399", fillFrom: "rgba(52,211,153,.35)", fillTo: "rgba(6,95,70,.05)" },
-        ].map((k) => (
-          <Card
-            key={k.key}
-            className="group relative overflow-hidden backdrop-blur-xl border rounded-2xl transition-all duration-300 hover:-translate-y-0.5 glass-card"
-          >
-            <div className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" style={{ boxShadow: `0 12px 34px ${k.fillFrom}, inset 0 0 0 1px ${k.fillFrom}` }} />
-            <CardHeader className="pt-3 sm:pt-4 px-3 sm:px-4 pb-1 sm:pb-2">
-              <CardTitle className={`${k.color} flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm`}>
-                <FileText className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${k.color}`} />
-                {k.title}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 px-3 sm:px-4 pb-3 sm:pb-4">
-              <div className="text-lg sm:text-2xl font-semibold text-white mt-1">{k.value}</div>
-              <div className="mt-2 sm:mt-3 h-10 sm:h-12 hidden sm:block">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={makeSeries(k.value)}>
-                    <defs>
-                      <linearGradient id={`grad-${k.key}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={k.stroke} stopOpacity={0.35} />
-                        <stop offset="100%" stopColor={k.stroke} stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
-                    <Area type="monotone" dataKey="y" stroke={k.stroke} strokeWidth={2} fill={`url(#grad-${k.key})`} />
-                  </AreaChart>
-                </ResponsiveContainer>
+                  {dealsLoading ? "…" : "Aus Deal generieren"}
+                </Button>
               </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Overview grid (Level 1) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {[
-          ...campaigns,
-          ...deals.slice(0, 4).map((d: any) => ({
-            title: `${d.title} – Content`,
-            channel: "Website",
-            description: `Landing page and assets for ${d.title}`,
-            due: d.expected_close_date?.slice(0, 10) || "",
-            slug: (d.title || "deal").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
-          })),
-        ].map((c, idx) => (
-          <Link key={idx} href={`/content/${c.slug}`} className="block">
-            <motion.div
-              whileHover={{ scale: 1.02 }}
-              transition={{ type: "spring", stiffness: 260, damping: 20 }}
-              className="group relative overflow-hidden glass-card border rounded-2xl p-5 transition-all duration-300 hover:-translate-y-0.5"
-            >
-              <div className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" style={{ boxShadow: "0 12px 34px rgba(147,197,253,.18), inset 0 0 0 1px rgba(147,197,253,.35)" }} />
-              <div className="flex items-start gap-3 mb-3">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center">
-                  {iconForChannel(c.channel)}
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-semibold text-lg text-slate-900 dark:text-slate-100 truncate">{c.title}</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{c.channel}</p>
-                </div>
-              </div>
-              {c.description && (
-                <p className="text-sm text-slate-700/90 dark:text-slate-300/90 line-clamp-2 mb-4">{c.description}</p>
-              )}
-              {c.due && (
-                <div className="text-xs text-slate-500 dark:text-slate-400">Due: {c.due}</div>
-              )}
-            </motion.div>
-          </Link>
-        ))}
-      </div>
-
-      {/* Content items section: Grid or Kanban (визуальный уровень 2, локальные элементы) */}
-      {view === "grid" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredContents.map((c) => (
-            <Card key={c.id} className="glass-card p-5">
-              <CardContent className="p-0">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="h-9 w-9 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center text-white/90">
-                      {getTypeIcon(c.type)}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-white truncate">{c.title}</h4>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] border border-white/20 text-white/80">{c.status.toUpperCase()}</span>
-                      </div>
-                      <p className="text-xs text-white/60 mt-1">Due: {c.dueDate} · {c.assignee}</p>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {c.tags.map((t,i)=>(<span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/70 border border-white/10">{t}</span>))}
-                      </div>
-                    </div>
+            )}
+          </CardHeader>
+          <CardContent className="px-4 sm:px-6 py-4">
+            {itemsLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="rounded-2xl border border-white/10 bg-slate-950/30 p-4 overflow-hidden">
+                    <div className="h-3 w-1/3 bg-white/10 rounded" />
+                    <div className="mt-4 h-4 w-2/3 bg-white/10 rounded" />
+                    <div className="mt-2 h-3 w-1/2 bg-white/5 rounded" />
+                    <div className="mt-4 h-20 w-full bg-white/5 rounded-xl" />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" className="h-8 px-2 glass-card" onClick={() => updateStatus(c.id, nextStatus(c.status))}>Next</Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-          {filteredContents.length === 0 && (
-            <Card className="glass-card"><CardContent className="p-6 text-center text-white/70">Keine Einträge</CardContent></Card>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {statuses.map((s) => {
-            const list = filteredContents.filter(c => c.status === s)
-            return (
-              <div key={s} className="glass-card border rounded-2xl p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-white/90 text-sm font-medium">{s.toUpperCase()}</div>
-                  <div className="text-white/60 text-xs px-2 py-0.5 rounded-full bg-white/10 border border-white/20">{list.length}</div>
-                </div>
-                <div
-                  onDrop={onDropTo(s)}
-                  onDragOver={onDragOver}
-                  className="space-y-2 max-h-[520px] overflow-y-auto pr-1"
-                >
-                  {list.map((c) => (
-                    <div
-                      key={c.id}
-                      draggable
-                      onDragStart={onDragStart(c.id)}
-                      className="p-3 rounded-xl bg-white/10 border border-white/15 text-white/90 cursor-grab active:cursor-grabbing"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/10 border border-white/20">{getTypeIcon(c.type)}</span>
-                          <span className="truncate">{c.title}</span>
-                        </div>
-                        <button onClick={() => updateStatus(c.id, nextStatus(c.status))} className="text-[11px] px-2 py-0.5 rounded bg-white/10 border border-white/20">Next</button>
-                      </div>
-                      <div className="mt-1 text-[11px] text-white/60">{c.assignee} · {c.dueDate}</div>
-                    </div>
-                  ))}
-                  {list.length === 0 && (
-                    <div className="text-center text-white/50 text-xs py-6 border border-dashed border-white/20 rounded-lg">Drop here</div>
-                  )}
-                </div>
+                ))}
               </div>
-            )
-          })}
-        </div>
-      )}
-      </>
+            ) : (
+              <ContentItemsPlannerBoard
+                disabled={bulkBusy}
+                statuses={[
+                  "IDEA",
+                  "DRAFT",
+                  "REVIEW",
+                  "APPROVED",
+                  "SCHEDULED",
+                  "PUBLISHED",
+                  "BLOCKED",
+                  "ARCHIVED",
+                ]}
+                items={sortedItems.map((it: any) => ({
+                  id: it.id,
+                  title: it.title,
+                  channel: it.channel,
+                  format: it.format,
+                  status: it.status,
+                  dueAt: it.dueAt,
+                  scheduledAt: it.scheduledAt,
+                  ownerEmail: it.owner?.email || null,
+                }))}
+                onOpenItem={(id) => openContentItem(id)}
+                onCreateItem={(status) => openContentItem(undefined, { status })}
+                onMove={async (id, nextStatus) => {
+                  try {
+                    await updateContentItem(id, { status: nextStatus } as any)
+                    toast({ title: "Gespeichert", description: `Status → ${nextStatus}` })
+                  } catch (e: any) {
+                    toast({
+                      title: "Fehler",
+                      description: e?.message || "Status konnte nicht gespeichert werden.",
+                      variant: "destructive" as any,
+                    })
+                    throw e
+                  }
+                }}
+              />
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Task Board – реальная двухуровневая система задач, сохраняется в Backend */}
@@ -1845,7 +2847,7 @@ export default function ContentPage() {
         <CardContent className="px-2 sm:px-4 py-4">
           <KanbanBoard
             tasks={tasks}
-            onTaskMove={async (taskId, newStatus, _index) => {
+            onTaskMove={async (taskId, newStatus) => {
               const task = tasks.find(t => t.id === taskId)
               if (!task) return
               await updateTask(taskId, { status: newStatus as any })
@@ -1912,6 +2914,22 @@ export default function ContentPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function ContentPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-4 sm:p-6 md:p-8 min-h-[100dvh]">
+          <div className="rounded-2xl border border-white/10 bg-slate-950/30 backdrop-blur-xl p-6 text-slate-200">
+            Lade Content Hub…
+          </div>
+        </div>
+      }
+    >
+      <ContentPageInner />
+    </Suspense>
   )
 }
 

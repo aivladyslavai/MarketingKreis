@@ -6,6 +6,7 @@ export interface ModalProps {
   type: ModalVariant
   title?: string
   description?: string
+  onDismiss?: () => void
 
   // visual variants / icon support (optional)
   variant?: "default" | "success" | "warning" | "error" | "info"

@@ -52,6 +52,9 @@ function getBackendUrl() {
 
 // Proxy for logout – clears backend auth cookies through the same origin.
 export async function POST(req: NextRequest) {
+  const controller = new AbortController()
+  const timeoutMs = 25_000
+  const t = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const apiUrl = getBackendUrl()
     const cookie = req.headers.get("cookie") || ""
@@ -59,8 +62,6 @@ export async function POST(req: NextRequest) {
     const csrfCookie = cookie && canDeriveCsrfFromCookie(req) ? getCookieFromHeader(cookie, "csrf_token") : ""
     const csrf = csrfHeader || csrfCookie
 
-    const controller = new AbortController()
-    const t = setTimeout(() => controller.abort(), 9000)
     const res = await fetch(`${apiUrl}/auth/logout`, {
       method: "POST",
       headers: {
@@ -71,7 +72,6 @@ export async function POST(req: NextRequest) {
       cache: "no-store",
       signal: controller.signal,
     })
-    clearTimeout(t)
 
     const text = await res.text()
     try {
@@ -85,8 +85,13 @@ export async function POST(req: NextRequest) {
       return resp
     }
   } catch (err: any) {
+    const isAbort = err?.name === "AbortError"
+    const msg = isAbort ? "Backend request timed out" : err?.message || "Proxy error"
+    const status = isAbort ? 504 : 500
     console.error("Logout proxy error (api/auth/logout):", err)
-    return NextResponse.json({ detail: err?.message || "Internal error" }, { status: 500 })
+    return NextResponse.json({ detail: msg }, { status })
+  } finally {
+    clearTimeout(t)
   }
 }
 
