@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260210_0014"
+    target_revision = "20260220_0015"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:
@@ -599,11 +599,14 @@ def bootstrap_production_schema() -> None:
                 "revoked_at timestamptz, "
                 "revoked_reason varchar(255), "
                 "last_seen_at timestamptz, "
+                "mfa_verified_at timestamptz, "
                 "created_at timestamptz not null default now(), "
                 "updated_at timestamptz not null default now()"
                 ")"
             )
         )
+        # Backward-compatible: table may exist without mfa_verified_at (admin step-up).
+        conn.execute(text("alter table auth_sessions add column if not exists mfa_verified_at timestamptz;"))
         conn.execute(text("create index if not exists ix_auth_sessions_user_id on auth_sessions (user_id);"))
         conn.execute(text("create index if not exists ix_auth_sessions_revoked_at on auth_sessions (revoked_at);"))
 
