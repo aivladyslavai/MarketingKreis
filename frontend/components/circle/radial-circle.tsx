@@ -71,10 +71,7 @@ export default function RadialCircle({
   const sw = (v: number) => Math.max(1, v * Math.max(0.8, scale))
   const fs = (v: number) => Math.max(8, Math.round(v * Math.max(0.85, scale)))
 
-  // Reserve "gutter" space for labels so they never get clipped by the card/container.
-  // (We keep labels within the SVG viewBox instead of overflowing outside.)
-  const labelGutter = (isTiny ? 78 : isSmall ? 120 : 170) * Math.max(0.9, scale)
-  const radius = rs / 2 - labelGutter
+  const radius = rs / 2 - (isSmall ? 44 * Math.max(0.9, scale) : 60 * Math.max(0.9, scale))
   const center = rs / 2
   const months = 12
 
@@ -210,46 +207,43 @@ export default function RadialCircle({
     return s.slice(0, Math.max(0, max - 1)).trimEnd() + "…"
   }, [])
 
-  const wrapLabel = React.useCallback((text: string, opts: { maxChars: number; maxLines: number }) => {
-    const raw = String(text || "").trim()
-    if (!raw) return [""]
-    const words = raw.split(/\s+/g)
+  const wrapLabel = React.useCallback((value: string, maxCharsPerLine: number, maxLines: number) => {
+    const raw = String(value || "").replace(/\s+/g, " ").trim()
+    if (!raw) return [] as string[]
+    const words = raw.split(" ")
     const lines: string[] = []
-    let line = ""
-    const push = () => {
-      if (line.trim()) lines.push(line.trim())
-      line = ""
+    let cur = ""
+
+    const pushCur = () => {
+      const t = cur.trim()
+      if (t) lines.push(t)
+      cur = ""
     }
-    const addWord = (w: string) => {
-      const candidate = line ? `${line} ${w}` : w
-      if (candidate.length <= opts.maxChars) {
-        line = candidate
-        return
+
+    for (const w0 of words) {
+      const w = String(w0 || "").trim()
+      if (!w) continue
+      const candidate = cur ? `${cur} ${w}` : w
+      if (candidate.length <= maxCharsPerLine) {
+        cur = candidate
+        continue
       }
-      if (!line) {
-        // single very long token: hard cut
-        lines.push(w.slice(0, Math.max(1, opts.maxChars - 1)) + "…")
-        return
+      // start new line
+      pushCur()
+      // if a single word is too long, hard-break it
+      if (w.length > maxCharsPerLine) {
+        cur = w.slice(0, maxCharsPerLine)
+        pushCur()
+        continue
       }
-      push()
-      if (w.length <= opts.maxChars) {
-        line = w
-      } else {
-        lines.push(w.slice(0, Math.max(1, opts.maxChars - 1)) + "…")
-      }
+      cur = w
     }
-    for (const w of words) {
-      if (lines.length >= opts.maxLines) break
-      addWord(w)
-    }
-    push()
-    // clamp lines count with ellipsis if needed
-    if (lines.length > opts.maxLines) lines.length = opts.maxLines
-    if (lines.length === opts.maxLines && words.join(" ").length > lines.join(" ").length) {
-      const last = lines[lines.length - 1] || ""
-      if (!last.endsWith("…")) lines[lines.length - 1] = last.slice(0, Math.max(1, opts.maxChars - 1)).trimEnd() + "…"
-    }
-    return lines.slice(0, Math.max(1, opts.maxLines))
+    pushCur()
+
+    if (lines.length <= maxLines) return lines
+    const cut = lines.slice(0, maxLines)
+    cut[maxLines - 1] = cut[maxLines - 1].replace(/\s+$/, "").replace(/…?$/, "") + "…"
+    return cut
   }, [])
 
   const labeledIds = React.useMemo(() => {
@@ -401,7 +395,7 @@ export default function RadialCircle({
     x: number
     y: number
     color: string
-    text: string
+    lines: string[]
     anchor: "start" | "end"
   }
 
@@ -412,7 +406,9 @@ export default function RadialCircle({
     const labelOffset = (isSmall ? 26 : 34) * Math.max(0.9, scale)
     const minY = 20 * Math.max(0.9, scale)
     const maxY = rs - 20 * Math.max(0.9, scale)
-    const spacing = 16 * Math.max(0.9, scale)
+    const fontSize = fs(11)
+    const lineH = fontSize * 1.15
+    const gap = 10 * Math.max(0.9, scale)
 
     const items: FocusLabelItem[] = []
     for (const a of renderActivities) {
@@ -427,7 +423,7 @@ export default function RadialCircle({
       const side: "left" | "right" = x0 >= center ? "right" : "left"
       const x = center + (side === "right" ? 1 : -1) * (radius + labelOffset)
       const color = ringColorByCategory[catKey] || "#64748b"
-      const text = truncateLabel(a.title, isSmall ? 24 : 32)
+      const lines = wrapLabel(a.title, isSmall ? 22 : 30, 3)
       items.push({
         id: a.id,
         a,
@@ -437,7 +433,7 @@ export default function RadialCircle({
         x,
         y: y0,
         color,
-        text,
+        lines: lines.length ? lines : [truncateLabel(a.title, isSmall ? 24 : 32)],
         anchor: side === "right" ? "start" : "end",
       })
     }
@@ -448,16 +444,18 @@ export default function RadialCircle({
       let y = minY
       for (const it of arr) {
         it.y = Math.max(it.y, y)
-        y = it.y + spacing
+        const h = Math.max(1, (it.lines?.length || 1)) * lineH
+        y = it.y + h + gap
       }
       // if overflow, shift up then backward pass
-      const overflow = y - spacing - maxY
+      const overflow = y - gap - maxY
       if (overflow > 0) {
         for (const it of arr) it.y -= overflow
         let y2 = maxY
         for (let i = arr.length - 1; i >= 0; i--) {
-          arr[i].y = Math.min(arr[i].y, y2)
-          y2 = arr[i].y - spacing
+          const h = Math.max(1, (arr[i].lines?.length || 1)) * lineH
+          arr[i].y = Math.min(arr[i].y, y2 - h)
+          y2 = arr[i].y - gap
           arr[i].y = Math.max(arr[i].y, minY)
         }
       }
@@ -470,8 +468,19 @@ export default function RadialCircle({
     return [...left, ...right]
   })()
 
+  const sideGutter = focus ? (isSmall ? 120 : 160) * Math.max(0.9, scale) : 0
   return (
-    <div ref={wrapRef} style={{ position: 'relative', width: '100%', maxWidth: size, aspectRatio: '1 / 1', margin: '0 auto' }}>
+    <div
+      ref={wrapRef}
+      style={{
+        position: "relative",
+        width: "100%",
+        maxWidth: focus ? size + sideGutter * 2 : size,
+        aspectRatio: "1 / 1",
+        margin: "0 auto",
+        overflow: "visible",
+      }}
+    >
       {focus && (
         <div style={{ position: "absolute", top: 10, left: 10, zIndex: 5 }}>
           <button
@@ -486,7 +495,22 @@ export default function RadialCircle({
           </button>
         </div>
       )}
-      <svg ref={svgRef} width={rs} height={rs} viewBox={`0 0 ${rs} ${rs}`} style={{ overflow: 'visible', position: 'absolute', inset: 0 }} onClick={(e)=>{ if (e.target === e.currentTarget) setPopup(null) }}>
+      <svg
+        ref={svgRef}
+        width={rs}
+        height={rs}
+        viewBox={`0 0 ${rs} ${rs}`}
+        style={{
+          overflow: "visible",
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setPopup(null)
+        }}
+      >
       <defs>
         {/* Glow filters for activity dots */}
         {rings.map((ring, i) => (
@@ -768,40 +792,25 @@ export default function RadialCircle({
                 </g>
               )
             })()}
-            {!focus && showLabel && (() => {
-              const fsize = fs(resolvedLabelMode === "all" ? 11 : 10)
-              const maxLines = resolvedLabelMode === "all" ? 3 : 2
-              const maxChars = isTiny ? 18 : isSmall ? 26 : 34
-              const lines = wrapLabel(labelText, { maxChars, maxLines })
-              const dy = Math.max(12, Math.round(fsize * 1.18))
-              return (
-                <text
-                  x={lx}
-                  y={ly}
-                  fontSize={fsize}
-                  fill="#e2e8f0"
-                  fontWeight="700"
-                  textAnchor={anchor}
-                  dominantBaseline="middle"
-                  style={{
-                    pointerEvents: "none",
-                    paintOrder: "stroke",
-                    stroke: "rgba(2, 6, 23, 0.92)",
-                    strokeWidth: sw(4),
-                  }}
-                >
-                  {lines.map((t, i) => (
-                    <tspan
-                      key={`${a.id}-l-${i}`}
-                      x={lx}
-                      dy={i === 0 ? 0 : dy}
-                    >
-                      {t}
-                    </tspan>
-                  ))}
-                </text>
-              )
-            })()}
+            {!focus && showLabel && (
+              <text
+                x={lx}
+                y={ly}
+                fontSize={fs(resolvedLabelMode === "all" ? 11 : 10)}
+                fill="#e2e8f0"
+                fontWeight="600"
+                textAnchor={anchor}
+                dominantBaseline="middle"
+                style={{
+                  pointerEvents: "none",
+                  paintOrder: "stroke",
+                  stroke: "rgba(2, 6, 23, 0.9)",
+                  strokeWidth: sw(4),
+                }}
+              >
+                {labelText}
+              </text>
+            )}
           </g>
         )
       })}
@@ -812,7 +821,11 @@ export default function RadialCircle({
           {focusLabels.map((l) => {
             const sign = l.side === "right" ? 1 : -1
             const elbowX = center + sign * (radius + 10 * scale)
-            const textX = l.x + sign * (10 * Math.max(0.9, scale))
+            const textX = l.x + sign * (6 * Math.max(0.9, scale))
+            const fontSize = fs(11)
+            const lineH = fontSize * 1.15
+            const lines = (l.lines && l.lines.length ? l.lines : [""]) as string[]
+            const startY = l.y - ((lines.length - 1) * lineH) / 2
             return (
               <g
                 key={`lbl-${l.id}`}
@@ -831,33 +844,26 @@ export default function RadialCircle({
                   strokeWidth={sw(1.5)}
                   opacity={0.5}
                 />
-                {(() => {
-                  const fsize = fs(11)
-                  const lines = wrapLabel(l.a.title, { maxChars: isSmall ? 28 : 36, maxLines: 3 })
-                  const dy = Math.max(12, Math.round(fsize * 1.18))
-                  return (
-                    <text
-                      x={textX}
-                      y={l.y}
-                      fontSize={fsize}
-                      fill="#e2e8f0"
-                      fontWeight="800"
-                      textAnchor={l.anchor}
-                      dominantBaseline="middle"
-                      style={{
-                        paintOrder: "stroke",
-                        stroke: "rgba(2, 6, 23, 0.92)",
-                        strokeWidth: sw(4),
-                      }}
-                    >
-                      {lines.map((t, i) => (
-                        <tspan key={`${l.id}-ml-${i}`} x={textX} dy={i === 0 ? 0 : dy}>
-                          {t}
-                        </tspan>
-                      ))}
-                    </text>
-                  )
-                })()}
+                <text
+                  x={textX}
+                  y={startY}
+                  fontSize={fontSize}
+                  fill="#e2e8f0"
+                  fontWeight="700"
+                  textAnchor={l.anchor}
+                  dominantBaseline="hanging"
+                  style={{
+                    paintOrder: "stroke",
+                    stroke: "rgba(2, 6, 23, 0.92)",
+                    strokeWidth: sw(4),
+                  }}
+                >
+                  {lines.map((t, idx) => (
+                    <tspan key={idx} x={textX} dy={idx === 0 ? 0 : lineH}>
+                      {t}
+                    </tspan>
+                  ))}
+                </text>
               </g>
             )
           })}

@@ -258,7 +258,7 @@ export default function ActivitiesPage() {
         {/* Left side: Marketing Circle + Legend */}
         <div className="lg:col-span-3 space-y-6">
           {/* Marketing Circle */}
-          <Card className="glass-card p-3 sm:p-6 overflow-hidden">
+          <Card className="glass-card p-3 sm:p-6 overflow-visible">
             {/* Controls - stacked on mobile, inline on desktop */}
             <div className="mb-4 space-y-2 sm:space-y-0 sm:flex sm:items-center sm:gap-3 text-sm">
               <div className="flex items-center justify-between sm:justify-start gap-2">
@@ -293,7 +293,7 @@ export default function ActivitiesPage() {
               </div>
             </div>
             {/* Circle container with proper overflow handling */}
-            <div className="w-full flex items-center justify-center">
+            <div className="w-full flex items-center justify-center px-2 sm:px-6">
               <RadialCircle
                 activities={visibleActivities.map((a: any) => ({
                   ...a,
