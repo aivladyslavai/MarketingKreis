@@ -71,7 +71,10 @@ export default function RadialCircle({
   const sw = (v: number) => Math.max(1, v * Math.max(0.8, scale))
   const fs = (v: number) => Math.max(8, Math.round(v * Math.max(0.85, scale)))
 
-  const radius = rs / 2 - (isSmall ? 44 * Math.max(0.9, scale) : 60 * Math.max(0.9, scale))
+  // Reserve "gutter" space for labels so they never get clipped by the card/container.
+  // (We keep labels within the SVG viewBox instead of overflowing outside.)
+  const labelGutter = (isTiny ? 78 : isSmall ? 120 : 170) * Math.max(0.9, scale)
+  const radius = rs / 2 - labelGutter
   const center = rs / 2
   const months = 12
 
@@ -207,19 +210,47 @@ export default function RadialCircle({
     return s.slice(0, Math.max(0, max - 1)).trimEnd() + "…"
   }, [])
 
-  const labelBox = React.useCallback((opts: { x: number; y: number; side: "left" | "right"; maxLines: number }) => {
-    const pad = 12 * Math.max(0.9, scale)
-    const maxW = (isTiny ? 150 : isSmall ? 190 : 260) * Math.max(0.9, scale)
-    const w = Math.max(110 * Math.max(0.9, scale), Math.min(maxW, rs - pad * 2))
-    const lineH = (fs(11) * 1.18)
-    const h = Math.max(lineH * opts.maxLines + 10 * Math.max(0.9, scale), lineH + 10)
-
-    const x = opts.side === "right"
-      ? Math.min(opts.x, rs - pad - w)
-      : Math.max(opts.x - w, pad)
-    const y = Math.max(pad, Math.min(opts.y - h / 2, rs - pad - h))
-    return { x, y, w, h, pad }
-  }, [fs, isSmall, isTiny, rs, scale])
+  const wrapLabel = React.useCallback((text: string, opts: { maxChars: number; maxLines: number }) => {
+    const raw = String(text || "").trim()
+    if (!raw) return [""]
+    const words = raw.split(/\s+/g)
+    const lines: string[] = []
+    let line = ""
+    const push = () => {
+      if (line.trim()) lines.push(line.trim())
+      line = ""
+    }
+    const addWord = (w: string) => {
+      const candidate = line ? `${line} ${w}` : w
+      if (candidate.length <= opts.maxChars) {
+        line = candidate
+        return
+      }
+      if (!line) {
+        // single very long token: hard cut
+        lines.push(w.slice(0, Math.max(1, opts.maxChars - 1)) + "…")
+        return
+      }
+      push()
+      if (w.length <= opts.maxChars) {
+        line = w
+      } else {
+        lines.push(w.slice(0, Math.max(1, opts.maxChars - 1)) + "…")
+      }
+    }
+    for (const w of words) {
+      if (lines.length >= opts.maxLines) break
+      addWord(w)
+    }
+    push()
+    // clamp lines count with ellipsis if needed
+    if (lines.length > opts.maxLines) lines.length = opts.maxLines
+    if (lines.length === opts.maxLines && words.join(" ").length > lines.join(" ").length) {
+      const last = lines[lines.length - 1] || ""
+      if (!last.endsWith("…")) lines[lines.length - 1] = last.slice(0, Math.max(1, opts.maxChars - 1)).trimEnd() + "…"
+    }
+    return lines.slice(0, Math.max(1, opts.maxLines))
+  }, [])
 
   const labeledIds = React.useMemo(() => {
     const selectedId = popup?.a?.id
@@ -737,57 +768,40 @@ export default function RadialCircle({
                 </g>
               )
             })()}
-            {!focus && showLabel && (
-              (() => {
-                const side: "left" | "right" = anchor === "start" ? "right" : "left"
-                // Keep labels inside the SVG box to avoid clipping by cards/containers.
-                const box = labelBox({ x: lx, y: ly, side, maxLines: resolvedLabelMode === "all" ? 3 : 2 })
-                const fsize = fs(resolvedLabelMode === "all" ? 11 : 10)
-                return (
-                  <foreignObject
-                    x={box.x}
-                    y={box.y}
-                    width={box.w}
-                    height={box.h}
-                    style={{ pointerEvents: "none" }}
-                  >
-                    <div
-                      style={{
-                        width: `${box.w}px`,
-                        height: `${box.h}px`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: side === "right" ? "flex-start" : "flex-end",
-                      }}
+            {!focus && showLabel && (() => {
+              const fsize = fs(resolvedLabelMode === "all" ? 11 : 10)
+              const maxLines = resolvedLabelMode === "all" ? 3 : 2
+              const maxChars = isTiny ? 18 : isSmall ? 26 : 34
+              const lines = wrapLabel(labelText, { maxChars, maxLines })
+              const dy = Math.max(12, Math.round(fsize * 1.18))
+              return (
+                <text
+                  x={lx}
+                  y={ly}
+                  fontSize={fsize}
+                  fill="#e2e8f0"
+                  fontWeight="700"
+                  textAnchor={anchor}
+                  dominantBaseline="middle"
+                  style={{
+                    pointerEvents: "none",
+                    paintOrder: "stroke",
+                    stroke: "rgba(2, 6, 23, 0.92)",
+                    strokeWidth: sw(4),
+                  }}
+                >
+                  {lines.map((t, i) => (
+                    <tspan
+                      key={`${a.id}-l-${i}`}
+                      x={lx}
+                      dy={i === 0 ? 0 : dy}
                     >
-                      <div
-                        style={{
-                          maxWidth: `${box.w}px`,
-                          padding: `${Math.round(5 * Math.max(0.9, scale))}px ${Math.round(8 * Math.max(0.9, scale))}px`,
-                          borderRadius: `${Math.round(10 * Math.max(0.9, scale))}px`,
-                          background: "rgba(2, 6, 23, 0.65)",
-                          border: "1px solid rgba(148, 163, 184, 0.16)",
-                          color: "#e2e8f0",
-                          fontWeight: 700,
-                          fontSize: `${fsize}px`,
-                          lineHeight: 1.2,
-                          textAlign: side === "right" ? "left" : "right",
-                          boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
-                          overflow: "hidden",
-                          display: "-webkit-box",
-                          WebkitBoxOrient: "vertical" as any,
-                          WebkitLineClamp: resolvedLabelMode === "all" ? 3 : 2,
-                          wordBreak: "break-word",
-                        }}
-                        title={a.title}
-                      >
-                        {labelText}
-                      </div>
-                    </div>
-                  </foreignObject>
-                )
-              })()
-            )}
+                      {t}
+                    </tspan>
+                  ))}
+                </text>
+              )
+            })()}
           </g>
         )
       })}
@@ -818,44 +832,30 @@ export default function RadialCircle({
                   opacity={0.5}
                 />
                 {(() => {
-                  const box = labelBox({ x: textX, y: l.y, side: l.side, maxLines: 3 })
                   const fsize = fs(11)
+                  const lines = wrapLabel(l.a.title, { maxChars: isSmall ? 28 : 36, maxLines: 3 })
+                  const dy = Math.max(12, Math.round(fsize * 1.18))
                   return (
-                    <foreignObject x={box.x} y={box.y} width={box.w} height={box.h}>
-                      <div
-                        style={{
-                          width: `${box.w}px`,
-                          height: `${box.h}px`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: l.side === "right" ? "flex-start" : "flex-end",
-                        }}
-                      >
-                        <div
-                          style={{
-                            maxWidth: `${box.w}px`,
-                            padding: `${Math.round(5 * Math.max(0.9, scale))}px ${Math.round(8 * Math.max(0.9, scale))}px`,
-                            borderRadius: `${Math.round(10 * Math.max(0.9, scale))}px`,
-                            background: "rgba(2, 6, 23, 0.65)",
-                            border: "1px solid rgba(148, 163, 184, 0.16)",
-                            color: "#e2e8f0",
-                            fontWeight: 800,
-                            fontSize: `${fsize}px`,
-                            lineHeight: 1.2,
-                            textAlign: l.side === "right" ? "left" : "right",
-                            boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
-                            overflow: "hidden",
-                            display: "-webkit-box",
-                            WebkitBoxOrient: "vertical" as any,
-                            WebkitLineClamp: 3,
-                            wordBreak: "break-word",
-                          }}
-                          title={l.a.title}
-                        >
-                          {l.text}
-                        </div>
-                      </div>
-                    </foreignObject>
+                    <text
+                      x={textX}
+                      y={l.y}
+                      fontSize={fsize}
+                      fill="#e2e8f0"
+                      fontWeight="800"
+                      textAnchor={l.anchor}
+                      dominantBaseline="middle"
+                      style={{
+                        paintOrder: "stroke",
+                        stroke: "rgba(2, 6, 23, 0.92)",
+                        strokeWidth: sw(4),
+                      }}
+                    >
+                      {lines.map((t, i) => (
+                        <tspan key={`${l.id}-ml-${i}`} x={textX} dy={i === 0 ? 0 : dy}>
+                          {t}
+                        </tspan>
+                      ))}
+                    </text>
                   )
                 })()}
               </g>
