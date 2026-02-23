@@ -152,22 +152,50 @@ export default function UploadsPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
   const [previewLoading, setPreviewLoading] = React.useState(false)
+  const [importKind, setImportKind] = React.useState<"activities" | "crm">("activities")
   const [preview, setPreview] = React.useState<{
     headers: string[]
     samples: any[]
     suggested_mapping: Record<string, string | null>
     category_values?: string[]
+    import_kind?: string
   } | null>(null)
-  const [mapping, setMapping] = React.useState<Record<string, string | null>>({
-    title: null,
-    category: null,
-    status: null,
-    budget: null,
-    notes: null,
-    start: null,
-    end: null,
-    weight: null,
-  })
+  const activityMappingDefaults = React.useMemo(
+    () => ({
+      title: null,
+      category: null,
+      status: null,
+      budget: null,
+      notes: null,
+      start: null,
+      end: null,
+      weight: null,
+    }),
+    [],
+  )
+  const crmMappingDefaults = React.useMemo(
+    () => ({
+      company_name: null,
+      company_website: null,
+      company_industry: null,
+      company_email: null,
+      company_phone: null,
+      company_notes: null,
+      contact_name: null,
+      contact_email: null,
+      contact_phone: null,
+      contact_position: null,
+      deal_title: null,
+      deal_value: null,
+      deal_stage: null,
+      deal_probability: null,
+      deal_expected_close_date: null,
+      deal_owner: null,
+      deal_notes: null,
+    }),
+    [],
+  )
+  const [mapping, setMapping] = React.useState<Record<string, string | null>>(activityMappingDefaults)
   const [dragOver, setDragOver] = React.useState(false)
   const [query, setQuery] = React.useState("")
   const [categoryValueMap, setCategoryValueMap] = React.useState<Record<string, string>>({})
@@ -223,16 +251,20 @@ export default function UploadsPage() {
       setError(null)
       setPreviewLoading(true)
       try {
-        const p = await previewFile(file)
+        const p = await previewFile(file, importKind)
         setPreview(p)
-        setMapping((prev) => ({ ...prev, ...(p?.suggested_mapping || {}) }))
+        // Reset mapping schema based on import kind, then apply suggestions
+        setMapping(() => {
+          const base = importKind === "crm" ? crmMappingDefaults : activityMappingDefaults
+          return { ...base, ...(p?.suggested_mapping || {}) }
+        })
       } catch (e: any) {
         setError(e?.message || "Vorschau konnte nicht geladen werden")
       } finally {
         setPreviewLoading(false)
       }
     },
-    [previewFile],
+    [previewFile, importKind, crmMappingDefaults, activityMappingDefaults],
   )
 
   const selectFile = React.useCallback(
@@ -256,6 +288,13 @@ export default function UploadsPage() {
 
   const selectedIsTabular = Boolean(selectedFile && isTabularFile(selectedFile.name))
   const previewCols = isSmall && !showAllPreviewCols ? 4 : 8
+
+  // When switching import kind, re-run preview for current file (tabular only)
+  React.useEffect(() => {
+    if (!selectedFile) return
+    if (!selectedIsTabular) return
+    loadPreview(selectedFile)
+  }, [importKind])
 
   const platformCategoryOptions = React.useMemo(() => {
     return (userCategories || [])
@@ -346,7 +385,11 @@ export default function UploadsPage() {
   ])
 
   const categoryMappingRequired =
-    selectedIsTabular && Boolean(mapping.category) && platformCategoryOptions.length > 0 && previewCategoryValues.length > 0
+    importKind === "activities" &&
+    selectedIsTabular &&
+    Boolean((mapping as any).category) &&
+    platformCategoryOptions.length > 0 &&
+    previewCategoryValues.length > 0
 
   const unresolvedCategoryKeys = React.useMemo(() => {
     if (!categoryMappingRequired) return [] as string[]
@@ -359,7 +402,11 @@ export default function UploadsPage() {
 
   const canProceed =
     Boolean(selectedFile) &&
-    (selectedIsTabular ? Boolean(mapping.title) && (!categoryMappingRequired || categoryMappingOk) : true)
+    (selectedIsTabular
+      ? importKind === "crm"
+        ? Boolean((mapping as any).company_name) // at least a company key
+        : Boolean((mapping as any).title) && (!categoryMappingRequired || categoryMappingOk)
+      : true)
 
   const categoryMappingRows = React.useMemo(() => {
     if (!categoryMappingRequired) return [] as Array<{ key: string; raw: string; state: "matched" | "mapped" | "unmapped"; effective: string }>
@@ -373,6 +420,9 @@ export default function UploadsPage() {
   }, [categoryMappingRequired, previewCategoryValues, platformCatsByKey, categoryValueMap])
 
   const circlePreview = React.useMemo(() => {
+    if (importKind !== "activities") {
+      return { year: new Date().getFullYear(), activities: [] as any[] }
+    }
     if (!preview || !selectedIsTabular) {
       return { year: new Date().getFullYear(), activities: [] as any[] }
     }
@@ -431,23 +481,14 @@ export default function UploadsPage() {
           ;(mappingClean as any)[k] = v ? String(v) : null
         })
         // Optional: category value remap (file category -> existing platform category)
-        if (Object.keys(categoryValueMap || {}).length > 0) {
+        if (importKind === "activities" && Object.keys(categoryValueMap || {}).length > 0) {
           ;(mappingClean as any).category_value_map = categoryValueMap
         }
       }
-      await uploadFile(selectedFile, undefined, mappingClean)
+      await uploadFile(selectedFile, undefined, mappingClean, importKind)
       setSelectedFile(null)
       setPreview(null)
-      setMapping({
-        title: null,
-        category: null,
-        status: null,
-        budget: null,
-        notes: null,
-        start: null,
-        end: null,
-        weight: null,
-      })
+      setMapping(importKind === "crm" ? crmMappingDefaults : activityMappingDefaults)
       setCategoryValueMap({})
       setBulkCategoryTarget("")
       if (isTab) await Promise.all([refresh(), refreshJobs()])
@@ -840,12 +881,25 @@ export default function UploadsPage() {
               <div>
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Datei auswählen</div>
                 <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  CSV/XLSX wird als Aktivitäten importiert. PDF/Bilder werden gespeichert (ohne Import).
+                  CSV/XLSX kann als Aktivitäten oder CRM importiert werden. PDF/Bilder werden gespeichert (ohne Import).
                 </div>
                 {selectedFile && (
                   <div className="mt-2 text-xs text-slate-700 dark:text-slate-300">
                     Ausgewählt: <span className="font-semibold">{selectedFile.name}</span>{" "}
                     <span className="text-slate-500">({formatBytes(selectedFile.size)})</span>
+                  </div>
+                )}
+                {selectedIsTabular && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="text-xs text-slate-600 dark:text-slate-400">Importieren als:</div>
+                    <select
+                      className="h-9 rounded-lg border border-slate-300/40 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 px-3 text-xs text-slate-900 dark:text-slate-100"
+                      value={importKind}
+                      onChange={(e) => setImportKind((e.target.value as any) || "activities")}
+                    >
+                      <option value="activities">Aktivitäten (Marketing Circle)</option>
+                      <option value="crm">CRM (Companies/Contacts/Deals)</option>
+                    </select>
                   </div>
                 )}
               </div>
@@ -886,7 +940,8 @@ export default function UploadsPage() {
               <div className="flex items-center justify-between gap-2" data-tour="uploads-mapping">
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Mapping</div>
                 <div className="text-xs text-slate-600 dark:text-slate-400">
-                  Pflicht: <span className="font-semibold">title</span>
+                  Pflicht:{" "}
+                  <span className="font-semibold">{importKind === "crm" ? "company_name" : "title"}</span>
                 </div>
               </div>
 
@@ -895,7 +950,7 @@ export default function UploadsPage() {
                   <label key={k} className="text-xs text-slate-700 dark:text-slate-300 space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{k}</span>
-                      {k === "title" && <Badge className="text-[10px]">required</Badge>}
+                      {(k === (importKind === "crm" ? "company_name" : "title")) && <Badge className="text-[10px]">required</Badge>}
                     </div>
                     <select
                       className="w-full rounded-lg border border-slate-300/40 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 px-3 py-2.5 text-xs"
@@ -997,19 +1052,37 @@ export default function UploadsPage() {
                 {/* Circle preview */}
                 <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Kreis Vorschau</div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      {importKind === "crm" ? "CRM Vorschau" : "Kreis Vorschau"}
+                    </div>
                     <div className="text-xs text-slate-600 dark:text-slate-400">
                       basiert auf {preview.samples.length} Zeilen
                     </div>
                   </div>
                   <div className="mt-4">
-                    {circlePreview.activities.length > 0 ? (
+                    {importKind === "activities" && circlePreview.activities.length > 0 ? (
                       <RadialCircle
                         activities={circlePreview.activities as any}
                         categories={platformCategoryOptions}
                         size={circleSize}
                         year={circlePreview.year}
                       />
+                    ) : importKind === "crm" ? (
+                      <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-5 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+                        <div className="font-semibold">Was wird importiert?</div>
+                        <div>
+                          - Company wird über <b>company_name</b> erkannt (weitere Felder optional).
+                        </div>
+                        <div>
+                          - Contact wird über <b>contact_email</b> oder <b>contact_name</b> erkannt (optional).
+                        </div>
+                        <div>
+                          - Deal wird über <b>deal_title</b> erkannt (optional).
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Nach dem Import findest du die Daten unter <b>CRM</b> (Unternehmen, Kontakte, Deals).
+                        </div>
+                      </div>
                     ) : (
                       <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-5 text-center text-xs text-slate-600 dark:text-slate-400">
                         Keine Aktivitäten für die Vorschau gefunden (prüfe bitte das Mapping für <b>title</b> / <b>start</b> / <b>end</b>).
@@ -1038,7 +1111,11 @@ export default function UploadsPage() {
                     )}
                   </div>
 
-                  {!mapping.category ? (
+                  {importKind !== "activities" ? (
+                    <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+                      Für CRM-Import gibt es keinen Kategorie-Abgleich.
+                    </div>
+                  ) : !(mapping as any).category ? (
                     <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
                       Wähle zuerst im Mapping die Spalte für <b>category</b>. Danach kannst du nicht passende Kategorien
                       auf deine bestehenden Kategorien am Kreis mappen.

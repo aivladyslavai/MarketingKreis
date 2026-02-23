@@ -32,8 +32,13 @@ import os
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="MarketingKreis API")
     settings = get_settings()
+    # In production/staging, hide interactive API docs to reduce accidental exposure surface.
+    # (This does not expose data directly, but it makes endpoint discovery easier.)
+    if settings.environment in {"production", "staging"}:
+        app = FastAPI(title="MarketingKreis API", docs_url=None, redoc_url=None, openapi_url=None)
+    else:
+        app = FastAPI(title="MarketingKreis API")
 
     @app.on_event("startup")
     def _startup_migrations() -> None:

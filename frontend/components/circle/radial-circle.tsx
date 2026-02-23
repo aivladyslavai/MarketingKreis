@@ -207,6 +207,20 @@ export default function RadialCircle({
     return s.slice(0, Math.max(0, max - 1)).trimEnd() + "…"
   }, [])
 
+  const labelBox = React.useCallback((opts: { x: number; y: number; side: "left" | "right"; maxLines: number }) => {
+    const pad = 12 * Math.max(0.9, scale)
+    const maxW = (isTiny ? 150 : isSmall ? 190 : 260) * Math.max(0.9, scale)
+    const w = Math.max(110 * Math.max(0.9, scale), Math.min(maxW, rs - pad * 2))
+    const lineH = (fs(11) * 1.18)
+    const h = Math.max(lineH * opts.maxLines + 10 * Math.max(0.9, scale), lineH + 10)
+
+    const x = opts.side === "right"
+      ? Math.min(opts.x, rs - pad - w)
+      : Math.max(opts.x - w, pad)
+    const y = Math.max(pad, Math.min(opts.y - h / 2, rs - pad - h))
+    return { x, y, w, h, pad }
+  }, [fs, isSmall, isTiny, rs, scale])
+
   const labeledIds = React.useMemo(() => {
     const selectedId = popup?.a?.id
 
@@ -724,23 +738,55 @@ export default function RadialCircle({
               )
             })()}
             {!focus && showLabel && (
-              <text
-                x={lx}
-                y={ly}
-                fontSize={fs(resolvedLabelMode === "all" ? 11 : 10)}
-                fill="#e2e8f0"
-                fontWeight="600"
-                textAnchor={anchor}
-                dominantBaseline="middle"
-                style={{
-                  pointerEvents: "none",
-                  paintOrder: "stroke",
-                  stroke: "rgba(2, 6, 23, 0.9)",
-                  strokeWidth: sw(4),
-                }}
-              >
-                {labelText}
-              </text>
+              (() => {
+                const side: "left" | "right" = anchor === "start" ? "right" : "left"
+                // Keep labels inside the SVG box to avoid clipping by cards/containers.
+                const box = labelBox({ x: lx, y: ly, side, maxLines: resolvedLabelMode === "all" ? 3 : 2 })
+                const fsize = fs(resolvedLabelMode === "all" ? 11 : 10)
+                return (
+                  <foreignObject
+                    x={box.x}
+                    y={box.y}
+                    width={box.w}
+                    height={box.h}
+                    style={{ pointerEvents: "none" }}
+                  >
+                    <div
+                      style={{
+                        width: `${box.w}px`,
+                        height: `${box.h}px`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: side === "right" ? "flex-start" : "flex-end",
+                      }}
+                    >
+                      <div
+                        style={{
+                          maxWidth: `${box.w}px`,
+                          padding: `${Math.round(5 * Math.max(0.9, scale))}px ${Math.round(8 * Math.max(0.9, scale))}px`,
+                          borderRadius: `${Math.round(10 * Math.max(0.9, scale))}px`,
+                          background: "rgba(2, 6, 23, 0.65)",
+                          border: "1px solid rgba(148, 163, 184, 0.16)",
+                          color: "#e2e8f0",
+                          fontWeight: 700,
+                          fontSize: `${fsize}px`,
+                          lineHeight: 1.2,
+                          textAlign: side === "right" ? "left" : "right",
+                          boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
+                          overflow: "hidden",
+                          display: "-webkit-box",
+                          WebkitBoxOrient: "vertical" as any,
+                          WebkitLineClamp: resolvedLabelMode === "all" ? 3 : 2,
+                          wordBreak: "break-word",
+                        }}
+                        title={a.title}
+                      >
+                        {labelText}
+                      </div>
+                    </div>
+                  </foreignObject>
+                )
+              })()
             )}
           </g>
         )
@@ -752,7 +798,7 @@ export default function RadialCircle({
           {focusLabels.map((l) => {
             const sign = l.side === "right" ? 1 : -1
             const elbowX = center + sign * (radius + 10 * scale)
-            const textX = l.x + sign * (6 * Math.max(0.9, scale))
+            const textX = l.x + sign * (10 * Math.max(0.9, scale))
             return (
               <g
                 key={`lbl-${l.id}`}
@@ -771,22 +817,47 @@ export default function RadialCircle({
                   strokeWidth={sw(1.5)}
                   opacity={0.5}
                 />
-                <text
-                  x={textX}
-                  y={l.y}
-                  fontSize={fs(11)}
-                  fill="#e2e8f0"
-                  fontWeight="700"
-                  textAnchor={l.anchor}
-                  dominantBaseline="middle"
-                  style={{
-                    paintOrder: "stroke",
-                    stroke: "rgba(2, 6, 23, 0.92)",
-                    strokeWidth: sw(4),
-                  }}
-                >
-                  {l.text}
-                </text>
+                {(() => {
+                  const box = labelBox({ x: textX, y: l.y, side: l.side, maxLines: 3 })
+                  const fsize = fs(11)
+                  return (
+                    <foreignObject x={box.x} y={box.y} width={box.w} height={box.h}>
+                      <div
+                        style={{
+                          width: `${box.w}px`,
+                          height: `${box.h}px`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: l.side === "right" ? "flex-start" : "flex-end",
+                        }}
+                      >
+                        <div
+                          style={{
+                            maxWidth: `${box.w}px`,
+                            padding: `${Math.round(5 * Math.max(0.9, scale))}px ${Math.round(8 * Math.max(0.9, scale))}px`,
+                            borderRadius: `${Math.round(10 * Math.max(0.9, scale))}px`,
+                            background: "rgba(2, 6, 23, 0.65)",
+                            border: "1px solid rgba(148, 163, 184, 0.16)",
+                            color: "#e2e8f0",
+                            fontWeight: 800,
+                            fontSize: `${fsize}px`,
+                            lineHeight: 1.2,
+                            textAlign: l.side === "right" ? "left" : "right",
+                            boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
+                            overflow: "hidden",
+                            display: "-webkit-box",
+                            WebkitBoxOrient: "vertical" as any,
+                            WebkitLineClamp: 3,
+                            wordBreak: "break-word",
+                          }}
+                          title={l.a.title}
+                        >
+                          {l.text}
+                        </div>
+                      </div>
+                    </foreignObject>
+                  )
+                })()}
               </g>
             )
           })}

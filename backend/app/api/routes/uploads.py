@@ -10,6 +10,9 @@ from app.db.session import get_db_session
 from app.models.upload import Upload
 from app.models.job import Job
 from app.models.activity import Activity, ActivityType
+from app.models.company import Company
+from app.models.contact import Contact
+from app.models.deal import Deal
 from app.models.user import User, UserRole
 from app.api.deps import get_current_user, get_org_id, is_demo_user, require_writable_user
 from app.core.config import get_settings
@@ -34,6 +37,96 @@ def _parse_csv_to_activities(content: bytes) -> List[Dict[str, Any]]:
     for row in reader:
         rows.append(row)
     return rows
+
+
+def _norm_header(s: str) -> str:
+    return (str(s or "").strip().lower().replace(" ", "_").replace("-", "_"))
+
+
+def _suggest_mapping_crm(headers_in: List[str]) -> Dict[str, Optional[str]]:
+    h_norm = [_norm_header(h) for h in headers_in]
+
+    def suggest(*names: str) -> Optional[str]:
+        for n in names:
+            n2 = _norm_header(n)
+            if n2 in h_norm:
+                return headers_in[h_norm.index(n2)]
+        return None
+
+    return {
+        # Company
+        "company_name": suggest("company", "company_name", "firma", "unternehmen", "kundename", "name"),
+        "company_website": suggest("website", "web", "url", "domain"),
+        "company_industry": suggest("industry", "branche"),
+        "company_email": suggest("company_email", "email", "e-mail"),
+        "company_phone": suggest("phone", "telefon", "tel"),
+        "company_notes": suggest("notes", "notiz", "bemerkung", "kommentar"),
+        # Contact
+        "contact_name": suggest("contact", "contact_name", "ansprechpartner", "kontakt", "kontakt_name"),
+        "contact_email": suggest("contact_email", "ansprechpartner_email", "kontakt_email"),
+        "contact_phone": suggest("contact_phone", "ansprechpartner_phone", "kontakt_phone"),
+        "contact_position": suggest("position", "rolle", "funktion", "title"),
+        # Deal
+        "deal_title": suggest("deal", "deal_title", "opportunity", "projekt", "project", "angebot"),
+        "deal_value": suggest("value", "betrag", "amount", "sum", "umsatz", "revenue", "chf"),
+        "deal_stage": suggest("stage", "status", "phase"),
+        "deal_probability": suggest("probability", "chance", "wahrscheinlichkeit"),
+        "deal_expected_close_date": suggest("expected_close_date", "close_date", "abschluss", "abschlussdatum"),
+        "deal_owner": suggest("owner", "deal_owner", "verantwortlich", "owner_email"),
+        "deal_notes": suggest("deal_notes", "notes_deal", "bemerkung_deal"),
+    }
+
+
+def _parse_float(v: Any) -> Optional[float]:
+    if v in (None, ""):
+        return None
+    try:
+        s = str(v).strip().replace("'", "").replace(" ", "")
+        # Accept 1'234.50 or 1.234,50
+        if "," in s and "." in s:
+            # choose last separator as decimal
+            if s.rfind(",") > s.rfind("."):
+                s = s.replace(".", "").replace(",", ".")
+            else:
+                s = s.replace(",", "")
+        elif "," in s and "." not in s:
+            s = s.replace(".", "").replace(",", ".")
+        return float(s)
+    except Exception:
+        return None
+
+
+def _parse_int(v: Any) -> Optional[int]:
+    if v in (None, ""):
+        return None
+    try:
+        return int(float(str(v).strip().replace("%", "")))
+    except Exception:
+        return None
+
+
+def _parse_datetime_loose(v: Any):
+    if v in (None, ""):
+        return None
+    try:
+        from datetime import datetime, date
+
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, date):
+            return datetime(v.year, v.month, v.day)
+        s = str(v).strip()
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%m/%d/%Y"):
+            try:
+                return datetime.strptime(s, fmt)
+            except Exception:
+                pass
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except Exception:
+            return None
+    except Exception:
+        return None
 
 
 @router.get("")
@@ -71,6 +164,7 @@ def list_uploads(
 def upload_file(
     file: UploadFile = File(...),
     mapping: Optional[str] = Form(default=None),
+    import_kind: Optional[str] = Form(default="activities"),
     db: Session = Depends(get_db_session),
     current_user: User = Depends(require_writable_user),
 ):
@@ -223,43 +317,166 @@ def upload_file(
                     return v
             return g(row, *fallbacks)
 
-        for row in rows:
-            try:
-                title = gm(row, "title", "title", "name") or "Untitled"
-                category = gm(row, "category", "category", "type") or "VERKAUFSFOERDERUNG"
-                category = remap_category_value(category) or "VERKAUFSFOERDERUNG"
-                status = (gm(row, "status", "status") or "ACTIVE")
-                budget = gm(row, "budget", "budget", "budgetCHF")
-                weight = gm(row, "weight", "weight")
-                notes = gm(row, "notes", "notes", "expected_output")
-                start = parse_date(gm(row, "start", "start", "start_date"))
-                end = parse_date(gm(row, "end", "end", "end_date"))
+        kind = (import_kind or "activities").strip().lower()
+        if kind not in {"activities", "crm"}:
+            kind = "activities"
 
-                activity = Activity(
-                    title=str(title),
-                    type=_map_category_to_activity_type(str(category)),
-                    category_name=str(category),
-                    status=str(status).upper(),
-                    budget=float(budget) if budget not in (None, "") else None,
-                    weight=float(weight) if weight not in (None, "") else None,
-                    expected_output=str(notes) if notes not in (None, "") else None,
-                    start_date=start,
-                    end_date=end,
-                    owner_id=current_user.id,
-                    organization_id=org,
-                )
-                db.add(activity)
-                created_count += 1
-            except Exception:
-                skipped_count += 1
+        if kind == "crm":
+            # Restrict CRM import to editor/admin to prevent accidental org-wide writes.
+            if current_user.role not in {UserRole.admin, UserRole.editor}:
+                raise HTTPException(status_code=403, detail="CRM import requires editor/admin")
 
-        db.commit()
+            for row in rows:
+                try:
+                    company_name = str(gm(row, "company_name", "company", "firma", "unternehmen", "name") or "").strip()
+                    if not company_name:
+                        skipped_count += 1
+                        continue
+
+                    company = (
+                        db.query(Company)
+                        .filter(Company.organization_id == org, Company.name == company_name)
+                        .first()
+                    )
+                    if not company:
+                        company = Company(
+                            organization_id=org,
+                            name=company_name,
+                        )
+                        db.add(company)
+                        db.flush()
+                        created_count += 1
+                    # Best-effort enrichment (only set when provided)
+                    website = gm(row, "company_website", "website", "domain", "url")
+                    if website not in (None, ""):
+                        company.website = str(website).strip()
+                    industry = gm(row, "company_industry", "industry", "branche")
+                    if industry not in (None, ""):
+                        company.industry = str(industry).strip()
+                    c_email = gm(row, "company_email", "email")
+                    if c_email not in (None, ""):
+                        company.email = str(c_email).strip()
+                    c_phone = gm(row, "company_phone", "phone", "telefon", "tel")
+                    if c_phone not in (None, ""):
+                        company.phone = str(c_phone).strip()
+                    c_notes = gm(row, "company_notes", "notes", "notiz", "bemerkung")
+                    if c_notes not in (None, ""):
+                        company.notes = str(c_notes).strip()[:1024]
+                    db.add(company)
+
+                    # Contact (optional)
+                    contact_email = gm(row, "contact_email", "kontakt_email", "ansprechpartner_email")
+                    contact_name = gm(row, "contact_name", "kontakt", "ansprechpartner", "contact")
+                    contact = None
+                    if contact_email not in (None, "") or contact_name not in (None, ""):
+                        ce = str(contact_email or "").strip().lower()
+                        cn = str(contact_name or "").strip()
+                        q = db.query(Contact).filter(Contact.organization_id == org, Contact.company_id == company.id)
+                        if ce:
+                            contact = q.filter(Contact.email == ce).first()
+                        if not contact and cn:
+                            contact = q.filter(Contact.name == cn).first()
+                        if not contact:
+                            contact = Contact(organization_id=org, company_id=company.id, name=cn or ce or "Contact")
+                            if ce:
+                                contact.email = ce
+                            db.add(contact)
+                            db.flush()
+                            created_count += 1
+                        # Enrich
+                        if cn:
+                            contact.name = cn
+                        if ce:
+                            contact.email = ce
+                        phone = gm(row, "contact_phone", "telefon", "phone")
+                        if phone not in (None, ""):
+                            contact.phone = str(phone).strip()
+                        pos = gm(row, "contact_position", "position", "rolle", "funktion")
+                        if pos not in (None, ""):
+                            contact.position = str(pos).strip()
+                        db.add(contact)
+
+                    # Deal (optional)
+                    deal_title = gm(row, "deal_title", "deal", "opportunity", "projekt", "project", "angebot")
+                    if deal_title not in (None, ""):
+                        dt = str(deal_title).strip()
+                        if dt:
+                            deal = (
+                                db.query(Deal)
+                                .filter(Deal.organization_id == org, Deal.company_id == company.id, Deal.title == dt)
+                                .first()
+                            )
+                            if not deal:
+                                deal = Deal(
+                                    organization_id=org,
+                                    company_id=company.id,
+                                    title=dt,
+                                    owner=str(gm(row, "deal_owner", "owner", "verantwortlich") or (current_user.email or "owner")),
+                                )
+                                db.add(deal)
+                                db.flush()
+                                created_count += 1
+                            value = _parse_float(gm(row, "deal_value", "value", "betrag", "amount", "chf"))
+                            if value is not None:
+                                deal.value = value
+                            stage = gm(row, "deal_stage", "stage", "phase", "status")
+                            if stage not in (None, ""):
+                                deal.stage = str(stage).strip().lower()[:30]
+                            prob = _parse_int(gm(row, "deal_probability", "probability", "chance", "wahrscheinlichkeit"))
+                            if prob is not None:
+                                deal.probability = max(0, min(100, prob))
+                            close_dt = _parse_datetime_loose(gm(row, "deal_expected_close_date", "expected_close_date", "close_date", "abschlussdatum"))
+                            if close_dt:
+                                deal.expected_close_date = close_dt
+                            dnotes = gm(row, "deal_notes", "notes")
+                            if dnotes not in (None, ""):
+                                deal.notes = str(dnotes).strip()[:1024]
+                            # Attach optional contact_id if present
+                            if contact is not None:
+                                deal.contact_id = contact.id
+                            db.add(deal)
+                except Exception:
+                    skipped_count += 1
+
+            db.commit()
+        else:
+            for row in rows:
+                try:
+                    title = gm(row, "title", "title", "name") or "Untitled"
+                    category = gm(row, "category", "category", "type") or "VERKAUFSFOERDERUNG"
+                    category = remap_category_value(category) or "VERKAUFSFOERDERUNG"
+                    status = (gm(row, "status", "status") or "ACTIVE")
+                    budget = gm(row, "budget", "budget", "budgetCHF")
+                    weight = gm(row, "weight", "weight")
+                    notes = gm(row, "notes", "notes", "expected_output")
+                    start = parse_date(gm(row, "start", "start", "start_date"))
+                    end = parse_date(gm(row, "end", "end", "end_date"))
+
+                    activity = Activity(
+                        title=str(title),
+                        type=_map_category_to_activity_type(str(category)),
+                        category_name=str(category),
+                        status=str(status).upper(),
+                        budget=float(budget) if budget not in (None, "") else None,
+                        weight=float(weight) if weight not in (None, "") else None,
+                        expected_output=str(notes) if notes not in (None, "") else None,
+                        start_date=start,
+                        end_date=end,
+                        owner_id=current_user.id,
+                        organization_id=org,
+                    )
+                    db.add(activity)
+                    created_count += 1
+                except Exception:
+                    skipped_count += 1
+
+            db.commit()
 
         # Record a completed job
         rq_id = f"local-{upload.id}"
         job = Job(
             rq_id=rq_id,
-            type="import_activities",
+            type=("import_crm" if kind == "crm" else "import_activities"),
             status="finished",
             result=f"created={created_count};skipped={skipped_count}",
             organization_id=org,
@@ -290,6 +507,7 @@ def upload_file(
 @router.post("/preview")
 def preview_upload(
     file: UploadFile = File(...),
+    import_kind: Optional[str] = Form(default="activities"),
     current_user: User = Depends(get_current_user),
 ):
     """Return headers, first rows and suggested mapping for CSV/XLSX."""
@@ -326,12 +544,16 @@ def preview_upload(
             "weight": suggest("weight"),
         }
 
+    kind = (import_kind or "activities").strip().lower()
+    if kind not in {"activities", "crm"}:
+        kind = "activities"
+
     if ctype in {"text/csv", "application/csv", "text/plain"} or name_lower.endswith(".csv"):
         text = content.decode("utf-8", errors="ignore")
         reader = csv.DictReader(io.StringIO(text))
         headers = reader.fieldnames or []
-        suggested = suggest_mapping(headers)
-        cat_header = suggested.get("category")
+        suggested = _suggest_mapping_crm(headers) if kind == "crm" else suggest_mapping(headers)
+        cat_header = (suggested.get("category") if kind == "activities" else None)
         for i, row in enumerate(reader):
             if i < max_sample_rows:
                 rows.append(row)
@@ -352,8 +574,8 @@ def preview_upload(
         ws = wb.active
         first = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
         headers = [str(v or "").strip() for v in first]
-        suggested = suggest_mapping(headers)
-        cat_header = suggested.get("category")
+        suggested = _suggest_mapping_crm(headers) if kind == "crm" else suggest_mapping(headers)
+        cat_header = (suggested.get("category") if kind == "activities" else None)
         cat_idx: Optional[int] = None
         if cat_header and cat_header in headers:
             try:
@@ -380,7 +602,8 @@ def preview_upload(
         "headers": headers,
         "samples": rows,
         "suggested_mapping": suggested,
-        "category_values": sorted(list(category_values)),
+        **({"category_values": sorted(list(category_values))} if kind == "activities" else {}),
+        "import_kind": kind,
     }
 
 

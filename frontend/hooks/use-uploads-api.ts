@@ -42,22 +42,31 @@ export function useUploadsApi() {
     error,
     previewFile: async (
       file: File,
+      importKind?: "activities" | "crm",
     ): Promise<{
       headers: string[]
       samples: any[]
       suggested_mapping: Record<string, string | null>
       category_values?: string[]
+      import_kind?: string
     }> => {
       const fd = new FormData()
       fd.append('file', file)
+      if (importKind) fd.append('import_kind', importKind)
       const res = await fetch(`${apiBase}/uploads/preview`, { method: 'POST', body: fd, credentials: 'include' })
       if (!res.ok) throw new Error(await res.text())
       return await res.json()
     },
-    uploadFile: async (file: File, onProgress?: (p: number) => void, mapping?: Record<string, string | null>) => {
+    uploadFile: async (
+      file: File,
+      onProgress?: (p: number) => void,
+      mapping?: Record<string, string | null>,
+      importKind?: "activities" | "crm",
+    ) => {
       const fd = new FormData()
       fd.append('file', file)
       if (mapping) fd.append('mapping', JSON.stringify(mapping))
+      if (importKind) fd.append('import_kind', importKind)
       // Note: avoid authFetch to let browser set multipart headers
       const res = await fetch(`${apiBase}/uploads`, { method: 'POST', body: fd, credentials: 'include' })
       if (!res.ok) {
@@ -81,8 +90,13 @@ export function useUploadsApi() {
         const name = String(file?.name || '').toLowerCase()
         const isTabular = name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xls')
         if (isTabular) {
-          sync.emit('activities:changed')
-          sync.emit('performance:changed')
+          if ((importKind || "activities") === "activities") {
+            sync.emit('activities:changed')
+            sync.emit('performance:changed')
+          }
+          if ((importKind || "activities") === "crm") {
+            sync.emit('crm:companies:changed')
+          }
         }
       } catch {}
     },

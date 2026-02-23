@@ -104,6 +104,10 @@ async function forward(req: NextRequest, pathSegments: string[]) {
 
     appendSetCookies(res, next)
 
+    // Prevent any accidental CDN/browser caching of authenticated API responses.
+    // Even if an upstream forgets cache headers, we force no-store here.
+    next.headers.set("cache-control", "no-store")
+
     // Ensure JSON defaults if backend didn't send content-type
     if (!next.headers.get("content-type")) {
       next.headers.set("content-type", "application/json")
