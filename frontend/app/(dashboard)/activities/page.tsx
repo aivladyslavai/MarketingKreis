@@ -10,12 +10,15 @@ import { format } from "date-fns"
 import { de } from "date-fns/locale"
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
 import { GlassSelect } from "@/components/ui/glass-select"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import CategorySetup from "@/components/performance/CategorySetup"
 import { useUserCategories, type UserCategory } from "@/hooks/use-user-categories"
-import { CalendarDays, Download, Pencil, Trash2 } from "lucide-react"
+import { CalendarDays, Check, Download, Pencil, Trash2 } from "lucide-react"
 
 // Category colors (same as in RadialCircle)
 const categoryColors: Record<string, string> = {
@@ -24,6 +27,15 @@ const categoryColors: Record<string, string> = {
   EMPLOYER_BRANDING: "#10b981",
   KUNDENPFLEGE: "#f59e0b",
 }
+
+const defaultCategoryLabels: Record<string, string> = {
+  VERKAUFSFOERDERUNG: "Verkaufsförderung",
+  IMAGE: "Image",
+  EMPLOYER_BRANDING: "Employer Branding",
+  KUNDENPFLEGE: "Kundenpflege",
+}
+
+const checklistItems = ["Brief", "Copy", "Design", "Approved", "Scheduled"] as const
 
 export default function ActivitiesPage() {
   const { activities, loading, error, addActivity, updateActivity, deleteActivity, refresh } = useActivities() as any
@@ -540,68 +552,142 @@ function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<voi
       else setCategory("VERKAUFSFOERDERUNG")
     }
   }, [userCats, category])
+
+  const userColorMap: Record<string, string> = (userCats || []).reduce((m: any, c: any) => {
+    m[String(c?.name || "")] = String(c?.color || "")
+    return m
+  }, {} as Record<string, string>)
+  const catColor = userColorMap[category] || categoryColors[category] || "#64748b"
+  const canCreate = title.trim().length > 0
+
   return (
-    <div className="space-y-3 p-2">
-      <div className="grid gap-1">
-        <label className="text-sm">Titel</label>
-        <input className="h-10 rounded-md bg-slate-900/60 border border-slate-700 px-3" value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Titel" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1">
-          <label className="text-sm">Workflow</label>
-          <GlassSelect value={stage} onChange={(v:any)=> setStage(v)} options={[
-            { value: 'DRAFT', label: 'Draft' },
-            { value: 'REVIEW', label: 'Review' },
-            { value: 'PUBLISHED', label: 'Publish' },
-          ]} />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-sm">Checklist</label>
-          <div className="flex flex-wrap gap-2">
-            {['Brief','Copy','Design','Approved','Scheduled'].map(item=>(
-              <label key={item} className={`text-xs px-2 py-1 rounded border ${checklist.includes(item)?'bg-green-600/30 border-green-500/40 text-green-100':'bg-slate-800/60 border-slate-700 text-slate-300'}`}>
-                <input type="checkbox" className="mr-1" checked={checklist.includes(item)} onChange={(e)=> {
-                  setChecklist(prev => e.target.checked ? [...prev, item] : prev.filter(x=>x!==item))
-                }} />
-                {item}
-              </label>
-            ))}
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-4 sm:p-5">
+        <div className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label>Titel</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="z.B. E-Mail Nurture Automation" />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Start</Label>
+              <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Ende (optional)</Label>
+              <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label>Beschreibung</Label>
+            <Textarea
+              className="min-h-[110px]"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Kurzbeschreibung / Kontext / nächste Schritte"
+            />
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1">
-          <label className="text-sm">Start</label>
-          <input type="date" className="h-10 rounded-md bg-slate-900/60 border border-slate-700 px-3" value={dateStart} onChange={(e)=>setDateStart(e.target.value)} />
+
+      <div className="rounded-2xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-4 sm:p-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label>Typ</Label>
+            <GlassSelect value={type} onChange={setType} options={[{ value: "event", label: "Event" }, { value: "task", label: "Aufgabe" }]} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Kategorie</Label>
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: catColor }} />
+              <GlassSelect
+                className="flex-1"
+                value={category}
+                onChange={setCategory}
+                options={(userCats && userCats.length > 0)
+                  ? userCats.map((c: any) => ({ value: String(c.name), label: String(c.name) }))
+                  : Object.keys(categoryColors).map((k) => ({ value: k, label: defaultCategoryLabels[k] || k }))}
+              />
+            </div>
+          </div>
         </div>
-        <div className="grid gap-1">
-          <label className="text-sm">Ende (optional)</label>
-          <input type="date" className="h-10 rounded-md bg-slate-900/60 border border-slate-700 px-3" value={dateEnd} onChange={(e)=>setDateEnd(e.target.value)} />
+
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label>Workflow</Label>
+            <GlassSelect
+              value={stage}
+              onChange={(v: any) => setStage(v)}
+              options={[
+                { value: "DRAFT", label: "Draft" },
+                { value: "REVIEW", label: "Review" },
+                { value: "PUBLISHED", label: "Published" },
+              ]}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Checklist</Label>
+            <div className="flex flex-wrap gap-2">
+              {checklistItems.map((item) => {
+                const active = checklist.includes(item)
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() =>
+                      setChecklist((prev) => (prev.includes(item) ? prev.filter((x) => x !== item) : [...prev, item]))
+                    }
+                    className={[
+                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/25",
+                      active
+                        ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-200"
+                        : "bg-white/60 dark:bg-slate-950/20 border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-white/5",
+                    ].join(" ")}
+                  >
+                    <Check className={`h-3.5 w-3.5 ${active ? "opacity-100" : "opacity-0"}`} />
+                    {item}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1">
-          <label className="text-sm">Typ</label>
-          <GlassSelect value={type} onChange={setType} options={[{value:'event',label:'Event'},{value:'task',label:'Aufgabe'}]} />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-sm">Kategorie</label>
-          <GlassSelect 
-            value={category} 
-            onChange={setCategory} 
-            options={(userCats && userCats.length > 0)
-              ? userCats.map(c => ({ value: c.name, label: c.name }))
-              : Object.keys(categoryColors).map(k=>({value: k, label: k}))} 
-          />
-        </div>
-      </div>
-      <div className="grid gap-1">
-        <label className="text-sm">Beschreibung</label>
-        <textarea className="min-h-[90px] rounded-md bg-slate-900/60 border border-slate-700 px-3 py-2" value={description} onChange={(e)=>setDescription(e.target.value)} placeholder="Kurzbeschreibung" />
-      </div>
-      <div className="flex gap-2 pt-2">
-        <Button variant="outline" className="flex-1" onClick={closeModal}>Abbrechen</Button>
-        <Button className="flex-1" onClick={async ()=>{ await onCreate({ title, description, start: `${dateStart}T09:00:00`, end: (dateEnd? `${dateEnd}T18:00:00`: undefined), category, status:'PLANNED', weight:50, budgetCHF:0, stage, checklist }); closeModal(); }}>Erstellen</Button>
+
+      <div className="flex gap-2 pt-1">
+        <Button
+          variant="outline"
+          className="flex-1 rounded-xl border-white/15 bg-white/50 hover:bg-white/70 dark:bg-slate-950/20 dark:hover:bg-slate-950/30"
+          onClick={closeModal}
+        >
+          Abbrechen
+        </Button>
+        <Button
+          className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20 disabled:opacity-60"
+          disabled={!canCreate}
+          onClick={async () => {
+            if (!title.trim()) return
+            await onCreate({
+              title,
+              description,
+              start: `${dateStart}T09:00:00`,
+              end: dateEnd ? `${dateEnd}T18:00:00` : undefined,
+              category,
+              status: "PLANNED",
+              weight: 50,
+              budgetCHF: 0,
+              stage,
+              checklist,
+            })
+            closeModal()
+          }}
+        >
+          Erstellen
+        </Button>
       </div>
     </div>
   )
@@ -620,68 +706,149 @@ function EditActivityForm({ activity, onSave }: { activity: any; onSave: (update
   const [stage, setStage] = useState<string>(String(activity.stage || 'DRAFT'))
   const [checklist, setChecklist] = useState<string[]>(Array.isArray(activity.checklist)? activity.checklist: [])
 
+  const userColorMap: Record<string, string> = (userCats || []).reduce((m: any, c: any) => {
+    m[String(c?.name || "")] = String(c?.color || "")
+    return m
+  }, {} as Record<string, string>)
+  const catColor = userColorMap[category] || categoryColors[category] || "#64748b"
+  const canSave = title.trim().length > 0
+
   return (
-    <div className="space-y-3 p-2">
-      <div className="grid gap-1">
-        <label className="text-sm">Titel</label>
-        <input className="h-10 rounded-md bg-slate-900/60 border border-slate-700 px-3" value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="Titel" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1">
-          <label className="text-sm">Start</label>
-          <input type="date" className="h-10 rounded-md bg-slate-900/60 border border-slate-700 px-3" value={dateStart} onChange={(e)=>setDateStart(e.target.value)} />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-sm">Ende (optional)</label>
-          <input type="date" className="h-10 rounded-md bg-slate-900/60 border border-slate-700 px-3" value={dateEnd} onChange={(e)=>setDateEnd(e.target.value)} />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1">
-          <label className="text-sm">Status</label>
-          <GlassSelect value={status} onChange={(v)=>setStatus(String(v))} options={[{value:'PLANNED',label:'PLANNED'},{value:'ACTIVE',label:'ACTIVE'},{value:'PAUSED',label:'PAUSED'},{value:'DONE',label:'DONE'},{value:'CANCELLED',label:'CANCELLED'}]} />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-sm">Kategorie</label>
-          <GlassSelect 
-            value={category} 
-            onChange={(v)=>setCategory(String(v))} 
-            options={(userCats && userCats.length > 0)
-              ? userCats.map(c => ({ value: c.name, label: c.name }))
-              : Object.keys(categoryColors).map(k=>({value: k, label: k}))} 
-          />
-        </div>
-      </div>
-      <div className="grid gap-1">
-        <label className="text-sm">Beschreibung</label>
-        <textarea className="min-h-[90px] rounded-md bg-slate-900/60 border border-slate-700 px-3 py-2" value={description} onChange={(e)=>setDescription(e.target.value)} placeholder="Kurzbeschreibung" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1">
-          <label className="text-sm">Workflow</label>
-          <GlassSelect value={stage} onChange={(v:any)=> setStage(v)} options={[
-            { value: 'DRAFT', label: 'Draft' },
-            { value: 'REVIEW', label: 'Review' },
-            { value: 'PUBLISHED', label: 'Publish' },
-          ]} />
-        </div>
-        <div className="grid gap-1">
-          <label className="text-sm">Checklist</label>
-          <div className="flex flex-wrap gap-2">
-            {['Brief','Copy','Design','Approved','Scheduled'].map(item=>(
-              <label key={item} className={`text-xs px-2 py-1 rounded border ${checklist.includes(item)?'bg-green-600/30 border-green-500/40 text-green-100':'bg-slate-800/60 border-slate-700 text-slate-300'}`}>
-                <input type="checkbox" className="mr-1" checked={checklist.includes(item)} onChange={(e)=> {
-                  setChecklist(prev => e.target.checked ? [...prev, item] : prev.filter(x=>x!==item))
-                }} />
-                {item}
-              </label>
-            ))}
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-4 sm:p-5">
+        <div className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label>Titel</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titel" />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Start</Label>
+              <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Ende (optional)</Label>
+              <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label>Beschreibung</Label>
+            <Textarea
+              className="min-h-[110px]"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Kurzbeschreibung / Kontext / nächste Schritte"
+            />
           </div>
         </div>
       </div>
-      <div className="flex gap-2 pt-2">
-        <Button variant="outline" className="flex-1" onClick={closeModal}>Abbrechen</Button>
-        <Button className="flex-1" onClick={async ()=>{ await onSave({ title, notes: description, status, category, start: `${dateStart}T09:00:00`, end: (dateEnd? `${dateEnd}T18:00:00`: undefined), stage, checklist }); closeModal(); }}>Speichern</Button>
+
+      <div className="rounded-2xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-4 sm:p-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label>Status</Label>
+            <GlassSelect
+              value={status}
+              onChange={(v) => setStatus(String(v))}
+              options={[
+                { value: "PLANNED", label: "Geplant" },
+                { value: "ACTIVE", label: "Aktiv" },
+                { value: "PAUSED", label: "Pausiert" },
+                { value: "DONE", label: "Abgeschlossen" },
+                { value: "CANCELLED", label: "Abgebrochen" },
+              ]}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Kategorie</Label>
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: catColor }} />
+              <GlassSelect
+                className="flex-1"
+                value={category}
+                onChange={(v) => setCategory(String(v))}
+                options={(userCats && userCats.length > 0)
+                  ? userCats.map((c: any) => ({ value: String(c.name), label: String(c.name) }))
+                  : Object.keys(categoryColors).map((k) => ({ value: k, label: defaultCategoryLabels[k] || k }))}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label>Workflow</Label>
+            <GlassSelect
+              value={stage}
+              onChange={(v: any) => setStage(v)}
+              options={[
+                { value: "DRAFT", label: "Draft" },
+                { value: "REVIEW", label: "Review" },
+                { value: "PUBLISHED", label: "Published" },
+              ]}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Checklist</Label>
+            <div className="flex flex-wrap gap-2">
+              {checklistItems.map((item) => {
+                const active = checklist.includes(item)
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() =>
+                      setChecklist((prev) => (prev.includes(item) ? prev.filter((x) => x !== item) : [...prev, item]))
+                    }
+                    className={[
+                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/25",
+                      active
+                        ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-200"
+                        : "bg-white/60 dark:bg-slate-950/20 border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-white/5",
+                    ].join(" ")}
+                  >
+                    <Check className={`h-3.5 w-3.5 ${active ? "opacity-100" : "opacity-0"}`} />
+                    {item}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-1">
+        <Button
+          variant="outline"
+          className="flex-1 rounded-xl border-white/15 bg-white/50 hover:bg-white/70 dark:bg-slate-950/20 dark:hover:bg-slate-950/30"
+          onClick={closeModal}
+        >
+          Abbrechen
+        </Button>
+        <Button
+          className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20 disabled:opacity-60"
+          disabled={!canSave}
+          onClick={async () => {
+            if (!title.trim()) return
+            await onSave({
+              title,
+              notes: description,
+              status,
+              category,
+              start: `${dateStart}T09:00:00`,
+              end: dateEnd ? `${dateEnd}T18:00:00` : undefined,
+              stage,
+              checklist,
+            })
+            closeModal()
+          }}
+        >
+          Speichern
+        </Button>
       </div>
     </div>
   )
