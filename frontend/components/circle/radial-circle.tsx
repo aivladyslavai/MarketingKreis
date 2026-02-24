@@ -52,6 +52,8 @@ export default function RadialCircle({
   // Responsive render size (fits container; capped by provided size)
   const wrapRef = React.useRef<HTMLDivElement | null>(null)
   const svgRef = React.useRef<SVGSVGElement | null>(null)
+  // Month focus ("magnifier"): clicking a month zooms into it
+  const [focusedMonth, setFocusedMonth] = React.useState<number | null>(null)
   const [renderSize, setRenderSize] = React.useState<number>(size)
   React.useEffect(() => {
     const el = wrapRef.current
@@ -60,10 +62,16 @@ export default function RadialCircle({
     const RO = (window as any).ResizeObserver
     const ro = RO ? new RO((entries: any[]) => {
       const w = Math.max(240, Math.floor(entries[0].contentRect.width))
-      setRenderSize(Math.min(size, w))
+      // When a month is focused we render side labels; reserve gutter space so labels stay inside the block.
+      const guessRs0 = Math.min(size, w)
+      const guessIsSmall = guessRs0 < 520
+      const guessScale = guessRs0 / 700
+      const guessGutter = focusedMonth != null ? (guessIsSmall ? 120 : 160) * Math.max(0.9, guessScale) : 0
+      const rs = Math.min(size, Math.max(240, Math.floor(w - guessGutter * 2)))
+      setRenderSize(rs)
     }) : null
     if (ro) { ro.observe(el); return () => ro.disconnect() }
-  }, [size])
+  }, [size, focusedMonth])
   const rs = renderSize
   const isSmall = rs < 520
   const isTiny = rs < 360
@@ -72,11 +80,12 @@ export default function RadialCircle({
   const fs = (v: number) => Math.max(8, Math.round(v * Math.max(0.85, scale)))
 
   const radius = rs / 2 - (isSmall ? 44 * Math.max(0.9, scale) : 60 * Math.max(0.9, scale))
-  const center = rs / 2
+  const sideGutter = focusedMonth != null ? (isSmall ? 120 : 160) * Math.max(0.9, scale) : 0
+  const svgW = rs + sideGutter * 2
+  const cx = sideGutter + rs / 2
+  const cy = rs / 2
   const months = 12
 
-  // Month focus ("magnifier"): clicking a month zooms into it
-  const [focusedMonth, setFocusedMonth] = React.useState<number | null>(null)
   const focus = React.useMemo(() => {
     if (focusedMonth == null) return null
     const start = new Date(year, focusedMonth, 1, 0, 0, 0, 0)
@@ -317,8 +326,8 @@ export default function RadialCircle({
     const rect = svg.getBoundingClientRect()
     const px = (e as PointerEvent).clientX - rect.left
     const py = (e as PointerEvent).clientY - rect.top
-    const dx = px - center
-    const dy = py - center
+    const dx = px - cx
+    const dy = py - cy
     return Math.atan2(dy, dx)
   }
 
@@ -366,7 +375,7 @@ export default function RadialCircle({
     let px = x + 14
     let py = y - h - 12
     // flip horizontally if overflow
-    if (px + w > rs) px = x - w - 14
+    if (px + w > svgW) px = x - w - 14
     if (px < 0) px = 0
     // flip vertically if overflow
     if (py < 0) py = y + 12
@@ -378,10 +387,10 @@ export default function RadialCircle({
     const startAngle = getAngle(a.start)
     const catKey = resolveRingKey(a.category)
     const r = ringRadiusByCategory[catKey] ?? radius * 0.7
-    const x = center + Math.cos(startAngle) * r
-    const y = center + Math.sin(startAngle) * r
+    const x = cx + Math.cos(startAngle) * r
+    const y = cy + Math.sin(startAngle) * r
     return { x, y }
-  }, [center, resolveRingKey, ringRadiusByCategory])
+  }, [cx, cy, resolveRingKey, ringRadiusByCategory, radius])
 
   // (not needed now) convert screen to local SVG coords
 
@@ -409,6 +418,9 @@ export default function RadialCircle({
     const fontSize = fs(11)
     const lineH = fontSize * 1.15
     const gap = 10 * Math.max(0.9, scale)
+    const maxLabelWidth = Math.max(84, sideGutter - 16) // svg units ~= px here
+    const approxCharW = Math.max(6, fontSize * 0.56)
+    const maxChars = Math.max(10, Math.floor(maxLabelWidth / approxCharW))
 
     const items: FocusLabelItem[] = []
     for (const a of renderActivities) {
@@ -418,12 +430,12 @@ export default function RadialCircle({
       const ang = getAngle(start)
       const catKey = resolveRingKey(a.category)
       const r = ringRadiusByCategory[catKey] ?? radius * 0.7
-      const x0 = center + Math.cos(ang) * r
-      const y0 = center + Math.sin(ang) * r
-      const side: "left" | "right" = x0 >= center ? "right" : "left"
-      const x = center + (side === "right" ? 1 : -1) * (radius + labelOffset)
+      const x0 = cx + Math.cos(ang) * r
+      const y0 = cy + Math.sin(ang) * r
+      const side: "left" | "right" = x0 >= cx ? "right" : "left"
+      const x = cx + (side === "right" ? 1 : -1) * (radius + labelOffset)
       const color = ringColorByCategory[catKey] || "#64748b"
-      const lines = wrapLabel(a.title, isSmall ? 22 : 30, 3)
+      const lines = wrapLabel(a.title, maxChars, 3)
       items.push({
         id: a.id,
         a,
@@ -433,7 +445,7 @@ export default function RadialCircle({
         x,
         y: y0,
         color,
-        lines: lines.length ? lines : [truncateLabel(a.title, isSmall ? 24 : 32)],
+        lines: lines.length ? lines : [truncateLabel(a.title, maxChars)],
         anchor: side === "right" ? "start" : "end",
       })
     }
@@ -468,17 +480,17 @@ export default function RadialCircle({
     return [...left, ...right]
   })()
 
-  const sideGutter = focus ? (isSmall ? 120 : 160) * Math.max(0.9, scale) : 0
   return (
     <div
       ref={wrapRef}
       style={{
         position: "relative",
         width: "100%",
-        maxWidth: focus ? size + sideGutter * 2 : size,
-        aspectRatio: "1 / 1",
+        maxWidth: focus ? svgW : size,
+        height: focus ? rs : undefined,
+        aspectRatio: focus ? undefined : "1 / 1",
         margin: "0 auto",
-        overflow: "visible",
+        overflow: "hidden",
       }}
     >
       {focus && (
@@ -497,9 +509,9 @@ export default function RadialCircle({
       )}
       <svg
         ref={svgRef}
-        width={rs}
+        width={svgW}
         height={rs}
-        viewBox={`0 0 ${rs} ${rs}`}
+        viewBox={`0 0 ${svgW} ${rs}`}
         style={{
           overflow: "visible",
           position: "absolute",
@@ -525,7 +537,7 @@ export default function RadialCircle({
       </defs>
 
       {/* Background circle with subtle gradient */}
-      <circle cx={center} cy={center} r={radius} fill="#0a0f1e" stroke="#1e293b" strokeWidth={sw(2)} />
+      <circle cx={cx} cy={cy} r={radius} fill="#0a0f1e" stroke="#1e293b" strokeWidth={sw(2)} />
 
       {/* User-category rings (up to 5) */}
       {rings.map((ring, i) => {
@@ -533,12 +545,12 @@ export default function RadialCircle({
         const color = ringColorByCategory[ring.nameKey]
         return (
           <g key={`ring-${ring.name}`}>
-            <circle cx={center} cy={center} r={ringR} fill="none" stroke={color} strokeWidth={sw(1.5)} opacity={0.35} />
+            <circle cx={cx} cy={cy} r={ringR} fill="none" stroke={color} strokeWidth={sw(1.5)} opacity={0.35} />
             {/* Ring labels are too noisy on mobile; use the legend outside the circle instead */}
             {!isSmall && (
               <text
-                x={center}
-                y={center - ringR - 12 * scale}
+                x={cx}
+                y={cy - ringR - 12 * scale}
                 fontSize={fs(11)}
                 fill={color}
                 textAnchor="middle"
@@ -556,13 +568,13 @@ export default function RadialCircle({
       {!focus && Array.from({ length: months }).map((_, i) => {
         const angle = (i / months) * Math.PI * 2 - Math.PI / 2
         // Outer tick
-        const x1 = center + Math.cos(angle) * (radius - 10 * scale)
-        const y1 = center + Math.sin(angle) * (radius - 10 * scale)
-        const x2 = center + Math.cos(angle) * radius
-        const y2 = center + Math.sin(angle) * radius
+        const x1 = cx + Math.cos(angle) * (radius - 10 * scale)
+        const y1 = cy + Math.sin(angle) * (radius - 10 * scale)
+        const x2 = cx + Math.cos(angle) * radius
+        const y2 = cy + Math.sin(angle) * radius
         // Label position
-        const labelX = center + Math.cos(angle) * (radius + 18 * scale)
-        const labelY = center + Math.sin(angle) * (radius + 18 * scale)
+        const labelX = cx + Math.cos(angle) * (radius + 18 * scale)
+        const labelY = cy + Math.sin(angle) * (radius + 18 * scale)
 
         return (
           <g key={i}>
@@ -593,14 +605,14 @@ export default function RadialCircle({
         const angle = (idx / Math.max(1, focus.days)) * Math.PI * 2 - Math.PI / 2
         const inner = radius - 10 * scale
         const outer = radius
-        const x1 = center + Math.cos(angle) * inner
-        const y1 = center + Math.sin(angle) * inner
-        const x2 = center + Math.cos(angle) * outer
-        const y2 = center + Math.sin(angle) * outer
+        const x1 = cx + Math.cos(angle) * inner
+        const y1 = cy + Math.sin(angle) * inner
+        const x2 = cx + Math.cos(angle) * outer
+        const y2 = cy + Math.sin(angle) * outer
 
         const showLabel = day === 1 || day === focus.days || day % 7 === 1
-        const labelX = center + Math.cos(angle) * (radius + 18 * scale)
-        const labelY = center + Math.sin(angle) * (radius + 18 * scale)
+        const labelX = cx + Math.cos(angle) * (radius + 18 * scale)
+        const labelY = cy + Math.sin(angle) * (radius + 18 * scale)
 
         return (
           <g key={`day-${day}`}>
@@ -628,15 +640,15 @@ export default function RadialCircle({
         const angle = (w / weeksInYear) * Math.PI * 2 - Math.PI / 2
         const inner = radius - 16 * scale
         const outer = radius - 10 * scale
-        const x1 = center + Math.cos(angle) * inner
-        const y1 = center + Math.sin(angle) * inner
-        const x2 = center + Math.cos(angle) * outer
-        const y2 = center + Math.sin(angle) * outer
+        const x1 = cx + Math.cos(angle) * inner
+        const y1 = cy + Math.sin(angle) * inner
+        const x2 = cx + Math.cos(angle) * outer
+        const y2 = cy + Math.sin(angle) * outer
         // Reduce visual noise on small screens
         const step = isTiny ? 14 : isSmall ? 10 : 4
         const showLabel = w === 1 || w % step === 1
-        const lx = center + Math.cos(angle) * (radius - 30 * scale)
-        const ly = center + Math.sin(angle) * (radius - 30 * scale)
+        const lx = cx + Math.cos(angle) * (radius - 30 * scale)
+        const ly = cy + Math.sin(angle) * (radius - 30 * scale)
         return (
           <g key={`kw-${w}`}>
             <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#334155" strokeWidth={sw(1)} opacity={0.6} />
@@ -661,10 +673,10 @@ export default function RadialCircle({
         const angle = getAngle(a.start)
         const catKey = resolveRingKey(a.category)
         const r = ringRadiusByCategory[catKey] ?? radius * 0.7
-        const x = center + Math.cos(angle) * r
-        const y = center + Math.sin(angle) * r
-        const edgeX = center + Math.cos(angle) * radius
-        const edgeY = center + Math.sin(angle) * radius
+        const x = cx + Math.cos(angle) * r
+        const y = cy + Math.sin(angle) * r
+        const edgeX = cx + Math.cos(angle) * radius
+        const edgeY = cy + Math.sin(angle) * radius
         const color = ringColorByCategory[catKey] || "#64748b"
         
         return (
@@ -687,18 +699,25 @@ export default function RadialCircle({
         const startAngle = getAngle(a.start)
         const catKey = resolveRingKey(a.category)
         const r = ringRadiusByCategory[catKey] ?? radius * 0.7
-        const x = center + Math.cos(startAngle) * r
-        const y = center + Math.sin(startAngle) * r
+        const x = cx + Math.cos(startAngle) * r
+        const y = cy + Math.sin(startAngle) * r
         const color = ringColorByCategory[catKey] || "#64748b"
 
         const showLabel = labeledIds.has(a.id)
-        const labelText = resolvedLabelMode === "all"
-          ? a.title
-          : truncateLabel(a.title, isSmall ? 18 : 26)
         const labelR = 18 * scale
         const lx = x + Math.cos(startAngle) * labelR
         const ly = y + Math.sin(startAngle) * labelR
         const anchor: "start" | "end" = Math.cos(startAngle) >= 0 ? "start" : "end"
+
+        // Keep labels inside the circle block: compute an approximate available width and truncate accordingly.
+        const labelFont = fs(resolvedLabelMode === "all" ? 11 : 10)
+        const approxCharW = Math.max(6, labelFont * 0.56)
+        const pad = 12 * Math.max(0.9, scale)
+        const available = anchor === "start" ? Math.max(0, svgW - lx - pad) : Math.max(0, lx - pad)
+        const maxByWidth = Math.max(6, Math.floor(available / approxCharW))
+        const baseMax = resolvedLabelMode === "all" ? (isSmall ? 26 : 34) : (isSmall ? 18 : 26)
+        const labelMax = Math.max(6, Math.min(baseMax, maxByWidth))
+        const labelText = truncateLabel(a.title, labelMax)
         
         // If activity has end date, draw an arc segment to represent duration
         const endAngle = a.end ? getAngle(a.end) : null
@@ -733,10 +752,10 @@ export default function RadialCircle({
                 // If wrap is needed and long segment, split into two arcs to respect SVG elliptical-arc behavior
                 const buildArc = (angStart: number, angEnd: number) => {
                   const largeArc = (Math.abs(angEnd - angStart) % (Math.PI * 2)) > Math.PI ? 1 : 0
-                  const sx = center + Math.cos(angStart) * r
-                  const sy = center + Math.sin(angStart) * r
-                  const ex = center + Math.cos(angEnd) * r
-                  const ey = center + Math.sin(angEnd) * r
+                  const sx = cx + Math.cos(angStart) * r
+                  const sy = cy + Math.sin(angStart) * r
+                  const ex = cx + Math.cos(angEnd) * r
+                  const ey = cy + Math.sin(angEnd) * r
                   return `M ${sx} ${sy} A ${r} ${r} 0 ${largeArc} 1 ${ex} ${ey}`
                 }
                 const path = a2 >= a1
@@ -764,8 +783,8 @@ export default function RadialCircle({
               {/* tiny outer cap dot */}
               {hasRange && (
                 (() => {
-                  const capX = center + Math.cos(startAngle) * (r + 10 * scale)
-                  const capY = center + Math.sin(startAngle) * (r + 10 * scale)
+                  const capX = cx + Math.cos(startAngle) * (r + 10 * scale)
+                  const capY = cy + Math.sin(startAngle) * (r + 10 * scale)
                   return <circle cx={capX} cy={capY} r={sw(3)} fill={color} opacity={0.35} />
                 })()
               )}
@@ -773,8 +792,8 @@ export default function RadialCircle({
 
             {/* End marker (draggable if hasRange) */}
             {hasRange && (() => {
-              const ex = center + Math.cos(endAngle!) * r
-              const ey = center + Math.sin(endAngle!) * r
+              const ex = cx + Math.cos(endAngle!) * r
+              const ey = cy + Math.sin(endAngle!) * r
               return (
                 <g>
                   {/* soft halo */}
@@ -785,8 +804,8 @@ export default function RadialCircle({
                   </circle>
                   {/* tiny outer cap dot */}
                   {(() => {
-                    const capX = center + Math.cos(endAngle!) * (r + 10 * scale)
-                    const capY = center + Math.sin(endAngle!) * (r + 10 * scale)
+                    const capX = cx + Math.cos(endAngle!) * (r + 10 * scale)
+                    const capY = cy + Math.sin(endAngle!) * (r + 10 * scale)
                     return <circle cx={capX} cy={capY} r={sw(3)} fill={color} opacity={0.35} />
                   })()}
                 </g>
@@ -796,7 +815,7 @@ export default function RadialCircle({
               <text
                 x={lx}
                 y={ly}
-                fontSize={fs(resolvedLabelMode === "all" ? 11 : 10)}
+                fontSize={labelFont}
                 fill="#e2e8f0"
                 fontWeight="600"
                 textAnchor={anchor}
@@ -820,7 +839,7 @@ export default function RadialCircle({
         <g>
           {focusLabels.map((l) => {
             const sign = l.side === "right" ? 1 : -1
-            const elbowX = center + sign * (radius + 10 * scale)
+            const elbowX = cx + sign * (radius + 10 * scale)
             const textX = l.x + sign * (6 * Math.max(0.9, scale))
             const fontSize = fs(11)
             const lineH = fontSize * 1.15
@@ -873,8 +892,8 @@ export default function RadialCircle({
 
       {/* Center label */}
       <text
-        x={center}
-        y={center}
+        x={cx}
+        y={cy}
         fontSize={fs(focus ? 20 : 24)}
         fill="#64748b"
         textAnchor="middle"
@@ -891,8 +910,8 @@ export default function RadialCircle({
       </text>
       {focus && (
         <text
-          x={center}
-          y={center + 22 * Math.max(0.9, scale)}
+          x={cx}
+          y={cy + 22 * Math.max(0.9, scale)}
           fontSize={fs(11)}
           fill="#94a3b8"
           textAnchor="middle"
