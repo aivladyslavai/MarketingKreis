@@ -15,7 +15,7 @@ import { GlassSelect } from "@/components/ui/glass-select"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import CategorySetup from "@/components/performance/CategorySetup"
 import { useUserCategories, type UserCategory } from "@/hooks/use-user-categories"
-import { Download } from "lucide-react"
+import { CalendarDays, Download, Pencil, Trash2 } from "lucide-react"
 
 // Category colors (same as in RadialCircle)
 const categoryColors: Record<string, string> = {
@@ -356,10 +356,15 @@ export default function ActivitiesPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-white">Aktuelle Aktivitäten</CardTitle>
-                <Link href={`/activities?year=${year}&status=all`} className="text-sm text-slate-300 hover:text-white">Alle anzeigen →</Link>
+                <Link
+                  href={`/activities?year=${year}&status=all`}
+                  className="text-sm text-slate-300 hover:text-white inline-flex items-center gap-2"
+                >
+                  Alle anzeigen <span aria-hidden>→</span>
+                </Link>
               </div>
             </CardHeader>
-            <CardContent className="max-h-[560px] overflow-y-auto pr-2">
+            <CardContent className="max-h-[560px] overflow-y-auto pr-2 mk-no-scrollbar">
               <div className="space-y-3">
                 {aktuellActivities.length === 0 && (
                   <p className="text-slate-400 text-sm">Keine Aktivitäten</p>
@@ -367,59 +372,81 @@ export default function ActivitiesPage() {
                 {aktuellActivities.map((a: any) => (
                   <div 
                     key={a.id} 
-                    className="p-3 rounded-xl bg-white/10 border border-white/10 text-sm hover:bg-white/15 transition-colors cursor-pointer overflow-hidden"
+                    className="group p-3 rounded-2xl bg-white/5 border border-white/10 text-sm hover:bg-white/10 hover:border-white/15 transition-colors cursor-pointer"
                     onClick={() => setSelectedActivity(a)}
                   >
-                    <div className="font-semibold text-white truncate">{a.title}</div>
-                    <div className="text-slate-300 text-xs mt-1">
-                      {a.start ? format(new Date(a.start as any), 'dd.MM.yyyy HH:mm', { locale: de }) : '-'}
-                    </div>
-                    <div className="mt-2 w-full flex flex-wrap items-center gap-2 justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge className="text-xs" style={{ backgroundColor: getColor(a.category), color: 'white', border: 'none' }}>{a.category}</Badge>
-                        <Badge className="bg-white/10 text-slate-200 border-white/20 text-xs">{String(a.status).toUpperCase()}</Badge>
-                        {a?.stage && <Badge className="bg-blue-900/30 text-blue-200 border-blue-800 text-xs">{String(a.stage).toUpperCase()}</Badge>}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-white leading-snug break-words">
+                          {a.title}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-300/90">
+                          <span className="inline-flex items-center gap-1">
+                            <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+                            {a.start ? format(new Date(a.start as any), 'dd.MM.yyyy HH:mm', { locale: de }) : '-'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
+
+                      <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2 text-xs shrink-0 glass-card"
-                          onClick={(e) => { e.stopPropagation(); openModal({
-                            type: 'custom',
-                            title: 'Aktivität bearbeiten',
-                            content: (
-                              <EditActivityForm activity={a} onSave={async (updates)=>{ await updateActivity(String(a.id), updates as any); await refresh?.(); }} />
-                            )
-                          }) }}
+                          className="h-8 w-8 p-0 glass-card"
+                          title="Bearbeiten"
+                          aria-label="Bearbeiten"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openModal({
+                              type: 'custom',
+                              title: 'Aktivität bearbeiten',
+                              content: (
+                                <EditActivityForm activity={a} onSave={async (updates)=>{ await updateActivity(String(a.id), updates as any); await refresh?.(); }} />
+                              )
+                            })
+                          }}
                         >
-                          Bearbeiten
+                          <Pencil className="h-4 w-4" />
                         </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2 text-xs shrink-0 glass-card"
-                        onClick={async (e) => {
-                          e.stopPropagation()
-                          try {
-                            // Simple confirm to avoid accidental taps on Mobile
-                            const ok = typeof window === "undefined"
-                              ? true
-                              : window.confirm("Aktivität wirklich löschen?")
-                            if (!ok) return
-                            // Always pass id as string and rely on hook to handle SWR refresh
-                            await deleteActivity?.(String(a.id))
-                          } catch (err) {
-                            console.error("Failed to delete activity", err)
-                            if (typeof window !== "undefined") {
-                              window.alert("Aktivität konnte nicht gelöscht werden. Bitte später erneut versuchen.")
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-8 p-0 border-rose-500/30 text-rose-200 hover:bg-rose-500/10"
+                          title="Löschen"
+                          aria-label="Löschen"
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            try {
+                              const ok = typeof window === "undefined" ? true : window.confirm("Aktivität wirklich löschen?")
+                              if (!ok) return
+                              await deleteActivity?.(String(a.id))
+                            } catch (err) {
+                              console.error("Failed to delete activity", err)
+                              if (typeof window !== "undefined") window.alert("Aktivität konnte nicht gelöscht werden. Bitte später erneut versuchen.")
                             }
-                          }
-                        }}
-                      >
-                        Löschen
-                      </Button>
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span
+                        className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-100"
+                        title={String(a.category || "")}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: getColor(a.category) }} />
+                        <span className="break-words">{a.category}</span>
+                      </span>
+                      <Badge className="bg-white/10 text-slate-200 border-white/20 text-[11px] px-2 py-1">
+                        {String(a.status).toUpperCase()}
+                      </Badge>
+                      {a?.stage && (
+                        <Badge className="bg-blue-900/30 text-blue-200 border-blue-800 text-[11px] px-2 py-1">
+                          {String(a.stage).toUpperCase()}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 ))}
