@@ -65,7 +65,7 @@ export function NotificationsPanel() {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <div className="text-sm font-semibold text-slate-100">Benachrichtigungen</div>
+                <div className="text-sm font-semibold text-slate-100">Nachrichten</div>
                 <span className="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-slate-200/90">
                   {unreadCount} ungelesen · {total} total
                 </span>
@@ -119,7 +119,7 @@ export function NotificationsPanel() {
               }}
               title="Alle als gelesen"
             >
-              <CheckCheck className="h-4 w-4 mr-2" /> Read all
+              <CheckCheck className="h-4 w-4 mr-2" /> Alle gelesen
             </Button>
 
             <Button variant="outline" size="sm" className="h-11 border-white/15 bg-white/5 hover:bg-white/10" onClick={load}>
@@ -136,7 +136,11 @@ export function NotificationsPanel() {
           </div>
           <div className="mt-3 text-sm font-semibold text-slate-100">Keine Benachrichtigungen</div>
           <div className="mt-1 text-xs text-slate-400">
-            {q.trim() ? "Keine Treffer für deine Suche." : unreadOnly ? "Du bist up to date – nichts Ungelesenes." : "Noch keine Notifications vorhanden."}
+            {q.trim()
+              ? "Keine Treffer für deine Suche."
+              : unreadOnly
+                ? "Du bist up to date – nichts Ungelesenes."
+                : "Sie haben noch keine neuen Nachrichten. Wir werden Sie benachrichtigen, wenn neue Nachrichten vorhanden sind."}
           </div>
         </div>
       )}

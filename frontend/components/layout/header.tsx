@@ -6,6 +6,7 @@ import { useState } from "react"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { AccountDrawer } from "@/components/account/AccountDrawer"
 import { usePathname } from "next/navigation"
+import { NotificationsPanel } from "@/components/content/NotificationsPanel"
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -13,7 +14,7 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false)
-  const { openModal } = useModal()
+  const { openModal, closeModal } = useModal()
   const pathname = usePathname() || "/"
 
   const mobileTitle = (() => {
@@ -68,17 +69,27 @@ export function Header({ onMenuClick }: HeaderProps) {
             size="icon"
             onClick={() => {
               openModal({
-                type: "info",
+                type: "custom",
                 title: "Nachrichten",
-                description: "Sie haben noch keine neuen Nachrichten. Wir werden Sie benachrichtigen, wenn neue Nachrichten vorhanden sind.",
-                icon: "info"
+                content: (
+                  <div className="space-y-4">
+                    <NotificationsPanel />
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        className="h-11 bg-white text-slate-900 hover:bg-white/90 dark:bg-white dark:text-slate-900"
+                        onClick={closeModal}
+                      >
+                        OK
+                      </Button>
+                    </div>
+                  </div>
+                ),
               })
             }}
             className="relative h-11 w-11 sm:h-9 sm:w-9 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             data-tour="notifications"
           >
             <Bell className="h-5 w-5 text-slate-600 dark:text-slate-400" />
-            <span className="absolute top-1 right-1 h-2 w-2 bg-kaboom-red rounded-full"></span>
           </Button>
 
           {/* User Avatar / Account */}
