@@ -70,14 +70,17 @@ export default function RadialCircle({
   const rs = renderSize
   const isSmall = rs < 520
   const isTiny = rs < 360
-  const scale = rs / 700 // baseline tuning
+  // Make the circle a bit smaller (requested), keep labels inside the square block.
+  const circleScale = 0.92
+  const circleRs = rs * circleScale
+  const scale = circleRs / 700 // baseline tuning
   const sw = (v: number) => Math.max(1, v * Math.max(0.8, scale))
   const fs = (v: number) => Math.max(8, Math.round(v * Math.max(0.85, scale)))
 
-  const radius = rs / 2 - (isSmall ? 44 * Math.max(0.9, scale) : 60 * Math.max(0.9, scale))
-  const sideGutter = focusedMonth != null ? (isSmall ? 120 : 160) * Math.max(0.9, scale) : 0
-  const svgW = rs + sideGutter * 2
-  const cx = sideGutter + rs / 2
+  const radius = circleRs / 2 - (isSmall ? 44 * Math.max(0.9, scale) : 60 * Math.max(0.9, scale))
+  // Free margin on each side where focused labels can sit (still inside the same square block).
+  const sideGutter = Math.max(0, (rs - circleRs) / 2)
+  const cx = rs / 2
   const cy = rs / 2
   const months = 12
 
@@ -370,7 +373,7 @@ export default function RadialCircle({
     let px = x + 14
     let py = y - h - 12
     // flip horizontally if overflow
-    if (px + w > svgW) px = x - w - 14
+    if (px + w > rs) px = x - w - 14
     if (px < 0) px = 0
     // flip vertically if overflow
     if (py < 0) py = y + 12
@@ -481,9 +484,8 @@ export default function RadialCircle({
       style={{
         position: "relative",
         width: "100%",
-        maxWidth: focus ? svgW : size,
-        height: focus ? rs : undefined,
-        aspectRatio: focus ? undefined : "1 / 1",
+        maxWidth: size,
+        aspectRatio: "1 / 1",
         margin: "0 auto",
         overflow: "visible",
       }}
@@ -504,9 +506,9 @@ export default function RadialCircle({
       )}
       <svg
         ref={svgRef}
-        width={svgW}
+        width={rs}
         height={rs}
-        viewBox={`0 0 ${svgW} ${rs}`}
+        viewBox={`0 0 ${rs} ${rs}`}
         style={{
           overflow: "visible",
           position: "absolute",
@@ -708,7 +710,7 @@ export default function RadialCircle({
         const labelFont = fs(resolvedLabelMode === "all" ? 11 : 10)
         const approxCharW = Math.max(6, labelFont * 0.56)
         const pad = 12 * Math.max(0.9, scale)
-        const available = anchor === "start" ? Math.max(0, svgW - lx - pad) : Math.max(0, lx - pad)
+        const available = anchor === "start" ? Math.max(0, rs - lx - pad) : Math.max(0, lx - pad)
         const maxByWidth = Math.max(6, Math.floor(available / approxCharW))
         const baseMax = resolvedLabelMode === "all" ? (isSmall ? 26 : 34) : (isSmall ? 18 : 26)
         const labelMax = Math.max(6, Math.min(baseMax, maxByWidth))
