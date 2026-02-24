@@ -37,7 +37,10 @@ import {
   X,
   Briefcase,
   UserCheck,
-  Percent
+  Percent,
+  Globe,
+  MapPin,
+  CalendarDays
 } from "lucide-react"
 import { companiesAPI, contactsAPI, dealsAPI } from "@/lib/api"
 import { sync } from "@/lib/sync"
@@ -157,6 +160,187 @@ function ContactDetailForm({
         <Button size="sm" onClick={handleSubmit} disabled={saving}>
           Speichern
         </Button>
+      </div>
+    </div>
+  )
+}
+
+function DealDetailForm({
+  deal,
+  companies,
+  contacts,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  deal: any
+  companies: any[]
+  contacts: any[]
+  onClose: () => void
+  onSave: (updates: any) => Promise<void>
+  onDelete: () => Promise<void>
+}) {
+  const [title, setTitle] = useState(String(deal.title || ""))
+  const [owner, setOwner] = useState(String(deal.owner || ""))
+  const [stage, setStage] = useState(String(deal.stage || "lead"))
+  const [probability, setProbability] = useState<string>(String(deal.probability ?? ""))
+  const [value, setValue] = useState<string>(String(deal.value ?? ""))
+  const [expectedClose, setExpectedClose] = useState<string>(
+    deal.expected_close_date ? String(deal.expected_close_date).slice(0, 10) : "",
+  )
+  const [companyId, setCompanyId] = useState<string>(deal.company_id != null ? String(deal.company_id) : "none")
+  const [contactId, setContactId] = useState<string>(deal.contact_id != null ? String(deal.contact_id) : "none")
+  const [notes, setNotes] = useState(String(deal.notes || ""))
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const submit = async () => {
+    setSaving(true)
+    try {
+      await onSave({
+        title: title.trim(),
+        owner: owner.trim() || undefined,
+        stage: stage.trim() || undefined,
+        probability: probability.trim() === "" ? undefined : Math.max(0, Math.min(100, Number(probability) || 0)),
+        value: value.trim() === "" ? undefined : Math.max(0, Number(value) || 0),
+        expected_close_date: expectedClose ? new Date(expectedClose).toISOString() : undefined,
+        company_id: companyId !== "none" ? Number(companyId) : undefined,
+        contact_id: contactId !== "none" ? Number(contactId) : undefined,
+        notes: notes.trim() || undefined,
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const canSave = title.trim().length > 0 && !saving && !deleting
+
+  const deleteNow = async () => {
+    setDeleting(true)
+    try {
+      await onDelete()
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3 mb-2">
+        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
+          <DollarSign className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <DialogTitle>
+            <span className="text-base sm:text-lg break-words">{title.trim() || "Deal"}</span>
+          </DialogTitle>
+          <DialogDescription>
+            <span className="text-xs sm:text-sm">Deal-Details bearbeiten</span>
+          </DialogDescription>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+        <div className="space-y-1 sm:col-span-2">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Titel *</label>
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="z.B. Jahresvertrag 2026" />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Stage</label>
+          <Select value={stage} onValueChange={(v) => setStage(v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Stage wählen" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="lead">Lead</SelectItem>
+              <SelectItem value="qualification">Qualification</SelectItem>
+              <SelectItem value="proposal">Proposal</SelectItem>
+              <SelectItem value="negotiation">Negotiation</SelectItem>
+              <SelectItem value="won">Won</SelectItem>
+              <SelectItem value="lost">Lost</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Owner</label>
+          <Input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="owner@company.com" />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Wert (CHF)</label>
+          <Input value={value} onChange={(e) => setValue(e.target.value)} type="number" min="0" placeholder="50000" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Wahrscheinlichkeit (%)</label>
+          <Input value={probability} onChange={(e) => setProbability(e.target.value)} type="number" min="0" max="100" placeholder="25" />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma</label>
+          <Select value={companyId} onValueChange={(v) => { setCompanyId(v); if (v === "none") setContactId("none") }}>
+            <SelectTrigger>
+              <SelectValue placeholder="Firma wählen" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Keine —</SelectItem>
+              {companies.map((c: any) => (
+                <SelectItem key={String(c.id)} value={String(c.id)}>
+                  {String(c.name || "")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Kontakt</label>
+          <Select value={contactId} onValueChange={(v) => setContactId(v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Kontakt wählen" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Kein —</SelectItem>
+              {contacts
+                .filter((c: any) => (companyId === "none" ? true : String(c.company_id) === String(companyId)))
+                .map((c: any) => (
+                  <SelectItem key={String(c.id)} value={String(c.id)}>
+                    {String(c.name || "")}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Close Date</label>
+          <Input value={expectedClose} onChange={(e) => setExpectedClose(e.target.value)} type="date" />
+        </div>
+
+        <div className="space-y-1 sm:col-span-2">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Notizen</label>
+          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="Kontext, nächste Schritte…" />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <Button variant="outline" size="sm" onClick={onClose} disabled={saving || deleting}>
+          Schließen
+        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-red-500/30 text-red-600 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"
+            onClick={deleteNow}
+            disabled={saving || deleting}
+          >
+            {deleting ? "Löschen…" : "Löschen"}
+          </Button>
+          <Button size="sm" onClick={submit} disabled={!canSave} className="bg-gradient-to-r from-blue-600 to-indigo-600">
+            {saving ? "Speichern…" : "Speichern"}
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -498,6 +682,7 @@ export default function CRMPage() {
   const [viewingCompany, setViewingCompany] = useState<Company | null>(null)
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
   const [viewingContact, setViewingContact] = useState<Contact | null>(null)
+  const [viewingDeal, setViewingDeal] = useState<Deal | null>(null)
   const [createContactOpen, setCreateContactOpen] = useState(false)
   const [createDealOpen, setCreateDealOpen] = useState(false)
   const { toast } = useToast()
@@ -540,6 +725,16 @@ export default function CRMPage() {
       await companiesAPI.delete(id).catch(() => {})
       await refreshAll()
       sync.emit('crm:companies:changed')
+    } catch {}
+  }
+
+  const deleteContact = async (id: string) => {
+    try {
+      if (typeof window !== "undefined" && !confirm("Kontakt löschen?")) return
+      await contactsAPI.delete(id).catch(() => {})
+      await refreshAll()
+      sync.emit("crm:contacts:changed")
+      toast({ title: "🗑️ Kontakt gelöscht" })
     } catch {}
   }
 
@@ -602,6 +797,45 @@ export default function CRMPage() {
     await refreshAll()
     sync.emit("crm:deals:changed")
     toast({ title: "✅ Deal erstellt" })
+  }
+
+  const updateDeal = async (original: any, updates: any) => {
+    try {
+      const payload: any = {
+        title: String(updates?.title ?? "").trim() || undefined,
+        owner: String(updates?.owner ?? "").trim() || undefined,
+        stage: String(updates?.stage ?? "").trim() || undefined,
+        probability: updates?.probability != null ? Number(updates.probability) : undefined,
+        value: updates?.value != null ? Number(updates.value) : undefined,
+        expected_close_date: updates?.expected_close_date ? String(updates.expected_close_date) : undefined,
+        company_id: updates?.company_id != null ? Number(updates.company_id) : undefined,
+        contact_id: updates?.contact_id != null ? Number(updates.contact_id) : undefined,
+        notes: String(updates?.notes ?? "").trim() || undefined,
+      }
+      await dealsAPI.update(String(original.id), payload)
+      await refreshAll()
+      sync.emit("crm:deals:changed")
+      toast({ title: "✅ Deal aktualisiert" })
+      return true
+    } catch (err) {
+      console.error("updateDeal error", err)
+      toast({
+        title: "Fehler beim Aktualisieren des Deals",
+        description: (err as any)?.message || "Bitte versuchen Sie es später erneut.",
+        variant: "destructive",
+      })
+      return false
+    }
+  }
+
+  const deleteDeal = async (id: string) => {
+    try {
+      if (typeof window !== "undefined" && !confirm("Deal löschen?")) return
+      await dealsAPI.delete(id).catch(() => {})
+      await refreshAll()
+      sync.emit("crm:deals:changed")
+      toast({ title: "🗑️ Deal gelöscht" })
+    } catch {}
   }
 
   const removeFilter = (filter: string) => {
@@ -750,14 +984,14 @@ export default function CRMPage() {
 
   const getStatusColor = (status: string) => {
     switch (String(status).toLowerCase()) {
-      case 'active': return 'bg-green-500/15 text-green-400 border-green-500/30'
-      case 'pending': return 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
-      case 'inactive': return 'bg-red-500/15 text-red-400 border-red-500/30'
-      case 'hot': return 'bg-red-500/20 text-red-400 border-red-500/30'
-      case 'warm': return 'bg-orange-500/20 text-orange-400 border-orange-500/30'
-      case 'cold': return 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-      case 'prospect': return 'bg-purple-500/20 text-purple-400 border-purple-500/30'
-      default: return 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+      case 'active': return 'bg-green-500/10 text-green-700 dark:bg-green-500/15 dark:text-green-300 border-green-500/20 dark:border-green-500/30'
+      case 'pending': return 'bg-yellow-500/10 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-300 border-yellow-500/20 dark:border-yellow-500/30'
+      case 'inactive': return 'bg-red-500/10 text-red-700 dark:bg-red-500/15 dark:text-red-300 border-red-500/20 dark:border-red-500/30'
+      case 'hot': return 'bg-red-500/10 text-red-700 dark:bg-red-500/20 dark:text-red-300 border-red-500/20 dark:border-red-500/30'
+      case 'warm': return 'bg-orange-500/10 text-orange-800 dark:bg-orange-500/20 dark:text-orange-300 border-orange-500/20 dark:border-orange-500/30'
+      case 'cold': return 'bg-blue-500/10 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300 border-blue-500/20 dark:border-blue-500/30'
+      case 'prospect': return 'bg-purple-500/10 text-purple-800 dark:bg-purple-500/20 dark:text-purple-300 border-purple-500/20 dark:border-purple-500/30'
+      default: return 'bg-slate-500/10 text-slate-800 dark:bg-slate-500/20 dark:text-slate-300 border-slate-500/20 dark:border-slate-500/30'
     }
   }
 
@@ -1000,72 +1234,144 @@ export default function CRMPage() {
             ) : (
               <div className="grid grid-cols-1 gap-4" data-tour="crm-table">
                 {filteredCompanies.map((company: any) => (
-                  <Card key={company.id} className="glass-card hover:border-blue-500/30 transition-all group">
+                  <Card
+                    key={company.id}
+                    className="glass-card hover:border-blue-500/30 transition-all group cursor-pointer"
+                    onClick={() => setViewingCompany(company)}
+                  >
                     <CardContent className="p-4 sm:p-6">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3 sm:gap-4 flex-1">
-                          <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-2xl shadow-md shadow-blue-500/20">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+                          <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
                             <Building2 className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
                           </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{company.name}</h3>
-                              <Badge className={`${getStatusColor(company.status || 'active')} border px-2 py-0.5 capitalize`}>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start sm:items-center gap-2 sm:gap-3 flex-wrap">
+                              <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white leading-snug break-words">
+                                {company.name}
+                              </h3>
+                              <Badge className={`${getStatusColor(company.status || 'active')} border px-2 py-1 text-[11px] capitalize`}>
                                 {company.status || 'active'}
                               </Badge>
                             </div>
-                            {/* aligned columns: 4 cols grid */}
-                            <div className="grid grid-cols-2 sm:grid-cols-12 gap-4 mt-4">
-                              <div className="sm:col-span-3">
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Industry</p>
-                                <p className="text-sm text-slate-700 dark:text-slate-200">{company.industry || '—'}</p>
-                              </div>
-                              <div className="sm:col-span-3">
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Address</p>
-                                <p className="text-sm text-slate-700 dark:text-slate-200">{company.address || '—'}</p>
-                              </div>
-                              <div className="sm:col-span-3">
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Contacts</p>
-                                <p className="text-sm text-slate-700 dark:text-slate-200">
-                                  {contactsCountByCompanyId.get(Number(company.id)) || 0}
-                                </p>
-                              </div>
-                              <div className="sm:col-span-3">
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Pipeline</p>
-                                <p className="text-sm text-slate-700 dark:text-slate-200">
-                                  CHF {(((dealsAggByCompanyId.get(Number(company.id))?.pipeline || 0) as number) / 1000).toFixed(0)}K{" "}
-                                  <span className="text-slate-500 dark:text-slate-400">
-                                    · {(dealsAggByCompanyId.get(Number(company.id))?.count || 0) as number} deals
+
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-slate-600 dark:text-slate-300">
+                              <span className="inline-flex items-center gap-1.5">
+                                <Briefcase className="h-3.5 w-3.5 text-slate-400" />
+                                <span className="break-words">{company.industry || '—'}</span>
+                              </span>
+                              {company.website && (
+                                <a
+                                  href={
+                                    /^https?:\/\//i.test(String(company.website))
+                                      ? String(company.website)
+                                      : `https://${String(company.website)}`
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200 hover:text-blue-500 dark:hover:text-blue-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={String(company.website)}
+                                >
+                                  <Globe className="h-3.5 w-3.5 text-slate-400" />
+                                  <span className="break-all">
+                                    {String(company.website).replace(/^https?:\/\//i, "").replace(/\/$/, "")}
                                   </span>
-                                </p>
+                                </a>
+                              )}
+                              {company.email && (
+                                <a
+                                  href={`mailto:${String(company.email)}`}
+                                  className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200 hover:text-blue-500 dark:hover:text-blue-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={String(company.email)}
+                                >
+                                  <Mail className="h-3.5 w-3.5 text-slate-400" />
+                                  <span className="break-all">{company.email}</span>
+                                </a>
+                              )}
+                              {company.phone && (
+                                <a
+                                  href={`tel:${String(company.phone)}`}
+                                  className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200 hover:text-blue-500 dark:hover:text-blue-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={String(company.phone)}
+                                >
+                                  <Phone className="h-3.5 w-3.5 text-slate-400" />
+                                  <span className="break-all">{company.phone}</span>
+                                </a>
+                              )}
+                              {company.address && (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                                  <span className="break-words">{company.address}</span>
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                              <div className="rounded-xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400">Contacts</div>
+                                <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                                  {contactsCountByCompanyId.get(Number(company.id)) || 0}
+                                </div>
+                              </div>
+                              <div className="rounded-xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400">Deals</div>
+                                <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                                  {(dealsAggByCompanyId.get(Number(company.id))?.count || 0) as number}
+                                </div>
+                              </div>
+                              <div className="rounded-xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400">Pipeline</div>
+                                <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                                  CHF {(((dealsAggByCompanyId.get(Number(company.id))?.pipeline || 0) as number) / 1000).toFixed(0)}K
+                                </div>
+                              </div>
+                              <div className="rounded-xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400">Next Follow-up</div>
+                                <div className="mt-1 flex items-center gap-1 text-sm font-semibold text-slate-900 dark:text-white">
+                                  <CalendarDays className="h-4 w-4 text-slate-400" />
+                                  {company.next_follow_up_at ? new Date(company.next_follow_up_at).toLocaleDateString("de-DE") : "—"}
+                                </div>
                               </div>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+
+                        <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="text-slate-400 hover:text-slate-600 dark:hover:text-white"
-                            onClick={()=> setViewingCompany(company)}
+                            className="h-9 w-9 p-0 glass-card"
+                            onClick={(e) => { e.stopPropagation(); setViewingCompany(company) }}
                             aria-label="view-company"
+                            title="Details"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="text-slate-400 hover:text-slate-600 dark:hover:text-white" aria-label="company-actions">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 w-9 p-0 glass-card"
+                                aria-label="company-actions"
+                                onClick={(e) => e.stopPropagation()}
+                                title="Aktionen"
+                              >
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={()=> setViewingCompany(company)}>
+                              <DropdownMenuItem onClick={() => setViewingCompany(company)}>
                                 Details anzeigen
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={()=> setEditingCompany(company)}>
+                              <DropdownMenuItem onClick={() => setEditingCompany(company)}>
                                 Bearbeiten
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive" onClick={()=> deleteCompany(String(company.id))}>
+                              <DropdownMenuItem className="text-destructive" onClick={() => deleteCompany(String(company.id))}>
                                 Löschen
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -1092,7 +1398,7 @@ export default function CRMPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
                       <DialogTitle>{viewingCompany.name}</DialogTitle>
-                      <Badge className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-700">
+                      <Badge className={`${getStatusColor(viewingCompany.status || 'active')} border px-2 py-1 text-[11px] capitalize`}>
                         {viewingCompany.status || 'active'}
                       </Badge>
                     </div>
@@ -1110,8 +1416,17 @@ export default function CRMPage() {
                     <div className="text-slate-400 mb-1">Website</div>
                     <div className="font-medium break-all">
                       {viewingCompany.website ? (
-                        <a href={viewingCompany.website} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
-                          {viewingCompany.website}
+                        <a
+                          href={
+                            /^https?:\/\//i.test(String(viewingCompany.website))
+                              ? String(viewingCompany.website)
+                              : `https://${String(viewingCompany.website)}`
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 dark:text-blue-300 hover:underline"
+                        >
+                          {String(viewingCompany.website)}
                         </a>
                       ) : '—'}
                     </div>
@@ -1171,8 +1486,17 @@ export default function CRMPage() {
                     <div className="text-slate-400 mb-1">LinkedIn</div>
                     <div className="font-medium break-all">
                       {viewingCompany.linkedin_url ? (
-                        <a href={viewingCompany.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">
-                          {viewingCompany.linkedin_url}
+                        <a
+                          href={
+                            /^https?:\/\//i.test(String(viewingCompany.linkedin_url))
+                              ? String(viewingCompany.linkedin_url)
+                              : `https://${String(viewingCompany.linkedin_url)}`
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 dark:text-blue-300 hover:underline"
+                        >
+                          {String(viewingCompany.linkedin_url)}
                         </a>
                       ) : (
                         "—"
@@ -1225,6 +1549,28 @@ export default function CRMPage() {
                 onSave={async (updates)=> {
                   const ok = await updateContact(viewingContact, updates)
                   if (ok) setViewingContact(null)
+                }}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Deal view & edit dialog */}
+        <Dialog open={!!viewingDeal} onOpenChange={(o:boolean)=>{ if (!o) setViewingDeal(null) }}>
+          <DialogContent className="max-w-2xl w-[min(92vw,720px)] bg-white dark:bg-slate-900/80 border-slate-200 dark:border-white/10 backdrop-blur-xl p-6">
+            {viewingDeal && (
+              <DealDetailForm
+                deal={viewingDeal}
+                companies={companies}
+                contacts={contacts}
+                onClose={()=> setViewingDeal(null)}
+                onSave={async (updates)=> {
+                  const ok = await updateDeal(viewingDeal, updates)
+                  if (ok) setViewingDeal(null)
+                }}
+                onDelete={async ()=> {
+                  await deleteDeal(String(viewingDeal.id))
+                  setViewingDeal(null)
                 }}
               />
             )}
@@ -1286,50 +1632,104 @@ export default function CRMPage() {
             {/* Contacts Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredContacts.map((contact: any) => (
-                <Card key={contact.id} className="bg-white dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-600 transition-all shadow-sm hover:shadow-lg">
+                <Card
+                  key={contact.id}
+                  className="glass-card hover:border-blue-500/30 transition-all group cursor-pointer"
+                  onClick={() => setViewingContact(contact)}
+                >
                   <CardContent className="p-4 sm:p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20">
-                        {String(contact.name || '?').split(' ').map((p: string) => p[0]).slice(0, 2).join('')}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20 shrink-0">
+                          {String(contact.name || "?")
+                            .split(" ")
+                            .map((p: string) => p[0])
+                            .slice(0, 2)
+                            .join("")}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white leading-snug break-words">
+                            {contact.name || "—"}
+                          </h3>
+                          <div className="mt-1 text-xs text-slate-600 dark:text-slate-400 space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1.5">
+                                <Users className="h-3.5 w-3.5 text-slate-400" />
+                                <span className="break-words">{contact.position || "—"}</span>
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1.5">
+                                <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                                <span className="break-words">
+                                  {companyById.get(Number(contact.company_id))?.name || "—"}
+                                </span>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 w-9 p-0 glass-card"
+                          onClick={(e) => { e.stopPropagation(); setViewingContact(contact) }}
+                          aria-label="view-contact"
+                          title="Details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-9 w-9 p-0 glass-card"
+                              aria-label="contact-actions"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Aktionen"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setViewingContact(contact)}>
+                              Details anzeigen
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive" onClick={() => deleteContact(String(contact.id))}>
+                              Löschen
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">{contact.name}</h3>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">{contact.position || '—'}</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                      {companyById.get(Number(contact.company_id))?.name || '—'}
-                    </p>
-                    <div className="space-y-2 mb-4">
-                      <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                        <Mail className="h-3 w-3" />
-                        {contact.email || '—'}
+
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-center gap-2 text-[12px] text-slate-700 dark:text-slate-300">
+                        <Mail className="h-3.5 w-3.5 text-slate-400" />
+                        <span className="break-all">{contact.email || "—"}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                        <Phone className="h-3 w-3" />
-                        {contact.phone || '—'}
+                      <div className="flex items-center gap-2 text-[12px] text-slate-700 dark:text-slate-300">
+                        <Phone className="h-3.5 w-3.5 text-slate-400" />
+                        <span className="break-all">{contact.phone || "—"}</span>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
-                      <div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Pipeline</p>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+
+                    <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">Pipeline</div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white">
                           CHF {(((dealsAggByContactId.get(Number(contact.id))?.pipeline || 0) as number) / 1000).toFixed(0)}K
-                        </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Deals</p>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      <div className="text-right">
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">Deals</div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white">
                           {(dealsAggByContactId.get(Number(contact.id))?.count || 0) as number}
-                        </p>
+                        </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-blue-500 hover:text-blue-600 dark:hover:text-blue-400"
-                        onClick={() => setViewingContact(contact)}
-                        aria-label="view-contact"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -1368,17 +1768,25 @@ export default function CRMPage() {
             {/* Deals List */}
             <div className="space-y-3">
               {filteredDeals.map((deal: any) => (
-                <Card key={deal.id} className="bg-white dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-600 transition-all shadow-sm hover:shadow-lg">
+                <Card
+                  key={deal.id}
+                  className="glass-card hover:border-blue-500/30 transition-all group cursor-pointer"
+                  onClick={() => setViewingDeal(deal)}
+                >
                   <CardContent className="p-4 sm:p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-start gap-3 sm:gap-4 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
                         <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20">
                           <DollarSign className="h-6 w-6 text-white" />
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{deal.title}</h3>
-                            <Badge className={getStageColor(deal.stage)}>{deal.stage}</Badge>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start sm:items-center gap-2 sm:gap-3 mb-2 min-w-0">
+                            <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white leading-snug break-words min-w-0">
+                              {deal.title}
+                            </h3>
+                            <Badge className={`${getStageColor(deal.stage)} text-[11px] px-2 py-1 capitalize whitespace-nowrap`}>
+                              {deal.stage}
+                            </Badge>
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 sm:gap-6 mt-3 sm:mt-4">
                             <div>
@@ -1396,10 +1804,10 @@ export default function CRMPage() {
                             </div>
                             <div>
                               <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Company</p>
-                              <p className="text-sm text-slate-700 dark:text-slate-200">
+                              <p className="text-sm text-slate-700 dark:text-slate-200 break-words">
                                 {companyById.get(Number(deal.company_id))?.name || '—'}
                               </p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 break-words">
                                 {contactById.get(Number(deal.contact_id))?.name || '—'}
                               </p>
                             </div>
@@ -1411,14 +1819,45 @@ export default function CRMPage() {
                             </div>
                             <div>
                               <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Owner</p>
-                              <p className="text-sm text-slate-700 dark:text-slate-200">{deal.owner || '—'}</p>
+                              <p className="text-sm text-slate-700 dark:text-slate-200 break-all">{deal.owner || '—'}</p>
                             </div>
                           </div>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 w-9 p-0 glass-card"
+                          onClick={(e) => { e.stopPropagation(); setViewingDeal(deal) }}
+                          aria-label="view-deal"
+                          title="Details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-9 w-9 p-0 glass-card"
+                              title="Aktionen"
+                              aria-label="deal-actions"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setViewingDeal(deal)}>
+                              Details anzeigen
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive" onClick={() => deleteDeal(String(deal.id))}>
+                              Löschen
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
