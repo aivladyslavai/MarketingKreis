@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { companiesAPI, contactsAPI, dealsAPI } from "@/lib/api"
+import { Input } from "@/components/ui/input"
 
 interface Item {
   id: string
@@ -78,12 +79,12 @@ export default function CommandPalette() {
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
       <div className="relative z-10 mx-auto mt-24 w-[min(720px,92vw)] rounded-2xl border border-white/15 bg-white/80 dark:bg-slate-900/80 shadow-2xl">
         <div className="p-3 border-b border-white/10">
-          <input
+          <Input
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Suche… (Cmd/Ctrl+K)"
-            className="w-full h-10 rounded-md bg-white/70 dark:bg-slate-900/60 border border-white/20 dark:border-slate-700 px-3 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+            className="w-full h-10 bg-white/70 dark:bg-slate-900/60 border-white/20 dark:border-slate-700 px-3 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
           />
         </div>
         <div className="max-h-[360px] overflow-y-auto p-2">

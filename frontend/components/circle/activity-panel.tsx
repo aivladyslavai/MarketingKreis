@@ -4,6 +4,7 @@ import * as React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { X, Calendar, DollarSign, Users, Target } from "lucide-react"
 import { getCategoryColor, type CategoryType } from "@/lib/colors"
@@ -261,12 +262,12 @@ export function ActivityPanel({
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Notizen</div>
             {isEditing ? (
-              <textarea
+              <Textarea
                 value={currentActivity.notes || ''}
                 onChange={(e) =>
                   setEditedActivity(prev => prev ? { ...prev, notes: e.target.value } : null)
                 }
-                className="w-full p-2 border rounded-md min-h-[80px] text-sm"
+                className="min-h-[80px] text-sm"
                 placeholder="Notizen zur Aktivität..."
               />
             ) : (

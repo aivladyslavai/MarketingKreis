@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { GlassSelect } from "@/components/ui/glass-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import RadialCircle from "@/components/circle/radial-circle"
@@ -892,14 +893,15 @@ export default function UploadsPage() {
                 {selectedIsTabular && (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <div className="text-xs text-slate-600 dark:text-slate-400">Importieren als:</div>
-                    <select
-                      className="h-9 rounded-lg border border-slate-300/40 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 px-3 text-xs text-slate-900 dark:text-slate-100"
+                    <GlassSelect
                       value={importKind}
-                      onChange={(e) => setImportKind((e.target.value as any) || "activities")}
-                    >
-                      <option value="activities">Aktivitäten (Marketing Circle)</option>
-                      <option value="crm">CRM (Companies/Contacts/Deals)</option>
-                    </select>
+                      onChange={(v) => setImportKind((v as any) || "activities")}
+                      options={[
+                        { value: "activities", label: "Aktivitäten (Marketing Circle)" },
+                        { value: "crm", label: "CRM (Companies/Contacts/Deals)" },
+                      ]}
+                      className="h-9"
+                    />
                   </div>
                 )}
               </div>
@@ -952,23 +954,19 @@ export default function UploadsPage() {
                       <span className="font-semibold">{k}</span>
                       {(k === (importKind === "crm" ? "company_name" : "title")) && <Badge className="text-[10px]">required</Badge>}
                     </div>
-                    <select
-                      className="w-full rounded-lg border border-slate-300/40 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 px-3 py-2.5 text-xs"
+                    <GlassSelect
                       value={mapping[k] || ""}
-                      onChange={(e) =>
+                      onChange={(v) =>
                         setMapping((prev) => ({
                           ...prev,
-                          [k]: e.target.value ? e.target.value : null,
+                          [k]: v ? v : null,
                         }))
                       }
-                    >
-                      <option value="">—</option>
-                      {preview.headers.map((h) => (
-                        <option key={h} value={h}>
-                          {h}
-                        </option>
-                      ))}
-                    </select>
+                      allowEmptyOption
+                      emptyOptionLabel="—"
+                      options={preview.headers.map((h) => ({ value: h, label: h }))}
+                      className="w-full px-3"
+                    />
                   </label>
                 ))}
               </div>
@@ -1137,18 +1135,14 @@ export default function UploadsPage() {
                       </div>
 
                       <div className="mt-4 flex flex-wrap items-center gap-2">
-                        <select
+                        <GlassSelect
                           value={bulkCategoryTarget}
-                          onChange={(e) => setBulkCategoryTarget(e.target.value)}
-                          className="min-w-[220px] rounded-lg border border-slate-200/60 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
-                        >
-                          <option value="">— alle offenen zuordnen —</option>
-                          {platformCategoryOptions.map((opt) => (
-                            <option key={opt.name} value={opt.name}>
-                              {opt.name}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={setBulkCategoryTarget}
+                          allowEmptyOption
+                          emptyOptionLabel="— alle offenen zuordnen —"
+                          options={platformCategoryOptions.map((opt) => ({ value: opt.name, label: opt.name }))}
+                          className="min-w-[220px]"
+                        />
                         <Button
                           size="sm"
                           variant="outline"
@@ -1204,26 +1198,22 @@ export default function UploadsPage() {
 
                               <div className="flex items-center gap-2">
                                 <div className="text-xs text-slate-500 dark:text-slate-400">→</div>
-                                <select
+                                <GlassSelect
                                   value={selected}
-                                  onChange={(e) => {
-                                    const v = e.target.value
+                                  onChange={(v) => {
+                                    const picked = v
                                     setCategoryValueMap((prev) => {
                                       const next = { ...prev }
-                                      if (!v) delete next[c.key]
-                                      else next[c.key] = v
+                                      if (!picked) delete next[c.key]
+                                      else next[c.key] = picked
                                       return next
                                     })
                                   }}
-                                  className="min-w-[180px] rounded-lg border border-slate-200/60 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
-                                >
-                                  <option value="">— auswählen —</option>
-                                  {platformCategoryOptions.map((opt) => (
-                                    <option key={opt.name} value={opt.name}>
-                                      {opt.name}
-                                    </option>
-                                  ))}
-                                </select>
+                                  allowEmptyOption
+                                  emptyOptionLabel="— auswählen —"
+                                  options={platformCategoryOptions.map((opt) => ({ value: opt.name, label: opt.name }))}
+                                  className="min-w-[180px]"
+                                />
                               </div>
                             </div>
                           )

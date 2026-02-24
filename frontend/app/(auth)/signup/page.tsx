@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Mail, Lock, Eye, EyeOff, UserPlus, Sparkles, CheckCircle2, XCircle, Info } from "lucide-react"
 
@@ -608,15 +609,10 @@ function SignupInner() {
                   )}
 
                   <div className="flex items-center justify-between text-xs text-slate-400">
-                    <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={loginRemember}
-                        onChange={(e) => setLoginRemember(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-violet-500"
-                      />
+                    <div className="inline-flex items-center gap-2">
+                      <Switch checked={loginRemember} onCheckedChange={setLoginRemember} />
                       <span>Eingeloggt bleiben</span>
-                    </label>
+                    </div>
                     <button
                       type="button"
                       className="text-slate-300 hover:text-white"

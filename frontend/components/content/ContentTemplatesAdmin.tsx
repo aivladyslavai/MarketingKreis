@@ -3,6 +3,8 @@
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { GlassSelect } from "@/components/ui/glass-select"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
@@ -129,11 +131,6 @@ export function ContentTemplatesAdmin() {
       </div>
     )
   }
-
-  const inputCls =
-    "h-11 w-full rounded-xl bg-slate-900/70 border border-white/15 px-3 text-slate-100 placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-  const textareaCls =
-    "w-full rounded-xl bg-slate-900/60 border border-white/15 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
 
   const openTemplatePreview = (t: ContentTemplateDTO) => {
     const tasks = Array.isArray(t.tasks) ? t.tasks : []
@@ -268,29 +265,29 @@ export function ContentTemplatesAdmin() {
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="sm:col-span-2">
-              <div className="text-[11px] text-slate-400">Name</div>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+              <Label className="text-slate-400">Name</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="sm:col-span-2">
-              <div className="text-[11px] text-slate-400">Beschreibung (optional)</div>
-              <Input value={desc} onChange={(e) => setDesc(e.target.value)} className={inputCls} />
+              <Label className="text-slate-400">Beschreibung (optional)</Label>
+              <Input value={desc} onChange={(e) => setDesc(e.target.value)} />
             </div>
             <div>
-              <div className="text-[11px] text-slate-400">Channel</div>
-              <Input value={channel} onChange={(e) => setChannel(e.target.value)} className={inputCls} />
+              <Label className="text-slate-400">Channel</Label>
+              <Input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="Website" />
             </div>
             <div>
-              <div className="text-[11px] text-slate-400">Format</div>
-              <Input value={format} onChange={(e) => setFormat(e.target.value)} className={inputCls} />
+              <Label className="text-slate-400">Format</Label>
+              <Input value={format} onChange={(e) => setFormat(e.target.value)} placeholder="Landing Page" />
             </div>
           </div>
           <div>
-            <div className="text-[11px] text-slate-400">Checklist (1 pro Zeile)</div>
-            <textarea value={checklistText} onChange={(e) => setChecklistText(e.target.value)} className={textareaCls + " min-h-[120px]"} />
+            <Label className="text-slate-400">Checklist (1 pro Zeile)</Label>
+            <Textarea value={checklistText} onChange={(e) => setChecklistText(e.target.value)} className="min-h-[120px]" />
           </div>
           <div>
-            <div className="text-[11px] text-slate-400">Tasks JSON (optional)</div>
-            <textarea value={tasksJson} onChange={(e) => setTasksJson(e.target.value)} className={textareaCls + " min-h-[160px] font-mono text-[11px]"} />
+            <Label className="text-slate-400">Tasks JSON (optional)</Label>
+            <Textarea value={tasksJson} onChange={(e) => setTasksJson(e.target.value)} className="min-h-[160px] font-mono text-[11px]" />
           </div>
           <div className="flex items-center justify-between gap-2">
             <Button type="button" variant="outline" className="h-11 border-white/15 text-slate-200 hover:bg-white/10" onClick={closeModal} disabled={busy}>
@@ -354,33 +351,31 @@ export function ContentTemplatesAdmin() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-2">
             <div className="text-xs font-semibold text-slate-200">Neues Template</div>
-            <Input value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Name (z.B. Blogpost – Website)" className={inputCls} />
-            <Input value={tplDesc} onChange={(e) => setTplDesc(e.target.value)} placeholder="Beschreibung (optional)" className={inputCls} />
+            <div className="grid gap-1.5">
+              <Label className="text-slate-400">Name</Label>
+              <Input value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Name (z.B. Blogpost – Website)" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-slate-400">Beschreibung (optional)</Label>
+              <Input value={tplDesc} onChange={(e) => setTplDesc(e.target.value)} placeholder="Beschreibung (optional)" />
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>
-                <div className="text-[11px] text-slate-400">Channel</div>
-                <Input value={tplChannel} onChange={(e) => setTplChannel(e.target.value)} placeholder="Website" className={inputCls} />
+              <div className="grid gap-1.5">
+                <Label className="text-slate-400">Channel</Label>
+                <Input value={tplChannel} onChange={(e) => setTplChannel(e.target.value)} placeholder="Website" />
               </div>
-              <div>
-                <div className="text-[11px] text-slate-400">Format</div>
-                <Input value={tplFormat} onChange={(e) => setTplFormat(e.target.value)} placeholder="Landing Page" className={inputCls} />
+              <div className="grid gap-1.5">
+                <Label className="text-slate-400">Format</Label>
+                <Input value={tplFormat} onChange={(e) => setTplFormat(e.target.value)} placeholder="Landing Page" />
               </div>
             </div>
             <div>
-              <div className="text-[11px] text-slate-400">Checklist (1 pro Zeile)</div>
-              <textarea
-                value={tplChecklist}
-                onChange={(e) => setTplChecklist(e.target.value)}
-                className={textareaCls + " min-h-[110px]"}
-              />
+              <Label className="text-slate-400">Checklist (1 pro Zeile)</Label>
+              <Textarea value={tplChecklist} onChange={(e) => setTplChecklist(e.target.value)} className="min-h-[110px]" />
             </div>
             <div>
-              <div className="text-[11px] text-slate-400">Tasks JSON (optional)</div>
-              <textarea
-                value={tplTasks}
-                onChange={(e) => setTplTasks(e.target.value)}
-                className={textareaCls + " min-h-[150px] font-mono text-[11px]"}
-              />
+              <Label className="text-slate-400">Tasks JSON (optional)</Label>
+              <Textarea value={tplTasks} onChange={(e) => setTplTasks(e.target.value)} className="min-h-[150px] font-mono text-[11px]" />
               <div className="mt-1 text-[11px] text-slate-500">
                 Tipp: Lege Tasks mit <span className="font-mono">offset_days</span> an, damit Deadlines automatisch relativ berechnet werden.
               </div>
@@ -481,9 +476,9 @@ export function ContentTemplatesAdmin() {
           <div className="space-y-2">
             <div className="text-xs font-semibold text-slate-200">Neue Regel</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>
-                <div className="text-[11px] text-slate-400">Trigger</div>
-                <Input value={ruleTrigger} onChange={(e) => setRuleTrigger(e.target.value)} placeholder="deal_won" className={inputCls} />
+              <div className="grid gap-1.5">
+                <Label className="text-slate-400">Trigger</Label>
+                <Input value={ruleTrigger} onChange={(e) => setRuleTrigger(e.target.value)} placeholder="deal_won" />
               </div>
               <div>
                 <div className="text-[11px] text-slate-400">Template</div>
@@ -504,7 +499,7 @@ export function ContentTemplatesAdmin() {
                 <ShieldAlert className="h-4 w-4 text-amber-200" /> Manuell: aus Deal generieren
               </div>
               <div className="flex items-center gap-2">
-                <Input value={dealId} onChange={(e) => setDealId(e.target.value)} placeholder="Deal ID" className={inputCls + " max-w-[160px]"} />
+                <Input value={dealId} onChange={(e) => setDealId(e.target.value)} placeholder="Deal ID" className="max-w-[160px]" />
                 <Button variant="outline" onClick={generateFromDeal} disabled={!dealId.trim()} className="h-11 border-white/15 text-slate-200 hover:bg-white/10">
                   Generieren
                 </Button>

@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, ChevronDown, Eye, Settings2, Mail, Check, Search, Filter, PlayCircle, FileDown } from "lucide-react"
+import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, Eye, Settings2, Mail, Check, Search, Filter, PlayCircle, FileDown } from "lucide-react"
 import Image from "next/image"
 import { Switch } from "@/components/ui/switch"
+import { Input } from "@/components/ui/input"
+import { GlassSelect } from "@/components/ui/glass-select"
 import { authFetch } from "@/lib/api"
 import { useActivities } from "@/hooks/use-activities"
 import { useCalendarApi } from "@/hooks/use-calendar-api"
@@ -71,7 +73,7 @@ export default function ReportsPage() {
   const [runs, setRuns] = useState<any[]>([])
   const [templatesLoading, setTemplatesLoading] = useState(false)
   const [runsLoading, setRunsLoading] = useState(false)
-  const [historyTpl, setHistoryTpl] = useState<string>("")
+  const [historyTpl, setHistoryTpl] = useState<string>("all")
   const [historyQ, setHistoryQ] = useState<string>("")
   const [historyOnlyErrors, setHistoryOnlyErrors] = useState<boolean>(false)
 
@@ -98,18 +100,6 @@ export default function ReportsPage() {
       />
     )
   }
-  const StyledSelect = ({ value, onChange, children }: any) => (
-    <div className="relative inline-block w-full sm:w-auto">
-      <select
-        value={value}
-        onChange={onChange}
-        className="h-11 sm:h-9 w-full appearance-none rounded-lg bg-slate-900/70 border border-white/15 px-3 pr-9 text-slate-200 shadow-inner shadow-black/20 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-      >
-        {children}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-    </div>
-  )
   const LogoDrop = () => {
     const onFiles = (files: FileList | null) => {
       if (!files || files.length === 0) return
@@ -229,7 +219,7 @@ export default function ReportsPage() {
     return (Array.isArray(runs) ? runs : [])
       .filter((r: any) => {
         if (historyOnlyErrors && String(r?.status || "") === "ok") return false
-        if (tpl && String(r?.template_id || "") !== tpl) return false
+        if (tpl && tpl !== "all" && String(r?.template_id || "") !== tpl) return false
         if (!q) return true
         const tplName = r?.template_id ? templates.find((t: any) => t.id === r.template_id)?.name : ""
         const hay = [
@@ -505,38 +495,52 @@ export default function ReportsPage() {
           <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-3">
             <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
               <span className="text-slate-300 w-full sm:w-auto">Zeitraum:</span>
-              <input type="date" value={from} onChange={(e)=>setFrom(e.target.value)} className="h-11 sm:h-9 w-[160px] max-w-full rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200 text-xs sm:text-sm" />
+              <Input
+                type="date"
+                value={from}
+                onChange={(e)=>setFrom(e.target.value)}
+                className="w-[160px] max-w-full h-11 sm:h-9 px-2 text-xs sm:text-sm"
+              />
               <span className="text-slate-400">–</span>
-              <input type="date" value={to} onChange={(e)=>setTo(e.target.value)} className="h-11 sm:h-9 w-[160px] max-w-full rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200 text-xs sm:text-sm" />
+              <Input
+                type="date"
+                value={to}
+                onChange={(e)=>setTo(e.target.value)}
+                className="w-[160px] max-w-full h-11 sm:h-9 px-2 text-xs sm:text-sm"
+              />
             </div>
             <div className="flex items-center gap-2 text-xs sm:text-sm">
               <span className="text-slate-300">Vergleich:</span>
-              <StyledSelect value={compare} onChange={(e: any)=>setCompare(e.target.value as any)}>
-                <option value="none">Kein</option>
-                <option value="prev">Vorh. Zeitraum</option>
-                <option value="yoy">YoY</option>
-              </StyledSelect>
+              <GlassSelect
+                value={compare}
+                onChange={(v) => setCompare(v as any)}
+                options={[
+                  { value: "none", label: "Kein" },
+                  { value: "prev", label: "Vorh. Zeitraum" },
+                  { value: "yoy", label: "YoY" },
+                ]}
+                className="w-[220px] max-w-full"
+              />
             </div>
           </div>
           {/* Templates: select + save */}
           <div className="w-full flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <div className="flex-1 min-w-0">
-              <StyledSelect
+              <GlassSelect
                 value={selectedTemplateId}
-                onChange={(e: any) => {
-                  const v = String(e.target.value || "")
-                  setSelectedTemplateId(v)
-                  const tpl = templates.find((t: any) => String(t.id) === v)
+                onChange={(v) => {
+                  const id = String(v || "")
+                  setSelectedTemplateId(id)
+                  const tpl = templates.find((t: any) => String(t.id) === id)
                   if (tpl?.config) applyTemplateConfig(tpl.config)
                 }}
-              >
-                <option value="">{templatesLoading ? "Lade Templates…" : "Template auswählen…"}</option>
-                {templates.map((t: any) => (
-                  <option key={t.id} value={String(t.id)}>
-                    {t.name}
-                  </option>
-                ))}
-              </StyledSelect>
+                placeholder={templatesLoading ? "Lade Templates…" : "Template auswählen…"}
+                options={templates.map((t: any) => ({
+                  value: String(t.id),
+                  label: String(t.name || ""),
+                }))}
+                className="w-full"
+              />
               <div className="mt-1 text-[11px] text-slate-400">
                 {templatesLoading
                   ? "Templates werden geladen…"
@@ -571,17 +575,17 @@ export default function ReportsPage() {
                           <div className="text-xs text-slate-300">
                             Speichert Einstellungen (Zeitraum, Sektionen, Sprache/Ton, Branding) als wiederverwendbares Template.
                           </div>
-                          <input
+                          <Input
                             value={templateName}
                             onChange={(e) => setTemplateName(e.target.value)}
                             placeholder="Name (z.B. Weekly Executive)"
-                            className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                            className="h-11 w-full"
                           />
-                          <input
+                          <Input
                             value={templateDesc}
                             onChange={(e) => setTemplateDesc(e.target.value)}
                             placeholder="Beschreibung (optional)"
-                            className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                            className="h-11 w-full"
                           />
                           <div className="flex items-center gap-2">
                             <Button
@@ -775,11 +779,11 @@ export default function ReportsPage() {
             <div className="md:col-span-2">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                <input
+                <Input
                   value={historyQ}
                   onChange={(e) => setHistoryQ(e.target.value)}
                   placeholder="Suchen: Run-ID, Template, Status…"
-                  className="h-11 w-full rounded-xl bg-slate-900/70 border border-white/15 pl-10 pr-3 text-slate-200 text-sm"
+                  className="h-11 w-full pl-10 pr-3 text-sm"
                 />
               </div>
             </div>
@@ -787,19 +791,15 @@ export default function ReportsPage() {
               <div className="flex-1 min-w-0">
                 <div className="relative">
                   <Filter className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                  <select
+                  <GlassSelect
                     value={historyTpl}
-                    onChange={(e) => setHistoryTpl(e.target.value)}
-                    className="h-11 w-full appearance-none rounded-xl bg-slate-900/70 border border-white/15 pl-10 pr-8 text-slate-200 text-sm"
-                  >
-                    <option value="">Alle Templates</option>
-                    {templates.map((t: any) => (
-                      <option key={t.id} value={String(t.id)}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    onChange={setHistoryTpl}
+                    options={[
+                      { value: "all", label: "Alle Templates" },
+                      ...templates.map((t: any) => ({ value: String(t.id), label: String(t.name || "") })),
+                    ]}
+                    className="w-full pl-10"
+                  />
                 </div>
               </div>
             </div>
@@ -991,42 +991,47 @@ export default function ReportsPage() {
                     {selectedTemplateId ? (templates.find((t: any) => String(t.id) === String(selectedTemplateId))?.name || "—") : "kein Template (nur KPI-Summary)"}
                   </span>
                 </div>
-                <input
+                <Input
                   value={scheduleName}
                   onChange={(e) => setScheduleName(e.target.value)}
                   placeholder="Name"
-                  className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                  className="w-full"
                 />
-                <input
+                <Input
                   value={scheduleRecipients}
                   onChange={(e) => setScheduleRecipients(e.target.value)}
                   placeholder="Empfänger (comma/semicolon getrennt)"
-                  className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                  className="w-full"
                 />
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
                   <span>Wochentag:</span>
-                  <StyledSelect value={String(scheduleWeekday)} onChange={(e: any) => setScheduleWeekday(Number(e.target.value))}>
-                    <option value="0">Mo</option>
-                    <option value="1">Di</option>
-                    <option value="2">Mi</option>
-                    <option value="3">Do</option>
-                    <option value="4">Fr</option>
-                    <option value="5">Sa</option>
-                    <option value="6">So</option>
-                  </StyledSelect>
+                  <GlassSelect
+                    value={String(scheduleWeekday)}
+                    onChange={(v) => setScheduleWeekday(Number(v))}
+                    options={[
+                      { value: "0", label: "Mo" },
+                      { value: "1", label: "Di" },
+                      { value: "2", label: "Mi" },
+                      { value: "3", label: "Do" },
+                      { value: "4", label: "Fr" },
+                      { value: "5", label: "Sa" },
+                      { value: "6", label: "So" },
+                    ]}
+                    className="w-[96px]"
+                  />
                   <span>Uhrzeit:</span>
-                  <input
+                  <Input
                     type="number"
                     value={scheduleHour}
                     onChange={(e) => setScheduleHour(Math.max(0, Math.min(23, Number(e.target.value))))}
-                    className="h-11 sm:h-9 w-20 rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200"
+                    className="w-20 h-11 sm:h-9 px-2"
                   />
                   <span>:</span>
-                  <input
+                  <Input
                     type="number"
                     value={scheduleMinute}
                     onChange={(e) => setScheduleMinute(Math.max(0, Math.min(59, Number(e.target.value))))}
-                    className="h-11 sm:h-9 w-20 rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200"
+                    className="w-20 h-11 sm:h-9 px-2"
                   />
                 </div>
                 <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2">
@@ -1215,24 +1220,34 @@ export default function ReportsPage() {
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="text-sm text-slate-300">Sprache:</div>
-              <StyledSelect value={language} onChange={(e: any)=> setLanguage(e.target.value as any)}>
-                <option value="de">Deutsch</option>
-                <option value="en">English</option>
-              </StyledSelect>
+              <GlassSelect
+                value={language}
+                onChange={(v) => setLanguage(v as any)}
+                options={[
+                  { value: "de", label: "Deutsch" },
+                  { value: "en", label: "English" },
+                ]}
+                className="w-[160px] max-w-full"
+              />
               <div className="text-sm text-slate-300">Ton:</div>
-              <StyledSelect value={tone} onChange={(e: any)=> setTone(e.target.value as any)}>
-                <option value="executive">Executive</option>
-                <option value="neutral">Neutral</option>
-                <option value="marketing">Marketing</option>
-              </StyledSelect>
+              <GlassSelect
+                value={tone}
+                onChange={(v) => setTone(v as any)}
+                options={[
+                  { value: "executive", label: "Executive" },
+                  { value: "neutral", label: "Neutral" },
+                  { value: "marketing", label: "Marketing" },
+                ]}
+                className="w-[180px] max-w-full"
+              />
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="text-sm text-slate-300">Branding:</div>
-              <input
+              <Input
                 placeholder="Company"
                 value={brand.company || ''}
                 onChange={(e)=> setBrand(b => ({ ...b, company: e.target.value }))}
-                className="h-11 sm:h-9 w-full sm:w-auto rounded-md bg-slate-900/60 border border-white/15 px-2 text-slate-200"
+                className="w-full sm:w-[260px] h-11 sm:h-9 px-2"
               />
               <div className="w-full sm:min-w-[280px] sm:w-[320px]"><LogoDrop /></div>
             </div>

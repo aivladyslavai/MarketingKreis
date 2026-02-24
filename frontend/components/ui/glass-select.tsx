@@ -14,19 +14,34 @@ interface GlassSelectProps {
   placeholder?: string
   options: GlassOption[]
   className?: string
+  size?: "sm" | "md"
   disabled?: boolean
+  allowEmptyOption?: boolean
+  emptyOptionLabel?: string
   "aria-invalid"?: boolean | "true" | "false"
   "aria-describedby"?: string
   name?: string
   required?: boolean
 }
 
-export function GlassSelect({ value, onChange, placeholder, options, className = "", disabled, ...rest }: GlassSelectProps) {
+export function GlassSelect({
+  value,
+  onChange,
+  placeholder,
+  options,
+  className = "",
+  size = "md",
+  disabled,
+  allowEmptyOption,
+  emptyOptionLabel,
+  ...rest
+}: GlassSelectProps) {
   const invalid = rest["aria-invalid"] === true || rest["aria-invalid"] === "true"
   return (
     <div
       className={cn(
-        "relative group rounded-xl h-11 sm:h-10 flex items-center px-3 border transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+        "relative group rounded-xl flex items-center border transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+        size === "sm" ? "h-11 sm:h-9 px-3 sm:px-2" : "h-11 sm:h-10 px-3",
         "bg-white dark:bg-slate-950/30",
         "border-slate-200 dark:border-white/10",
         "focus-within:border-blue-500/40 focus-within:ring-2 focus-within:ring-blue-500/25",
@@ -51,7 +66,13 @@ export function GlassSelect({ value, onChange, placeholder, options, className =
           disabled && "cursor-not-allowed"
         )}
       >
-        <option value="" disabled>{placeholder || "Auswählen"}</option>
+        {allowEmptyOption ? (
+          <option value="">{emptyOptionLabel || placeholder || "—"}</option>
+        ) : (
+          <option value="" disabled>
+            {placeholder || "Auswählen"}
+          </option>
+        )}
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}

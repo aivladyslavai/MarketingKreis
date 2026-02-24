@@ -21,6 +21,7 @@ import {
 } from "@/lib/api"
 import { Shield, Server, Settings, PlayCircle, RefreshCw, RotateCcw, Database, Wrench, Flag, Info, Users, Briefcase, Contact2, Tag, Plus, FlaskConical, PanelLeft, Bug, Bot, Globe, Clock3, Monitor, Sun, Moon, Wifi, Grid3X3, Lock } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { GlassSelect } from "@/components/ui/glass-select"
 
 export default function AdminPage() {
   const router = useRouter()
@@ -1096,21 +1097,17 @@ export default function AdminPage() {
 
                             <div className="mt-3">
                               <div className="text-[10px] text-slate-400 mb-1">Rolle</div>
-                              <select
-                                className="h-11 w-full bg-transparent border border-white/15 rounded-lg px-3 text-xs text-slate-100"
+                              <GlassSelect
                                 value={u.role}
-                                onChange={(e) =>
-                                  handleChangeRole(
-                                    u,
-                                    e.target.value as "user" | "editor" | "admin"
-                                  )
-                                }
+                                onChange={(v) => handleChangeRole(u, v as any)}
+                                options={[
+                                  { value: "user", label: "user" },
+                                  { value: "editor", label: "editor" },
+                                  { value: "admin", label: "admin" },
+                                ]}
                                 disabled={busy}
-                              >
-                                <option value="user">user</option>
-                                <option value="editor">editor</option>
-                                <option value="admin">admin</option>
-                              </select>
+                                className="w-full bg-transparent border-white/15"
+                              />
                             </div>
 
                             <div className="mt-3">
@@ -1223,21 +1220,18 @@ export default function AdminPage() {
                                 <div className="text-[10px] sm:text-sm text-slate-100 truncate max-w-[100px] sm:max-w-xs">{u.email}</div>
                               </td>
                               <td className="py-2 sm:py-3.5 px-2 sm:px-5">
-                                <select
-                                  className="bg-transparent border border-white/15 rounded-md px-1 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs text-slate-100"
+                                <GlassSelect
                                   value={u.role}
-                                  onChange={(e) =>
-                                    handleChangeRole(
-                                      u,
-                                      e.target.value as "user" | "editor" | "admin"
-                                    )
-                                  }
+                                  onChange={(v) => handleChangeRole(u, v as any)}
+                                  options={[
+                                    { value: "user", label: "user" },
+                                    { value: "editor", label: "editor" },
+                                    { value: "admin", label: "admin" },
+                                  ]}
                                   disabled={updatingUserId === u.id || deletingUserId === u.id}
-                                >
-                                  <option value="user">user</option>
-                                  <option value="editor">editor</option>
-                                  <option value="admin">admin</option>
-                                </select>
+                                  size="sm"
+                                  className="bg-transparent border-white/15"
+                                />
                               </td>
                               <td className="py-2 sm:py-3.5 px-2 sm:px-5 hidden sm:table-cell">
                                 <button

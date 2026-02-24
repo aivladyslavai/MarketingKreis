@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { useUserCategories } from "@/hooks/use-user-categories"
 import { Palette, Plus, Save, Trash2 } from "lucide-react"
 
@@ -83,11 +84,11 @@ export default function CategorySetup({ onReady }: { onReady?: (cats: UserCatego
             </button>
 
             <div className="flex-1 min-w-0">
-              <input
+              <Input
                 placeholder={`Kategorie ${idx + 1}`}
                 value={it.name}
                 onChange={(e) => update(idx, { name: e.target.value })}
-                className="w-full h-9 sm:h-11 rounded-lg border border-white/10 bg-slate-950/60 px-2.5 sm:px-3.5 text-xs sm:text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/30 transition-all"
+                className="w-full h-9 sm:h-11 text-xs sm:text-sm"
               />
               <p className="hidden sm:block text-[11px] text-slate-500 mt-1">
                 Diese Kategorie wird im Kreis und in Listen angezeigt.

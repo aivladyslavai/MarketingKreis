@@ -38,6 +38,10 @@ import { apiBase } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { GlassSelect } from "@/components/ui/glass-select"
 import { type Activity } from "@/components/circle/radial-circle"
 // custom delayed tooltip implemented locally (no external popover)
 
@@ -763,8 +767,8 @@ export default function SimpleCalendarView({
             <div className="space-y-6">
               <div>
                 {isEditing ? (
-                  <input
-                    className="font-semibold text-xl bg-transparent border-b border-white/15 focus:outline-none text-slate-100 pb-1"
+                  <Input
+                    className="text-xl font-semibold bg-transparent border-0 border-b border-white/15 rounded-none px-0 focus:ring-0 focus:border-white/25 text-slate-100 placeholder:text-slate-400"
                     value={draft?.title || ''}
                     onChange={(e)=> setDraft(d => d ? { ...d, title: e.target.value } : d)}
                   />
@@ -779,11 +783,11 @@ export default function SimpleCalendarView({
               {/* Date/time + category + color */}
               <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                 <div className="md:col-span-2">
-                  <div className="text-xs text-slate-400 mb-1">Datum</div>
+                  <Label className="text-slate-400">Datum</Label>
                   {isEditing ? (
-                    <input
+                    <Input
                       type="date"
-                      className="h-10 w-full rounded-md bg-white/5 border border-white/10 text-slate-100 px-3"
+                      className="h-10 w-full bg-white/5 border-white/10 text-slate-100"
                       value={format(((draft as any)?.start as any) || (selectedActivity as any)?.start || new Date(), 'yyyy-MM-dd')}
                       onChange={(e) => {
                         const dateStr = e.target.value
@@ -809,11 +813,11 @@ export default function SimpleCalendarView({
                   )}
                 </div>
                 <div className="md:col-span-1">
-                  <div className="text-xs text-slate-400 mb-1">Start</div>
+                  <Label className="text-slate-400">Start</Label>
                   {isEditing ? (
-                    <input
+                    <Input
                       type="time"
-                      className="h-10 w-full rounded-md bg-white/5 border border-white/10 text-slate-100 px-3"
+                      className="h-10 w-full bg-white/5 border-white/10 text-slate-100"
                       value={format(((draft as any)?.start as any) || (selectedActivity as any)?.start || new Date(), 'HH:mm')}
                       onChange={(e) => {
                         const t = e.target.value
@@ -834,11 +838,11 @@ export default function SimpleCalendarView({
                   )}
                 </div>
                 <div className="md:col-span-1">
-                  <div className="text-xs text-slate-400 mb-1">Ende</div>
+                  <Label className="text-slate-400">Ende</Label>
                   {isEditing ? (
-                    <input
+                    <Input
                       type="time"
-                      className="h-10 w-full rounded-md bg-white/5 border border-white/10 text-slate-100 px-3"
+                      className="h-10 w-full bg-white/5 border-white/10 text-slate-100"
                       value={(draft as any)?.end ? format((draft as any).end as any, 'HH:mm') : ''}
                       onChange={(e) => {
                         const t = e.target.value
@@ -864,19 +868,20 @@ export default function SimpleCalendarView({
                   )}
                 </div>
                 <div className="md:col-span-1">
-                  <div className="text-xs text-slate-400 mb-1">Typ</div>
+                  <Label className="text-slate-400">Typ</Label>
                   {isEditing ? (
-                    <select
-                      className="h-10 w-full rounded-md bg-white/5 border border-white/10 text-slate-100 px-2"
-                      value={String(((draft as any)?.category ?? selectedActivity.category) || 'event')}
-                      onChange={(e) => setDraft((cur) => (cur ? ({ ...cur, category: e.target.value } as any) : cur))}
-                    >
-                      <option value="event">Event</option>
-                      <option value="meeting">Meeting</option>
-                      <option value="task">Aufgabe</option>
-                      <option value="campaign">Kampagne</option>
-                      <option value="reminder">Erinnerung</option>
-                    </select>
+                    <GlassSelect
+                      value={String(((draft as any)?.category ?? selectedActivity.category) || "event")}
+                      onChange={(v) => setDraft((cur) => (cur ? ({ ...cur, category: v } as any) : cur))}
+                      options={[
+                        { value: "event", label: "Event" },
+                        { value: "meeting", label: "Meeting" },
+                        { value: "task", label: "Aufgabe" },
+                        { value: "campaign", label: "Kampagne" },
+                        { value: "reminder", label: "Erinnerung" },
+                      ]}
+                      className="h-10 bg-white/5 border-white/10 text-slate-100"
+                    />
                   ) : (
                     <div className="h-10 flex items-center px-3 rounded-md bg-white/5 border border-white/10 text-slate-100">
                       {String(selectedActivity.category || '—')}
@@ -884,7 +889,7 @@ export default function SimpleCalendarView({
                   )}
                 </div>
                 <div className="md:col-span-1">
-                  <div className="text-xs text-slate-400 mb-1">Farbe</div>
+                  <Label className="text-slate-400">Farbe</Label>
                   {isEditing ? (
                     <div className="h-10 rounded-md bg-white/5 border border-white/10 px-2 flex items-center gap-2">
                       {['#3b82f6','#a78bfa','#10b981','#f59e0b','#ef4444','#06b6d4'].map((c) => (
@@ -914,23 +919,24 @@ export default function SimpleCalendarView({
                 {isEditing && (
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-slate-400">Status</label>
-                    <select
-                      className="h-8 rounded-md bg-white/10 border border-white/15 text-slate-100 px-2"
-                      value={(draft as any)?.status || 'PLANNED'}
-                      onChange={(e)=> setDraft(d => d ? ({ ...(d as any), status: e.target.value as any }) : d)}
-                    >
-                      <option value="PLANNED">PLANNED</option>
-                      <option value="DONE">DONE</option>
-                      <option value="DELAYED">DELAYED</option>
-                      <option value="CANCELLED">CANCELLED</option>
-                    </select>
+                    <GlassSelect
+                      value={String((draft as any)?.status || "PLANNED")}
+                      onChange={(v) => setDraft((d) => (d ? ({ ...(d as any), status: v as any } as any) : d))}
+                      options={[
+                        { value: "PLANNED", label: "PLANNED" },
+                        { value: "DONE", label: "DONE" },
+                        { value: "DELAYED", label: "DELAYED" },
+                        { value: "CANCELLED", label: "CANCELLED" },
+                      ]}
+                      className="h-8 bg-white/10 border-white/15 text-slate-100"
+                    />
                   </div>
                 )}
               
               {/* Description editor with AI assist */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm text-slate-400">Beschreibung</label>
+                  <Label className="text-slate-400">Beschreibung</Label>
                   {isEditing && (
                     <div className="flex items-center gap-2">
                       <Button
@@ -984,8 +990,8 @@ export default function SimpleCalendarView({
                   )}
                 </div>
                 {isEditing ? (
-                  <textarea
-                    className="w-full min-h-[112px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-slate-100 placeholder:text-slate-400"
+                  <Textarea
+                    className="w-full min-h-[112px] bg-white/5 border-white/10 text-slate-100 placeholder:text-slate-400"
                     value={(draft as any)?.notes || ''}
                     onChange={(e)=> setDraft(d => d ? { ...d, notes: e.target.value } as any : d)}
                   />
@@ -1001,8 +1007,18 @@ export default function SimpleCalendarView({
                       <span>KI‑Vorschlag (Vorschau)</span>
                     </div>
                     <div className="grid gap-2">
-                      <input className="bg-transparent border border-white/15 rounded-md px-3 py-2 text-sm" value={aiSuggestion.title || ''} onChange={(e)=> setAiSuggestion(s => ({ ...(s||{}), title: e.target.value }))} placeholder="Vorschlag Titel" />
-                      <textarea className="bg-transparent border border-white/15 rounded-md px-3 py-2 min-h-[84px] text-sm" value={aiSuggestion.desc || ''} onChange={(e)=> setAiSuggestion(s => ({ ...(s||{}), desc: e.target.value }))} placeholder="Vorschlag Beschreibung" />
+                      <Input
+                        className="bg-transparent border-white/15 text-slate-100 placeholder:text-slate-400"
+                        value={aiSuggestion.title || ''}
+                        onChange={(e)=> setAiSuggestion(s => ({ ...(s||{}), title: e.target.value }))}
+                        placeholder="Vorschlag Titel"
+                      />
+                      <Textarea
+                        className="bg-transparent border-white/15 text-slate-100 placeholder:text-slate-400 min-h-[84px]"
+                        value={aiSuggestion.desc || ''}
+                        onChange={(e)=> setAiSuggestion(s => ({ ...(s||{}), desc: e.target.value }))}
+                        placeholder="Vorschlag Beschreibung"
+                      />
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       <Button size="sm" className="px-2.5 py-1 text-xs" onClick={()=>{
@@ -1030,17 +1046,18 @@ export default function SimpleCalendarView({
                   <div>
                     <div className="text-xs text-slate-400">Status</div>
                     {isEditing ? (
-                      <select
-                        className="mt-1 bg-transparent border border-white/15 rounded-md px-2.5 py-1.5 text-sm"
-                        value={draft?.status || selectedActivity.status}
-                        onChange={(e)=> setDraft(d => d ? { ...d, status: e.target.value as any } : d)}
-                      >
-                        <option value="PLANNED">PLANNED</option>
-                        <option value="ACTIVE">ACTIVE</option>
-                        <option value="PAUSED">PAUSED</option>
-                        <option value="DONE">DONE</option>
-                        <option value="CANCELLED">CANCELLED</option>
-                      </select>
+                      <GlassSelect
+                        value={String(draft?.status || selectedActivity.status)}
+                        onChange={(v)=> setDraft(d => d ? { ...d, status: v as any } : d)}
+                        options={[
+                          { value: "PLANNED", label: "PLANNED" },
+                          { value: "ACTIVE", label: "ACTIVE" },
+                          { value: "PAUSED", label: "PAUSED" },
+                          { value: "DONE", label: "DONE" },
+                          { value: "CANCELLED", label: "CANCELLED" },
+                        ]}
+                        className="mt-1 bg-transparent border-white/15 text-slate-100 h-9"
+                      />
                     ) : (
                       <div className="mt-1 font-semibold text-slate-100">{selectedActivity.status}</div>
                     )}

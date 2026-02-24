@@ -36,6 +36,8 @@ import { useModal } from "@/components/ui/modal/ModalProvider"
 import { sync } from "@/lib/sync"
 import { GlassSelect } from "@/components/ui/glass-select"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import {
   DropdownMenu,
@@ -368,10 +370,10 @@ function TaskQuickCreate({ defaultStatus, taxonomy, onCreate, ownerOptions, defa
       )}
       <div className="space-y-1">
         <label className="text-xs text-slate-300">Notizen</label>
-        <textarea
+        <Textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="min-h-[60px] w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 py-1.5 text-xs"
+          className="min-h-[60px]"
           placeholder="Kurzbeschreibung / nächste Schritte..."
         />
       </div>
@@ -577,10 +579,10 @@ function TaskEditForm({
         )}
         <div className="space-y-1 sm:col-span-2">
           <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Notizen</label>
-          <textarea
+          <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="min-h-[110px] w-full rounded-md bg-white/70 dark:bg-slate-900/60 border border-slate-300/60 dark:border-slate-700 px-3 py-2 text-sm"
+            className="min-h-[110px]"
             placeholder="Kurzbeschreibung / nächste Schritte..."
           />
         </div>
@@ -899,15 +901,10 @@ function BulkSetDateForm({
       <div className="space-y-1">
         <label className="text-xs font-medium text-slate-500 dark:text-slate-300">{label}</label>
         <Input type="datetime-local" value={value} onChange={(e) => setValue(e.target.value)} disabled={clear} />
-        <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
-          <input
-            type="checkbox"
-            checked={clear}
-            onChange={(e) => setClear(e.target.checked)}
-            className="h-4 w-4 accent-white"
-          />
-          Datum entfernen
-        </label>
+        <div className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+          <Switch checked={clear} onCheckedChange={setClear} />
+          <span>Datum entfernen</span>
+        </div>
       </div>
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
         <Button type="button" variant="outline" onClick={closeModal}>

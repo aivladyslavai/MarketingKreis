@@ -778,11 +778,11 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        <input
+                        <Input
                           value={totpCode}
                           onChange={(e) => setTotpCode(e.target.value)}
                           placeholder="Code oder Recovery Code"
-                          className="h-11 w-full rounded-lg bg-slate-900/70 border border-white/15 px-3 text-slate-200 text-sm"
+                          className="bg-slate-900/70 border-white/15 text-slate-200"
                         />
                         <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
                           <span>Du kannst hier auch einen Recovery Code verwenden.</span>

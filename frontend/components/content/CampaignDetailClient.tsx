@@ -7,6 +7,10 @@ import { ArrowLeft, Plus, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { GlassSelect } from "@/components/ui/glass-select"
 import KanbanBoard, { type TaskStatus as KanbanStatus } from "@/components/kanban/kanban-board"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { useContentData, type ContentTask } from "@/hooks/use-content-data"
@@ -77,85 +81,67 @@ function TaskQuickCreate({ defaultStatus, defaultChannel, onCreate }: TaskQuickC
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 pt-1">
-      <div className="space-y-1">
-        <label className="text-xs text-slate-300">Titel</label>
-        <input
+    <form onSubmit={handleSubmit} className="space-y-4 pt-1">
+      <div className="grid gap-1.5">
+        <Label>Titel</Label>
+        <Input
           autoFocus
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="z.B. Landingpage für Kampagne"
-          className="h-11 sm:h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm"
         />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <label className="text-xs text-slate-300">Channel</label>
-          <input
-            value={channel}
-            onChange={(e) => setChannel(e.target.value)}
-            className="h-11 sm:h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm"
-          />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid gap-1.5">
+          <Label>Channel</Label>
+          <Input value={channel} onChange={(e) => setChannel(e.target.value)} />
         </div>
-        <div className="space-y-1">
-          <label className="text-xs text-slate-300">Format</label>
-          <input
+        <div className="grid gap-1.5">
+          <Label>Format</Label>
+          <Input
             value={format || ""}
             onChange={(e) => setFormat(e.target.value || undefined)}
             placeholder="Landing Page, Newsletter…"
-            className="h-11 sm:h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm"
           />
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <label className="text-xs text-slate-300">Priorität</label>
-          <select
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid gap-1.5">
+          <Label>Priorität</Label>
+          <GlassSelect
             value={priority}
-            onChange={(e) => setPriority(e.target.value as any)}
-            className="h-11 sm:h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-xs text-slate-200"
-          >
-            <option value="LOW">Niedrig</option>
-            <option value="MEDIUM">Mittel</option>
-            <option value="HIGH">Hoch</option>
-            <option value="URGENT">Dringend</option>
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-slate-300">Fällig am</label>
-          <input
-            type="date"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-            className="h-11 sm:h-9 w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 text-sm text-slate-200"
+            onChange={(v) => setPriority(v as any)}
+            options={[
+              { value: "LOW", label: "Niedrig" },
+              { value: "MEDIUM", label: "Mittel" },
+              { value: "HIGH", label: "Hoch" },
+              { value: "URGENT", label: "Dringend" },
+            ]}
           />
         </div>
+        <div className="grid gap-1.5">
+          <Label>Fällig am</Label>
+          <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+        </div>
       </div>
-      <div className="space-y-1">
-        <label className="text-xs text-slate-300">Notizen</label>
-        <textarea
+
+      <div className="grid gap-1.5">
+        <Label>Notizen</Label>
+        <Textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="min-h-[70px] w-full rounded-md bg-slate-950/60 border border-slate-700 px-2 py-1.5 text-xs text-slate-200"
+          className="min-h-[90px]"
           placeholder="Kurzbeschreibung / nächste Schritte…"
         />
       </div>
+
       <div className="flex justify-end gap-2 pt-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={closeModal}
-          className="h-8 border-slate-600 text-xs"
-        >
+        <Button type="button" variant="outline" size="sm" onClick={closeModal}>
           Abbrechen
         </Button>
-        <Button
-          type="submit"
-          size="sm"
-          disabled={saving || !title.trim()}
-          className="h-8 text-xs"
-        >
+        <Button type="submit" size="sm" disabled={saving || !title.trim()}>
           {saving ? "Speichere…" : "Task erstellen"}
         </Button>
       </div>

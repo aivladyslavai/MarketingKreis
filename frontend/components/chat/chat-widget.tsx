@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Send, X, Sparkles, Trash2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { sync } from "@/lib/sync"
+import { Input } from "@/components/ui/input"
 
 type ChatMessage = { id: string; role: "user" | "assistant"; content: string; confirmTool?: { name: string; args: any } }
 
@@ -457,14 +458,14 @@ export default function ChatWidget() {
                 <div className="px-6 py-4 border-t border-white/10">
                   <div className="relative rounded-2xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 p-[1px]">
                     <div className="flex items-center gap-2 rounded-2xl bg-slate-900/90 backdrop-blur-xl px-4 py-2">
-                      <input
+                      <Input
                         type="text"
                         placeholder={placeholderByLang(lang)}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey ? sendMessage() : undefined}
                         disabled={sending}
-                        className="flex-1 bg-transparent border-none outline-none text-sm text-slate-200 placeholder:text-slate-500"
+                        className="flex-1 bg-transparent border-none focus:ring-0 focus:border-transparent text-slate-200 placeholder:text-slate-500"
                       />
                       <button
                         onClick={sendMessage}
