@@ -52,17 +52,15 @@ export default function BudgetPage() {
 
   if (loading || !budgetData) {
     return (
-      <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16] overflow-x-hidden">
-        <div className="p-6 sm:p-8 space-y-6">
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="text-white">Budget & KPIs</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-slate-300">Laden...</p>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="space-y-6">
+        <Card className="glass-card">
+          <CardHeader>
+            <CardTitle className="text-white">Budget & KPIs</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-slate-300">Laden...</p>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -111,8 +109,7 @@ export default function BudgetPage() {
   const elFill = Math.round(((elasticity - 0) / (1.5 - 0)) * 100)
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#0b1020] dark:via-[#0a0f1c] dark:to-[#070b16] overflow-x-hidden">
-      <div className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Hero */}
       <motion.div
         initial={{ opacity: 0, y: 14 }}
@@ -474,7 +471,6 @@ export default function BudgetPage() {
       {error && (
         <p className="text-xs text-amber-300">Hinweis: {error}</p>
       )}
-      </div>
     </div>
   )
 }

@@ -62,7 +62,7 @@ export default function CalendarPage() {
   
   if (isLoading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="space-y-6">
         <Card className="bg-slate-900/40 border-slate-800">
           <CardHeader>
             <CardTitle className="text-white">Kalender</CardTitle>
@@ -79,7 +79,7 @@ export default function CalendarPage() {
 
   if (error) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="space-y-6">
         <Card className="bg-slate-900/40 border-slate-800">
           <CardHeader>
             <CardTitle className="text-white">Kalender</CardTitle>
@@ -184,7 +184,7 @@ export default function CalendarPage() {
   }, {})).sort((a:any,b:any)=> a.month.localeCompare(b.month))
   
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 sm:space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-6 sm:p-8">
         <div className="pointer-events-none absolute -top-24 -right-20 h-72 w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl" />

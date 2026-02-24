@@ -120,7 +120,7 @@ export default function PerformancePage() {
 
   if (loading || !metrics) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="space-y-6">
         <Skeleton className="h-16 w-80" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {[...Array(4)].map((_, i) => (
@@ -172,7 +172,7 @@ export default function PerformancePage() {
   // Если нет сохранённых категорий — показываем мастер настройки
   if (categories && categories.length === 0) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-6 sm:p-8">
+      <div className="max-w-3xl mx-auto">
         <CategorySetup />
       </div>
     )
@@ -180,7 +180,7 @@ export default function PerformancePage() {
 
   return (
     <motion.div
-      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8"
+      className="space-y-8"
       variants={containerVariants}
       initial="hidden"
       animate="visible"

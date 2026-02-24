@@ -78,7 +78,7 @@ export default function ActivitiesPage() {
 
   if (!ready || loading) {
     return (
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="space-y-6">
         <Skeleton className="h-16" />
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-6">
           <div className="lg:col-span-3">
@@ -94,7 +94,7 @@ export default function ActivitiesPage() {
 
   if (error) {
     return (
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="space-y-6">
         <Card className="bg-slate-900/40 border-slate-800">
           <CardContent className="p-6 sm:p-8 text-center">
             <h2 className="text-xl font-semibold text-white mb-2">Fehler beim Laden der Daten</h2>
@@ -210,7 +210,7 @@ export default function ActivitiesPage() {
   }
 
   return (
-    <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 sm:space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-4 sm:p-6 lg:p-8">
         <div className="pointer-events-none absolute -top-24 -right-20 h-72 w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl" />

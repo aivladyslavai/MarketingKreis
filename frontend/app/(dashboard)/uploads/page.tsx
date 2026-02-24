@@ -586,7 +586,7 @@ export default function UploadsPage() {
 
   return (
     <motion.div
-      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-7 sm:space-y-9"
+      className="space-y-7 sm:space-y-9"
       variants={containerVariants}
       initial="hidden"
       animate="visible"

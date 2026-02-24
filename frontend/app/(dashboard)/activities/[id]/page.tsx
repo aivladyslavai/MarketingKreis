@@ -33,7 +33,7 @@ export default function ActivityDetailPage() {
 
   if (!activity) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center p-4">
+      <div className="flex items-center justify-center py-16">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white mb-4">
             Aktivität nicht gefunden
@@ -87,8 +87,7 @@ export default function ActivityDetailPage() {
   const [tab, setTab] = useState("overview")
 
   return (
-    <div className="min-h-[100dvh] p-4 sm:p-6 md:p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <Button 
@@ -295,7 +294,6 @@ export default function ActivityDetailPage() {
             </Card>
           </TabsContent>
         </Tabs>
-      </div>
     </div>
   )
 }
