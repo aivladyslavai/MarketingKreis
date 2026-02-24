@@ -62,13 +62,8 @@ export default function RadialCircle({
     const RO = (window as any).ResizeObserver
     const ro = RO ? new RO((entries: any[]) => {
       const w = Math.max(240, Math.floor(entries[0].contentRect.width))
-      // When a month is focused we render side labels; reserve gutter space so labels stay inside the block.
-      const guessRs0 = Math.min(size, w)
-      const guessIsSmall = guessRs0 < 520
-      const guessScale = guessRs0 / 700
-      const guessGutter = focusedMonth != null ? (guessIsSmall ? 120 : 160) * Math.max(0.9, guessScale) : 0
-      const rs = Math.min(size, Math.max(240, Math.floor(w - guessGutter * 2)))
-      setRenderSize(rs)
+      // Keep the core circle large; side labels can use the extra SVG gutter.
+      setRenderSize(Math.min(size, w))
     }) : null
     if (ro) { ro.observe(el); return () => ro.disconnect() }
   }, [size, focusedMonth])
@@ -490,7 +485,7 @@ export default function RadialCircle({
         height: focus ? rs : undefined,
         aspectRatio: focus ? undefined : "1 / 1",
         margin: "0 auto",
-        overflow: "hidden",
+        overflow: "visible",
       }}
     >
       {focus && (
