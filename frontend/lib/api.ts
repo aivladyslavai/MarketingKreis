@@ -39,8 +39,11 @@ function wrapTimeoutError(err: any, timeoutMs: number): Error {
 }
 
 function withTimeout(init: RequestInit, timeoutMs: number): { init: RequestInit; cleanup: () => void } {
+  // Allow internal callers to pass `timeoutMs` without leaking it into fetch init.
+  const anyInit: any = init as any
+  const { timeoutMs: _timeoutMsIgnored, ...rest } = anyInit || {}
   const controller = new AbortController()
-  const prev = init.signal
+  const prev = rest.signal
 
   const onAbort = () => {
     try { controller.abort() } catch {}
@@ -58,7 +61,7 @@ function withTimeout(init: RequestInit, timeoutMs: number): { init: RequestInit;
   }, timeoutMs)
 
   return {
-    init: { ...init, signal: controller.signal },
+    init: { ...rest, signal: controller.signal },
     cleanup: () => {
       clearTimeout(id)
       if (prev) {
@@ -69,6 +72,8 @@ function withTimeout(init: RequestInit, timeoutMs: number): { init: RequestInit;
 }
 
 function timeoutFor(init: RequestInit): number {
+  const override = Number((init as any)?.timeoutMs)
+  if (Number.isFinite(override) && override > 0) return override
   const method = String(init.method || "GET").toUpperCase()
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return DEFAULT_TIMEOUT_READ_MS
   return DEFAULT_TIMEOUT_WRITE_MS
@@ -715,7 +720,7 @@ export const authSecurityAPI = {
 
 export const reportsAPI = {
   templates: {
-    list: () => request<ReportTemplateDTO[]>(`/reports/templates`),
+    list: () => request<ReportTemplateDTO[]>(`/reports/templates`, { timeoutMs: 55_000 } as any),
     create: (payload: Partial<ReportTemplateDTO>) =>
       request<ReportTemplateDTO>(`/reports/templates`, { method: "POST", body: JSON.stringify(payload) }),
     update: (id: number, payload: Partial<ReportTemplateDTO>) =>
@@ -728,9 +733,9 @@ export const reportsAPI = {
       if (params?.template_id != null) sp.set("template_id", String(params.template_id))
       if (params?.limit != null) sp.set("limit", String(params.limit))
       const qs = sp.toString()
-      return request<ReportRunDTO[]>(`/reports/runs${qs ? `?${qs}` : ""}`)
+      return request<ReportRunDTO[]>(`/reports/runs${qs ? `?${qs}` : ""}`, { timeoutMs: 55_000 } as any)
     },
-    get: (id: number) => request<ReportRunWithHtmlDTO>(`/reports/runs/${id}`),
+    get: (id: number) => request<ReportRunWithHtmlDTO>(`/reports/runs/${id}`, { timeoutMs: 55_000 } as any),
     create: (payload: Partial<{ template_id: number | null; params: any; kpi_snapshot: any; html: string; status: string; error: string }>) =>
       request<ReportRunDTO>(`/reports/runs`, { method: "POST", body: JSON.stringify(payload) }),
   },
