@@ -82,7 +82,8 @@ async function forward(req: NextRequest, pathSegments: string[]) {
     const body = ["GET", "HEAD"].includes(method) ? undefined : await req.arrayBuffer()
 
     const controller = new AbortController()
-    const timeoutMs = ["GET", "HEAD"].includes(method) ? 12_000 : 20_000
+    // Render free tier / cold starts can exceed 12s. Keep proxy timeout higher to avoid 504 loops.
+    const timeoutMs = ["GET", "HEAD"].includes(method) ? 35_000 : 60_000
     const t = setTimeout(() => controller.abort(), timeoutMs)
     const res = await fetch(url, {
       method,

@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const url = `${backendUrl}/jobs`
     const cookie = request.headers.get("cookie") || ""
     const controller = new AbortController()
-    const t = setTimeout(() => controller.abort(), 12_000)
+    const t = setTimeout(() => controller.abort(), 35_000)
     const res = await fetch(url, {
       method: "GET",
       headers: cookie ? { cookie } : {},

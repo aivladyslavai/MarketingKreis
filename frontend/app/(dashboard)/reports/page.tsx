@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -153,6 +153,16 @@ export default function ReportsPage() {
   const { uploads, error: uploadsError, refresh: refreshUploads } = useUploadsApi()
   const { jobs, error: jobsError, refresh: refreshJobs } = useJobsApi()
 
+  // Some hook-returned functions are not stable across renders; keep refs so effects don't loop.
+  const refetchActivitiesRef = useRef(refetchActivities)
+  const refreshCalendarRef = useRef(refreshCalendar)
+  const refreshUploadsRef = useRef(refreshUploads)
+  const refreshJobsRef = useRef(refreshJobs)
+  useEffect(() => { refetchActivitiesRef.current = refetchActivities }, [refetchActivities])
+  useEffect(() => { refreshCalendarRef.current = refreshCalendar }, [refreshCalendar])
+  useEffect(() => { refreshUploadsRef.current = refreshUploads }, [refreshUploads])
+  useEffect(() => { refreshJobsRef.current = refreshJobs }, [refreshJobs])
+
   const load = useCallback(async () => {
     try {
       setLoading(true)
@@ -198,15 +208,21 @@ export default function ReportsPage() {
     load()
     loadTemplatesAndRuns()
     const unsub = [
-      sync.on('global:refresh', () => { load(); refetchActivities(); refreshCalendar(); refreshUploads(); refreshJobs(); }),
-      sync.on('activities:changed', () => { refetchActivities() }),
-      sync.on('calendar:changed', () => { refreshCalendar() }),
-      sync.on('uploads:changed', () => { refreshUploads() }),
-      sync.on('jobs:changed', () => { refreshJobs() }),
+      sync.on('global:refresh', () => {
+        load()
+        refetchActivitiesRef.current?.()
+        refreshCalendarRef.current?.()
+        refreshUploadsRef.current?.()
+        refreshJobsRef.current?.()
+      }),
+      sync.on('activities:changed', () => { refetchActivitiesRef.current?.() }),
+      sync.on('calendar:changed', () => { refreshCalendarRef.current?.() }),
+      sync.on('uploads:changed', () => { refreshUploadsRef.current?.() }),
+      sync.on('jobs:changed', () => { refreshJobsRef.current?.() }),
       sync.on('crm:companies:changed', () => { load() }),
     ]
     return () => { unsub.forEach(fn => fn && (fn as any)()) }
-  }, [load, loadTemplatesAndRuns, refetchActivities, refreshCalendar, refreshUploads, refreshJobs])
+  }, [load, loadTemplatesAndRuns])
 
   useEffect(() => {
     if (!canManageReports) return
