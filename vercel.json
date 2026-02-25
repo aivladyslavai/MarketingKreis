@@ -1,2 +1,9 @@
-{}
+{
+  "functions": {
+    "frontend/app/api/auth/**/*.ts": { "maxDuration": 60 },
+    "app/api/auth/**/*.ts": { "maxDuration": 60 },
+    "frontend/app/api/[...path]/route.ts": { "maxDuration": 60 },
+    "app/api/[...path]/route.ts": { "maxDuration": 60 }
+  }
+}
 

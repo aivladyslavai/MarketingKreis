@@ -24,7 +24,7 @@ function getBackendUrl() {
 // Simple proxy for login to the backend.
 export async function POST(req: NextRequest) {
   const controller = new AbortController()
-  const timeoutMs = 25_000
+  const timeoutMs = 60_000
   const t = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const apiUrl = getBackendUrl()
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     const isAbort = err?.name === "AbortError"
     const msg = isAbort
-      ? "Der Server startet gerade (Cold Start). Bitte 20–30 Sekunden warten und erneut versuchen."
+      ? "Der Server startet gerade (Cold Start). Bitte kurz warten und erneut versuchen."
       : err?.message || "Proxy error"
     const status = isAbort ? 504 : 500
     console.error("Login proxy error (api/auth/login):", err)

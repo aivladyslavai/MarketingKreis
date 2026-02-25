@@ -50,10 +50,18 @@ function getBackendUrl() {
   throw new Error("BACKEND_URL is not configured")
 }
 
+function clearCookie(next: NextResponse, name: string, path: string) {
+  // host-only cookie clearing (no domain); safe even if cookie doesn't exist
+  next.headers.append(
+    "set-cookie",
+    `${name}=; Path=${path}; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; SameSite=Lax; Secure`
+  )
+}
+
 // Proxy for logout – clears backend auth cookies through the same origin.
 export async function POST(req: NextRequest) {
   const controller = new AbortController()
-  const timeoutMs = 25_000
+  const timeoutMs = 60_000
   const t = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const apiUrl = getBackendUrl()
@@ -86,8 +94,19 @@ export async function POST(req: NextRequest) {
     }
   } catch (err: any) {
     const isAbort = err?.name === "AbortError"
-    const msg = isAbort ? "Backend request timed out" : err?.message || "Proxy error"
-    const status = isAbort ? 504 : 500
+    if (isAbort) {
+      // Even if backend is cold-starting, clear frontend-domain cookies so UI can proceed.
+      const resp = NextResponse.json({ ok: true, degraded: true }, { status: 200 })
+      clearCookie(resp, "access_token", "/")
+      clearCookie(resp, "refresh_token", "/")
+      clearCookie(resp, "refresh_token", "/auth")
+      clearCookie(resp, "csrf_token", "/")
+      clearCookie(resp, "csrf_token", "/auth")
+      resp.headers.set("x-mk-degraded", "logout-timeout")
+      return resp
+    }
+    const msg = err?.message || "Proxy error"
+    const status = 500
     console.error("Logout proxy error (api/auth/logout):", err)
     return NextResponse.json({ detail: msg }, { status })
   } finally {

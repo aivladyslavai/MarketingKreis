@@ -24,7 +24,7 @@ function getBackendUrl() {
 // Proxy for fetching the current authenticated user profile from the backend.
 export async function GET(req: NextRequest) {
   const controller = new AbortController()
-  const timeoutMs = 25_000
+  const timeoutMs = 60_000
   const t = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const apiUrl = getBackendUrl()
@@ -53,8 +53,15 @@ export async function GET(req: NextRequest) {
     }
   } catch (err: any) {
     const isAbort = err?.name === "AbortError"
-    const msg = isAbort ? "Backend request timed out" : err?.message || "Proxy error"
-    const status = isAbort ? 504 : 500
+    // If backend is cold-starting, don't trap the whole app in an auth error loop.
+    // Treat as "not authenticated" and let the UI keep working.
+    if (isAbort) {
+      const resp = NextResponse.json(null, { status: 200 })
+      resp.headers.set("x-mk-degraded", "profile-timeout")
+      return resp
+    }
+    const msg = err?.message || "Proxy error"
+    const status = 500
     console.error("Profile proxy error (api/auth/profile):", err)
     return NextResponse.json({ detail: msg }, { status })
   } finally {
