@@ -22,6 +22,58 @@ if (
 
 const MK_ADMIN_STEPUP_EVENT = "mk:admin-stepup-required"
 
+const DEFAULT_TIMEOUT_READ_MS = 35_000
+const DEFAULT_TIMEOUT_WRITE_MS = 90_000
+
+function isAbortError(err: any): boolean {
+  return (
+    err?.name === "AbortError" ||
+    String(err?.message || "").toLowerCase().includes("aborted") ||
+    String(err?.message || "").toLowerCase().includes("aborterror")
+  )
+}
+
+function wrapTimeoutError(err: any, timeoutMs: number): Error {
+  if (!isAbortError(err)) return err instanceof Error ? err : new Error(String(err || "Request failed"))
+  return new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`)
+}
+
+function withTimeout(init: RequestInit, timeoutMs: number): { init: RequestInit; cleanup: () => void } {
+  const controller = new AbortController()
+  const prev = init.signal
+
+  const onAbort = () => {
+    try { controller.abort() } catch {}
+  }
+  if (prev) {
+    if (prev.aborted) {
+      try { controller.abort() } catch {}
+    } else {
+      try { prev.addEventListener("abort", onAbort, { once: true } as any) } catch {}
+    }
+  }
+
+  const id = setTimeout(() => {
+    try { controller.abort() } catch {}
+  }, timeoutMs)
+
+  return {
+    init: { ...init, signal: controller.signal },
+    cleanup: () => {
+      clearTimeout(id)
+      if (prev) {
+        try { prev.removeEventListener("abort", onAbort as any) } catch {}
+      }
+    },
+  }
+}
+
+function timeoutFor(init: RequestInit): number {
+  const method = String(init.method || "GET").toUpperCase()
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return DEFAULT_TIMEOUT_READ_MS
+  return DEFAULT_TIMEOUT_WRITE_MS
+}
+
 function getCookie(name: string): string | null {
   if (typeof document === "undefined") return null
   try {
@@ -88,12 +140,21 @@ async function ensureAdminStepUp(message?: string): Promise<void> {
 
 async function request<T>(path: string, init: RequestInit = {}, attempt: number = 0): Promise<T> {
   const i = withCsrfHeader(init)
-  const res = await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
-    ...i,
-    headers: { "Content-Type": "application/json", ...(i.headers || {}) },
-    credentials: "include",
-    cache: "no-store",
-  })
+  const timeoutMs = timeoutFor(i)
+  const timed = withTimeout(i, timeoutMs)
+  let res: Response
+  try {
+    res = await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
+      ...timed.init,
+      headers: { "Content-Type": "application/json", ...(timed.init.headers || {}) },
+      credentials: "include",
+      cache: "no-store",
+    })
+  } catch (e: any) {
+    throw wrapTimeoutError(e, timeoutMs)
+  } finally {
+    timed.cleanup()
+  }
   if (!res.ok) {
     if (res.status === 428 && attempt < 1) {
       // Admin step-up required: show popup and retry once.
@@ -126,12 +187,21 @@ async function request<T>(path: string, init: RequestInit = {}, attempt: number 
 export async function requestLocal<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = path.startsWith("/") ? path : "/" + path
   const i = withCsrfHeader(init)
-  const res = await fetch(url, {
-    ...i,
-    headers: { "Content-Type": "application/json", ...(i.headers || {}) },
-    credentials: "include",
-    cache: "no-store",
-  })
+  const timeoutMs = timeoutFor(i)
+  const timed = withTimeout(i, timeoutMs)
+  let res: Response
+  try {
+    res = await fetch(url, {
+      ...timed.init,
+      headers: { "Content-Type": "application/json", ...(timed.init.headers || {}) },
+      credentials: "include",
+      cache: "no-store",
+    })
+  } catch (e: any) {
+    throw wrapTimeoutError(e, timeoutMs)
+  } finally {
+    timed.cleanup()
+  }
   if (!res.ok) {
     if (res.status === 428) {
       let msg = "2FA step-up required"
@@ -158,13 +228,20 @@ export async function requestLocal<T>(path: string, init: RequestInit = {}): Pro
 
 export const authFetch = async (path: string, init: RequestInit = {}): Promise<Response> => {
   const i = withCsrfHeader(init)
-  const res = await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
-    ...i,
-    headers: { "Content-Type": "application/json", ...(i.headers || {}) },
-    credentials: "include",
-    cache: "no-store",
-  })
-  return res
+  const timeoutMs = timeoutFor(i)
+  const timed = withTimeout(i, timeoutMs)
+  try {
+    return await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
+      ...timed.init,
+      headers: { "Content-Type": "application/json", ...(timed.init.headers || {}) },
+      credentials: "include",
+      cache: "no-store",
+    })
+  } catch (e: any) {
+    throw wrapTimeoutError(e, timeoutMs)
+  } finally {
+    timed.cleanup()
+  }
 }
 
 export const companiesAPI = {
