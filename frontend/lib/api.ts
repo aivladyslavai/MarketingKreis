@@ -41,7 +41,8 @@ function wrapTimeoutError(err: any, timeoutMs: number): Error {
 function withTimeout(init: RequestInit, timeoutMs: number): { init: RequestInit; cleanup: () => void } {
   // Allow internal callers to pass `timeoutMs` without leaking it into fetch init.
   const anyInit: any = init as any
-  const { timeoutMs: _timeoutMsIgnored, ...rest } = anyInit || {}
+  const rest: any = { ...(anyInit || {}) }
+  try { delete rest.timeoutMs } catch {}
   const controller = new AbortController()
   const prev = rest.signal
 
