@@ -12,7 +12,9 @@ export type SyncEvent =
   | 'crm:contacts:changed'
   | 'crm:deals:changed'
   | 'content:changed'
+  | 'content:items:changed'
   | 'performance:changed'
+  | 'budget:changed'
   | 'onboarding:restart'
 
 type Handler = (payload?: any) => void
