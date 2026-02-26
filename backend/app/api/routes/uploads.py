@@ -1519,12 +1519,39 @@ async def ai_analyze_upload(
         "temperature": 0.2,
         "max_tokens": 900,
     }
-    headers_req = {"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"}
+    api_key = (settings.openai_api_key or "").strip()
+    if not api_key:
+        return {
+            "ok": True,
+            "provider": "fallback",
+            "kind": kind,
+            "recommended_kinds": [{"kind": kind, "score": 0.55, "reason": "Fallback (OPENAI_API_KEY fehlt)."}],
+            "suggested_mapping": base_mapping,
+            "confidence": {k: (0.7 if v else 0.0) for k, v in base_mapping.items()},
+            "clean_rules": [
+                "Leere Werte wie '—'/'n/a' ignorieren",
+                "Zahlen: 1'234.50 und 1.234,50 unterstützen",
+                "Datumsfelder: YYYY-MM-DD und DD.MM.YYYY unterstützen",
+            ],
+            "insights": {
+                "rows_scanned": len(parsed_rows),
+                "rows_sampled": sample_n,
+                "tables": tables_meta,
+                "group_counts": group.get("counts"),
+                "missingness": {k: float(v) for k, v in list(missingness.items())[:25]},
+                "top_categories": top_cats,
+                "notes": (anomaly_notes or []) + ["OPENAI_API_KEY ist nicht gesetzt oder leer."],
+                "column_stats": stats.get("columns"),
+            },
+        }
+
+    headers_req = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=25) as client:
+        async with httpx.AsyncClient(timeout=35) as client:
             r = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers_req)
             if r.status_code >= 400:
-                raise Exception("openai_error")
+                # Avoid leaking sensitive details; include only status and a short hint.
+                raise RuntimeError(f"openai_http_{r.status_code}")
             data = r.json()
             reply = data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
             obj = json.loads(reply)
@@ -1555,7 +1582,19 @@ async def ai_analyze_upload(
                     **insights,
                 },
             }
-    except Exception:
+    except Exception as e:
+        reason = "AI Analyse war nicht verfügbar, Mapping basiert auf Regeln."
+        try:
+            msg = str(e or "")
+            if "openai_http_" in msg:
+                code = msg.split("openai_http_")[-1].strip().split()[0]
+                reason = f"OpenAI Anfrage fehlgeschlagen (HTTP {code}). Prüfe OPENAI_API_KEY/Model/Quota."
+            elif isinstance(e, httpx.TimeoutException):
+                reason = "OpenAI Timeout. Bitte später erneut versuchen oder Timeout erhöhen."
+            elif isinstance(e, httpx.ConnectError):
+                reason = "OpenAI Connection Error (Netzwerk/DNS)."
+        except Exception:
+            pass
         return {
             "ok": True,
             "provider": "fallback",
@@ -1571,9 +1610,12 @@ async def ai_analyze_upload(
             "insights": {
                 "rows_scanned": len(parsed_rows),
                 "rows_sampled": sample_n,
+                "tables": tables_meta,
+                "group_counts": group.get("counts"),
                 "missingness": {k: float(v) for k, v in list(missingness.items())[:25]},
                 "top_categories": top_cats,
-                "notes": ["AI Analyse war nicht verfügbar, Mapping basiert auf Regeln."],
+                "notes": (anomaly_notes or []) + [reason],
+                "column_stats": stats.get("columns"),
             },
         }
 
