@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+export const maxDuration = 60
 
 function canDeriveCsrfFromCookie(req: NextRequest): boolean {
   const fetchSite = (req.headers.get("sec-fetch-site") || "").toLowerCase()

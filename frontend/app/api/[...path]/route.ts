@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+// Allow longer backend operations (AI analyze, report generation, etc.).
+export const maxDuration = 60
 
 function canDeriveCsrfFromCookie(req: NextRequest): boolean {
   const fetchSite = (req.headers.get("sec-fetch-site") || "").toLowerCase()
