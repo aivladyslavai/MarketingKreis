@@ -1,18 +1,23 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form, Request
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 import csv
 import io
 import hashlib
+import json
+import httpx
 
 from app.db.session import get_db_session
+from app.core.rate_limit import enforce_rate_limit
 from app.models.upload import Upload
 from app.models.job import Job
 from app.models.activity import Activity, ActivityType
+from app.models.budget import BudgetTarget, KpiTarget
 from app.models.company import Company
 from app.models.contact import Contact
 from app.models.deal import Deal
+from app.models.content_item import ContentItem, ContentItemStatus
 from app.models.user import User, UserRole
 from app.api.deps import get_current_user, get_org_id, is_demo_user, require_writable_user
 from app.core.config import get_settings
@@ -39,8 +44,154 @@ def _parse_csv_to_activities(content: bytes) -> List[Dict[str, Any]]:
     return rows
 
 
+def _is_blankish(v: Any) -> bool:
+    if v is None:
+        return True
+    try:
+        s = str(v).strip().lower()
+    except Exception:
+        return False
+    if s == "":
+        return True
+    return s in {"—", "–", "n/a", "na", "null", "none", "undefined"}
+
+
 def _norm_header(s: str) -> str:
     return (str(s or "").strip().lower().replace(" ", "_").replace("-", "_"))
+
+def _dedupe_headers(headers: List[str]) -> List[str]:
+    seen: Dict[str, int] = {}
+    out: List[str] = []
+    for h in headers:
+        base = str(h or "").strip() or "col"
+        key = base
+        n = seen.get(key, 0) + 1
+        seen[key] = n
+        out.append(key if n == 1 else f"{key}_{n}")
+    return out
+
+def _extract_xlsx_table_from_ws(ws: Any) -> tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Best-effort extraction from "messy" Excel exports:
+    - Detect a likely header row in the first N rows (titles / multi-row headers are common)
+    - Normalize empty/duplicate headers
+    - Skip repeated header rows and fully empty rows
+    """
+    # Scan first rows to find header row
+    scan_rows = 40
+    known_tokens = {
+        # generic
+        "title", "name", "beschreibung", "beschreibung/notes", "notes", "notiz", "kommentar",
+        "massnahme", "maßnahme", "aktion", "initiative", "kampagne", "projekt",
+        # dates
+        "start", "beginn", "von", "ab", "startdatum", "start_date",
+        "end", "ende", "bis", "enddatum", "end_date",
+        # activity fields
+        "category", "kategorie", "type", "bereich", "kanal", "format",
+        "status", "phase", "workflow",
+        "budget", "budgetchf", "kosten", "chf", "betrag",
+        "owner", "verantwortlich", "zuständig",
+        "priority", "prio", "gewicht", "weight",
+        # crm-ish (so we still pick a good header)
+        "company", "firma", "unternehmen", "email", "telefon", "website", "deal", "opportunity",
+    }
+
+    candidates: List[tuple[int, int, int]] = []  # (score, non_empty, row_idx)
+    for idx, row in enumerate(ws.iter_rows(min_row=1, max_row=scan_rows, values_only=True), start=1):
+        cells = [str(v or "").strip() for v in (row or [])]
+        non_empty = sum(1 for c in cells if c)
+        if non_empty < 3:
+            continue
+        hits = 0
+        for c in cells:
+            if not c:
+                continue
+            n = _norm_header(c).replace("__", "_")
+            # split composite headers
+            parts = [p for p in n.replace("/", "_").split("_") if p]
+            if any(p in known_tokens for p in parts):
+                hits += 1
+        score = hits * 10 + non_empty
+        candidates.append((score, non_empty, idx))
+
+    header_row_idx = max(candidates, default=(0, 0, 1))[2]
+    header_vals = next(ws.iter_rows(min_row=header_row_idx, max_row=header_row_idx, values_only=True))
+    raw_headers = [str(v or "").strip() for v in (header_vals or [])]
+    # Fill empties and dedupe
+    headers = [h if h else f"col_{i+1}" for i, h in enumerate(raw_headers)]
+    headers = _dedupe_headers(headers)
+
+    rows_out: List[Dict[str, Any]] = []
+    header_norm = [_norm_header(h) for h in headers]
+    empty_streak = 0
+    max_rows = 5000
+
+    for r_idx, r in enumerate(ws.iter_rows(min_row=header_row_idx + 1, values_only=True), start=0):
+        if r_idx >= max_rows:
+            break
+        vals = list(r or [])
+        # pad to header length
+        if len(vals) < len(headers):
+            vals = vals + [None] * (len(headers) - len(vals))
+        row_dict = {headers[i]: (vals[i] if i < len(vals) else None) for i in range(len(headers))}
+
+        # Detect full-empty rows
+        non_empty = 0
+        for v in row_dict.values():
+            if v is None:
+                continue
+            s = str(v).strip()
+            if s:
+                non_empty += 1
+        if non_empty == 0:
+            empty_streak += 1
+            if empty_streak >= 25 and len(rows_out) > 0:
+                break
+            continue
+        empty_streak = 0
+
+        # Skip repeated header rows inside the sheet
+        try:
+            row_as_headers = [_norm_header(str(row_dict.get(headers[i]) or "")) for i in range(len(headers))]
+            if sum(1 for i in range(len(headers)) if row_as_headers[i] and row_as_headers[i] == header_norm[i]) >= max(3, len(headers) // 3):
+                continue
+        except Exception:
+            pass
+
+        rows_out.append(row_dict)
+
+    return headers, rows_out
+
+
+def _extract_xlsx_table(content: bytes) -> tuple[List[str], List[Dict[str, Any]]]:
+    try:
+        import openpyxl  # type: ignore
+    except Exception:
+        raise HTTPException(status_code=415, detail="Excel (.xlsx) not supported without openpyxl. Please upload CSV.")
+    wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    return _extract_xlsx_table_from_ws(wb.active)
+
+
+def _extract_xlsx_tables(content: bytes, *, max_sheets: int = 8) -> List[Dict[str, Any]]:
+    """
+    Extract one best-effort table per worksheet.
+    Returns: [{sheet, headers, rows}]
+    """
+    try:
+        import openpyxl  # type: ignore
+    except Exception:
+        raise HTTPException(status_code=415, detail="Excel (.xlsx) not supported without openpyxl. Please upload CSV.")
+    wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    out: List[Dict[str, Any]] = []
+    for ws in wb.worksheets[:max_sheets]:
+        headers, rows = _extract_xlsx_table_from_ws(ws)
+        if headers and rows:
+            out.append({"sheet": str(getattr(ws, "title", "") or "Sheet"), "headers": headers, "rows": rows})
+    if not out:
+        # fall back to active even if empty, to show headers
+        headers, rows = _extract_xlsx_table_from_ws(wb.active)
+        out.append({"sheet": str(getattr(wb.active, "title", "") or "Sheet"), "headers": headers, "rows": rows})
+    return out
 
 
 def _suggest_mapping_crm(headers_in: List[str]) -> Dict[str, Optional[str]]:
@@ -76,9 +227,64 @@ def _suggest_mapping_crm(headers_in: List[str]) -> Dict[str, Optional[str]]:
         "deal_notes": suggest("deal_notes", "notes_deal", "bemerkung_deal"),
     }
 
+def _suggest_mapping_content(headers_in: List[str]) -> Dict[str, Optional[str]]:
+    h_norm = [_norm_header(h) for h in headers_in]
+
+    def suggest(*names: str) -> Optional[str]:
+        for n in names:
+            n2 = _norm_header(n)
+            if n2 in h_norm:
+                return headers_in[h_norm.index(n2)]
+        return None
+
+    return {
+        "title": suggest("title", "name", "titel", "thema", "betreff", "subject"),
+        "channel": suggest("channel", "kanal", "plattform", "platform"),
+        "format": suggest("format", "type", "typ", "content_type"),
+        "status": suggest("status", "phase", "workflow"),
+        "due_at": suggest("due", "due_at", "deadline", "fällig", "faellig", "abgabe", "abgabedatum", "due_date"),
+        "scheduled_at": suggest(
+            "scheduled",
+            "scheduled_at",
+            "publish",
+            "publishing",
+            "posting",
+            "post_date",
+            "publishing_date",
+            "termin",
+            "datum",
+        ),
+        "tags": suggest("tags", "tag", "labels", "label"),
+        "brief": suggest("brief", "beschreibung", "notes", "notiz", "kommentar", "bemerkung"),
+        "body": suggest("body", "text", "copy", "inhalt", "content", "post"),
+        "language": suggest("language", "sprache", "lang"),
+        "tone": suggest("tone", "stil", "tonalität", "tonalitaet"),
+        "owner_email": suggest("owner", "owner_email", "verantwortlich", "zuständig", "zustaendig", "assigned_to", "assignee"),
+    }
+
+
+def _suggest_mapping_budget(headers_in: List[str]) -> Dict[str, Optional[str]]:
+    h_norm = [_norm_header(h) for h in headers_in]
+
+    def suggest(*names: str) -> Optional[str]:
+        for n in names:
+            n2 = _norm_header(n)
+            if n2 in h_norm:
+                return headers_in[h_norm.index(n2)]
+        return None
+
+    return {
+        "period": suggest("period", "quartal", "quarter", "q", "jahr_quartal", "year_quarter"),
+        "category": suggest("category", "kategorie", "bereich", "thema", "type"),
+        "amount": suggest("amount", "budget", "budget_chf", "budgetchf", "kosten", "betrag", "chf", "summe", "spend"),
+        "metric": suggest("metric", "kpi", "kennzahl", "ziel_kpi", "kpi_name", "name"),
+        "target": suggest("target", "zielwert", "target_value", "wert", "value"),
+        "unit": suggest("unit", "einheit", "currency"),
+    }
+
 
 def _parse_float(v: Any) -> Optional[float]:
-    if v in (None, ""):
+    if _is_blankish(v):
         return None
     try:
         s = str(v).strip().replace("'", "").replace(" ", "")
@@ -97,7 +303,7 @@ def _parse_float(v: Any) -> Optional[float]:
 
 
 def _parse_int(v: Any) -> Optional[int]:
-    if v in (None, ""):
+    if _is_blankish(v):
         return None
     try:
         return int(float(str(v).strip().replace("%", "")))
@@ -106,7 +312,7 @@ def _parse_int(v: Any) -> Optional[int]:
 
 
 def _parse_datetime_loose(v: Any):
-    if v in (None, ""):
+    if _is_blankish(v):
         return None
     try:
         from datetime import datetime, date
@@ -127,6 +333,56 @@ def _parse_datetime_loose(v: Any):
             return None
     except Exception:
         return None
+
+
+def _current_period() -> str:
+    from datetime import datetime
+
+    now = datetime.utcnow()
+    q = (now.month - 1) // 3 + 1
+    return f"{now.year}-Q{q}"
+
+
+def _norm_budget_category(v: Any) -> str:
+    s = str(v or "").strip()
+    if not s:
+        return "VERKAUFSFOERDERUNG"
+    up = s.upper().replace(" ", "_").replace("-", "_")
+    alias = {
+        "SALES": "VERKAUFSFOERDERUNG",
+        "SALES_PROMO": "VERKAUFSFOERDERUNG",
+        "VERKAUF": "VERKAUFSFOERDERUNG",
+        "PROMOTION": "VERKAUFSFOERDERUNG",
+        "BRAND": "IMAGE",
+        "BRANDING": "IMAGE",
+        "EMPLOYER": "EMPLOYER_BRANDING",
+        "EMPLOYERBRANDING": "EMPLOYER_BRANDING",
+        "HR": "EMPLOYER_BRANDING",
+        "RETENTION": "KUNDENPFLEGE",
+        "CUSTOMER": "KUNDENPFLEGE",
+        "PFLEGE": "KUNDENPFLEGE",
+    }
+    return alias.get(up, up)
+
+
+def _parse_tags(v: Any) -> Optional[List[str]]:
+    if _is_blankish(v):
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    parts = [p.strip() for p in s.replace("|", ",").replace(";", ",").split(",")]
+    out: List[str] = []
+    seen = set()
+    for p in parts:
+        if not p:
+            continue
+        key = p.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out or None
 
 
 @router.get("")
@@ -222,18 +478,8 @@ def upload_file(
         if ctype in {"text/csv", "application/csv", "text/plain"} or name_lower.endswith(".csv"):
             rows = _parse_csv_to_activities(content)
         elif name_lower.endswith(".xlsx") or ctype in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
-            try:
-                import openpyxl  # type: ignore
-            except Exception:
-                raise HTTPException(status_code=415, detail="Excel (.xlsx) not supported without openpyxl. Please upload CSV.")
-
-            wb = openpyxl.load_workbook(io.BytesIO(content))
-            ws = wb.active
-            first = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
-            headers = [str(v or "").strip() for v in first]
-            for r in ws.iter_rows(min_row=2, values_only=True):
-                row = {headers[i].strip(): (r[i] if i is not None and i < len(r) else None) for i in range(len(headers))}
-                rows.append(row)
+            _headers, parsed_rows = _extract_xlsx_table(content)
+            rows = parsed_rows
         else:
             # Non-tabular file: keep as stored upload only (no import)
             return {
@@ -252,14 +498,15 @@ def upload_file(
         def g(row: Dict[str, Any], *keys: str):
             for k in keys:
                 for variant in (k, k.lower(), k.upper(), k.replace(" ", "_")):
-                    if variant in row and row[variant] not in (None, ""):
+                    if variant in row and not _is_blankish(row[variant]):
                         return row[variant]
             return None
 
         from datetime import datetime, date
 
         def parse_date(v):
-            if v in (None, ""): return None
+            if _is_blankish(v): 
+                return None
             if isinstance(v, (datetime, date)): return v if isinstance(v, date) else v.date()
             s = str(v).strip()
             for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%m/%d/%Y"):
@@ -313,12 +560,12 @@ def upload_file(
             header = (mapping_dict.get(field) or '').strip()
             if header:
                 v = row.get(header)
-                if v not in (None, ""):
+                if not _is_blankish(v):
                     return v
             return g(row, *fallbacks)
 
         kind = (import_kind or "activities").strip().lower()
-        if kind not in {"activities", "crm"}:
+        if kind not in {"activities", "crm", "content", "budget"}:
             kind = "activities"
 
         if kind == "crm":
@@ -439,26 +686,213 @@ def upload_file(
                     skipped_count += 1
 
             db.commit()
+        elif kind == "budget":
+            if current_user.role not in {UserRole.admin, UserRole.editor}:
+                raise HTTPException(status_code=403, detail="Budget import requires editor/admin")
+
+            default_period = _current_period()
+            for row in rows:
+                try:
+                    period = str(gm(row, "period", "period", "quartal", "quarter", "jahr_quartal", "year_quarter") or default_period).strip()
+                    if not period:
+                        period = default_period
+
+                    # Budget target row
+                    cat_raw = gm(row, "category", "category", "kategorie", "bereich", "thema", "type")
+                    amt_raw = gm(row, "amount", "amount", "budget", "budgetchf", "budget_chf", "kosten", "betrag", "chf", "summe")
+                    amount = _parse_float(amt_raw)
+                    if cat_raw not in (None, "") and amount is not None:
+                        category = _norm_budget_category(cat_raw)
+                        existing = (
+                            db.query(BudgetTarget)
+                            .filter(
+                                BudgetTarget.organization_id == org,
+                                BudgetTarget.period == period,
+                                BudgetTarget.category == category,
+                            )
+                            .first()
+                        )
+                        if existing:
+                            existing.amount_chf = float(amount)
+                            db.add(existing)
+                        else:
+                            db.add(BudgetTarget(organization_id=org, period=period, category=category, amount_chf=float(amount)))
+                            created_count += 1
+
+                    # KPI target row
+                    metric = gm(row, "metric", "metric", "kpi", "kennzahl", "ziel_kpi", "kpi_name", "name")
+                    target_val = _parse_float(gm(row, "target", "target", "zielwert", "target_value", "wert", "value"))
+                    unit = gm(row, "unit", "unit", "einheit", "currency")
+                    if metric not in (None, "") and target_val is not None:
+                        m = str(metric).strip()
+                        if m:
+                            existing_k = (
+                                db.query(KpiTarget)
+                                .filter(KpiTarget.organization_id == org, KpiTarget.period == period, KpiTarget.metric == m)
+                                .first()
+                            )
+                            if existing_k:
+                                existing_k.target_value = float(target_val)
+                                existing_k.unit = str(unit).strip()[:20] if unit not in (None, "") else existing_k.unit
+                                db.add(existing_k)
+                            else:
+                                db.add(
+                                    KpiTarget(
+                                        organization_id=org,
+                                        period=period,
+                                        metric=m,
+                                        target_value=float(target_val),
+                                        unit=(str(unit).strip()[:20] if unit not in (None, "") else None),
+                                    )
+                                )
+                                created_count += 1
+                except Exception:
+                    skipped_count += 1
+
+            db.commit()
+        elif kind == "content":
+            # Any writable user can import content items into their organization.
+            can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
+            for row in rows:
+                try:
+                    title = str(gm(row, "title", "title", "name", "titel", "thema", "betreff") or "").strip()
+                    if not title:
+                        skipped_count += 1
+                        continue
+
+                    channel = str(gm(row, "channel", "channel", "kanal", "plattform", "platform") or "Website").strip()[:100]
+                    fmt = gm(row, "format", "format", "type", "typ", "content_type")
+                    fmt_s = str(fmt).strip()[:100] if fmt not in (None, "") else None
+
+                    raw_status = str(gm(row, "status", "status", "phase", "workflow") or "").strip().lower()
+                    status_map = {
+                        "idea": ContentItemStatus.IDEA,
+                        "idee": ContentItemStatus.IDEA,
+                        "draft": ContentItemStatus.DRAFT,
+                        "entwurf": ContentItemStatus.DRAFT,
+                        "review": ContentItemStatus.REVIEW,
+                        "prüfung": ContentItemStatus.REVIEW,
+                        "pruefung": ContentItemStatus.REVIEW,
+                        "approved": ContentItemStatus.APPROVED,
+                        "freigegeben": ContentItemStatus.APPROVED,
+                        "scheduled": ContentItemStatus.SCHEDULED,
+                        "geplant": ContentItemStatus.SCHEDULED,
+                        "published": ContentItemStatus.PUBLISHED,
+                        "veröffentlicht": ContentItemStatus.PUBLISHED,
+                        "veroeffentlicht": ContentItemStatus.PUBLISHED,
+                        "archived": ContentItemStatus.ARCHIVED,
+                        "archiviert": ContentItemStatus.ARCHIVED,
+                        "blocked": ContentItemStatus.BLOCKED,
+                        "blockiert": ContentItemStatus.BLOCKED,
+                    }
+                    status = status_map.get(raw_status, ContentItemStatus.DRAFT)
+
+                    due_at = _parse_datetime_loose(gm(row, "due_at", "due_at", "due", "deadline", "fällig", "faellig", "abgabe", "due_date"))
+                    scheduled_at = _parse_datetime_loose(
+                        gm(
+                            row,
+                            "scheduled_at",
+                            "scheduled_at",
+                            "scheduled",
+                            "publish",
+                            "publishing_date",
+                            "post_date",
+                            "termin",
+                            "datum",
+                        )
+                    )
+                    tags = _parse_tags(gm(row, "tags", "tags", "labels", "label", "tag"))
+                    brief = gm(row, "brief", "brief", "beschreibung", "notes", "notiz", "kommentar", "bemerkung")
+                    body = gm(row, "body", "body", "text", "copy", "inhalt", "content", "post")
+                    language = str(gm(row, "language", "language", "sprache", "lang") or "de").strip()[:10]
+                    tone = gm(row, "tone", "tone", "stil", "tonalität", "tonalitaet")
+                    tone_s = str(tone).strip()[:50] if tone not in (None, "") else None
+
+                    desired_owner_id = current_user.id
+                    owner_email = gm(row, "owner_email", "owner_email", "owner", "verantwortlich", "zuständig", "zustaendig", "assignee")
+                    if can_manage_all and owner_email not in (None, ""):
+                        oe = str(owner_email).strip().lower()
+                        if oe:
+                            u = db.query(User).filter(User.organization_id == org, User.email == oe).first()
+                            if u:
+                                desired_owner_id = u.id
+
+                    item = ContentItem(
+                        organization_id=org,
+                        owner_id=desired_owner_id,
+                        title=title[:255],
+                        channel=channel or "Website",
+                        format=fmt_s,
+                        status=status,
+                        tags=tags,
+                        brief=(str(brief).strip() if brief not in (None, "") else None),
+                        body=(str(body).strip() if body not in (None, "") else None),
+                        language=language or "de",
+                        tone=tone_s,
+                        due_at=due_at,
+                        scheduled_at=scheduled_at,
+                    )
+                    db.add(item)
+                    created_count += 1
+                except Exception:
+                    skipped_count += 1
+
+            db.commit()
         else:
             for row in rows:
                 try:
-                    title = gm(row, "title", "title", "name") or "Untitled"
-                    category = gm(row, "category", "category", "type") or "VERKAUFSFOERDERUNG"
+                    title = (
+                        gm(row, "title", "title", "name", "massnahme", "maßnahme", "aktion", "initiative", "kampagne", "projekt")
+                        or "Untitled"
+                    )
+                    category = gm(
+                        row,
+                        "category",
+                        "category",
+                        "type",
+                        "kategorie",
+                        "bereich",
+                        "thema",
+                        "channel",
+                        "kanal",
+                    ) or "VERKAUFSFOERDERUNG"
                     category = remap_category_value(category) or "VERKAUFSFOERDERUNG"
-                    status = (gm(row, "status", "status") or "ACTIVE")
-                    budget = gm(row, "budget", "budget", "budgetCHF")
-                    weight = gm(row, "weight", "weight")
-                    notes = gm(row, "notes", "notes", "expected_output")
-                    start = parse_date(gm(row, "start", "start", "start_date"))
-                    end = parse_date(gm(row, "end", "end", "end_date"))
+                    raw_status = (gm(row, "status", "status", "phase", "workflow") or "ACTIVE")
+                    s_norm = str(raw_status or "").strip().lower()
+                    status_map = {
+                        "geplant": "PLANNED",
+                        "planung": "PLANNED",
+                        "planned": "PLANNED",
+                        "aktiv": "ACTIVE",
+                        "active": "ACTIVE",
+                        "in_progress": "ACTIVE",
+                        "in progress": "ACTIVE",
+                        "laufend": "ACTIVE",
+                        "done": "DONE",
+                        "fertig": "DONE",
+                        "abgeschlossen": "DONE",
+                        "completed": "DONE",
+                        "pausiert": "PAUSED",
+                        "paused": "PAUSED",
+                        "abgebrochen": "CANCELLED",
+                        "cancelled": "CANCELLED",
+                        "canceled": "CANCELLED",
+                    }
+                    status = status_map.get(s_norm, str(raw_status).upper() if raw_status not in (None, "") else "ACTIVE")
+
+                    budget = _parse_float(gm(row, "budget", "budget", "budgetCHF", "kosten", "betrag", "chf"))
+                    weight = _parse_float(gm(row, "weight", "weight", "gewicht", "prio", "priority"))
+                    notes = gm(row, "notes", "notes", "expected_output", "beschreibung", "kommentar", "notiz", "bemerkung")
+                    start = parse_date(gm(row, "start", "start", "start_date", "beginn", "von", "ab", "startdatum"))
+                    end = parse_date(gm(row, "end", "end", "end_date", "ende", "bis", "enddatum"))
 
                     activity = Activity(
                         title=str(title),
                         type=_map_category_to_activity_type(str(category)),
                         category_name=str(category),
                         status=str(status).upper(),
-                        budget=float(budget) if budget not in (None, "") else None,
-                        weight=float(weight) if weight not in (None, "") else None,
+                        budget=budget,
+                        weight=weight,
                         expected_output=str(notes) if notes not in (None, "") else None,
                         start_date=start,
                         end_date=end,
@@ -534,25 +968,32 @@ def preview_upload(
             return None
 
         return {
-            "title": suggest("title", "name"),
-            "category": suggest("category", "type"),
-            "status": suggest("status"),
-            "budget": suggest("budget", "budgetchf"),
-            "notes": suggest("notes", "expected_output"),
-            "start": suggest("start", "start_date"),
-            "end": suggest("end", "end_date"),
-            "weight": suggest("weight"),
+            "title": suggest("title", "name", "massnahme", "maßnahme", "aktion", "initiative", "kampagne", "projekt"),
+            "category": suggest("category", "type", "kategorie", "bereich", "thema", "channel", "kanal"),
+            "status": suggest("status", "phase", "workflow"),
+            "budget": suggest("budget", "budgetchf", "kosten", "betrag", "chf"),
+            "notes": suggest("notes", "expected_output", "beschreibung", "kommentar", "notiz", "bemerkung"),
+            "start": suggest("start", "start_date", "beginn", "von", "ab", "startdatum"),
+            "end": suggest("end", "end_date", "ende", "bis", "enddatum"),
+            "weight": suggest("weight", "gewicht", "prio", "priority"),
         }
 
     kind = (import_kind or "activities").strip().lower()
-    if kind not in {"activities", "crm"}:
+    if kind not in {"activities", "crm", "content", "budget"}:
         kind = "activities"
 
     if ctype in {"text/csv", "application/csv", "text/plain"} or name_lower.endswith(".csv"):
         text = content.decode("utf-8", errors="ignore")
         reader = csv.DictReader(io.StringIO(text))
         headers = reader.fieldnames or []
-        suggested = _suggest_mapping_crm(headers) if kind == "crm" else suggest_mapping(headers)
+        if kind == "crm":
+            suggested = _suggest_mapping_crm(headers)
+        elif kind == "content":
+            suggested = _suggest_mapping_content(headers)
+        elif kind == "budget":
+            suggested = _suggest_mapping_budget(headers)
+        else:
+            suggested = suggest_mapping(headers)
         cat_header = (suggested.get("category") if kind == "activities" else None)
         for i, row in enumerate(reader):
             if i < max_sample_rows:
@@ -566,29 +1007,21 @@ def preview_upload(
             if i >= max_scan_rows or len(category_values) >= max_unique_categories:
                 break
     elif name_lower.endswith(".xlsx") or ctype in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
-        try:
-            import openpyxl  # type: ignore
-        except Exception:
-            raise HTTPException(status_code=415, detail="Excel (.xlsx) not supported without openpyxl. Please upload CSV.")
-        wb = openpyxl.load_workbook(io.BytesIO(content))
-        ws = wb.active
-        first = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
-        headers = [str(v or "").strip() for v in first]
-        suggested = _suggest_mapping_crm(headers) if kind == "crm" else suggest_mapping(headers)
+        headers, parsed_rows = _extract_xlsx_table(content)
+        if kind == "crm":
+            suggested = _suggest_mapping_crm(headers)
+        elif kind == "content":
+            suggested = _suggest_mapping_content(headers)
+        elif kind == "budget":
+            suggested = _suggest_mapping_budget(headers)
+        else:
+            suggested = suggest_mapping(headers)
         cat_header = (suggested.get("category") if kind == "activities" else None)
-        cat_idx: Optional[int] = None
-        if cat_header and cat_header in headers:
-            try:
-                cat_idx = headers.index(cat_header)
-            except Exception:
-                cat_idx = None
-
-        for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True)):
+        for i, row in enumerate(parsed_rows):
             if i < max_sample_rows:
-                row = {headers[i2].strip(): (r[i2] if i2 is not None and i2 < len(r) else None) for i2 in range(len(headers))}
                 rows.append(row)
-            if cat_idx is not None and cat_idx < len(r):
-                v = r[cat_idx]
+            if cat_header:
+                v = row.get(cat_header)
                 if v not in (None, ""):
                     s = str(v).strip()
                     if s:
@@ -604,6 +1037,602 @@ def preview_upload(
         "suggested_mapping": suggested,
         **({"category_values": sorted(list(category_values))} if kind == "activities" else {}),
         "import_kind": kind,
+    }
+
+
+def _mask_value(v: Any) -> Any:
+    """
+    Light PII masking for AI analysis payloads.
+    Keeps structure while avoiding leaking real emails/phones.
+    """
+    if v is None:
+        return None
+    try:
+        s = str(v).strip()
+    except Exception:
+        return None
+    if not s:
+        return ""
+    s_low = s.lower()
+    if "@" in s and "." in s.split("@")[-1]:
+        return "<email>"
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if len(digits) >= 8 and any(ch in s for ch in ["+", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]):
+        # likely phone or id-like number
+        return "<number>"
+    if s_low.startswith("http://") or s_low.startswith("https://"):
+        # keep only hostname
+        try:
+            from urllib.parse import urlparse
+
+            host = urlparse(s).netloc
+            return f"https://{host}" if host else "<url>"
+        except Exception:
+            return "<url>"
+    # keep short strings, truncate long free-text
+    if len(s) > 240:
+        return s[:240] + "…"
+    return s
+
+
+def _compute_missingness(headers: List[str], rows: List[Dict[str, Any]]) -> Dict[str, float]:
+    out: Dict[str, float] = {}
+    if not headers:
+        return out
+    n = max(1, len(rows))
+    for h in headers[:80]:
+        miss = 0
+        for r in rows:
+            if _is_blankish(r.get(h)):
+                miss += 1
+        out[h] = miss / n
+    return out
+
+
+def _top_values(rows: List[Dict[str, Any]], header: str, limit: int = 8) -> List[Dict[str, Any]]:
+    from collections import Counter
+
+    c: Counter[str] = Counter()
+    for r in rows:
+        v = r.get(header)
+        if _is_blankish(v):
+            continue
+        s = str(v).strip()
+        if not s:
+            continue
+        c[s] += 1
+    return [{"value": k, "count": int(v)} for k, v in c.most_common(limit)]
+
+
+@router.post("/ai-analyze")
+async def ai_analyze_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    import_kind: Optional[str] = Form(default="activities"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Analyze a CSV/XLSX and suggest import mapping + clean rules + high-level insights.
+    Privacy: we only send masked sample rows (not the full file) to OpenAI.
+    """
+    enforce_rate_limit(request, scope="uploads_ai_analyze", limit=12, window_seconds=60)
+
+    settings = get_settings()
+    content = file.file.read()
+    ctype = (file.content_type or "").lower()
+    name_lower = (file.filename or "").lower()
+
+    # Parse similar to preview (best-effort)
+    headers: List[str] = []
+    parsed_rows: List[Dict[str, Any]] = []
+    sheet_name: Optional[str] = None
+    if ctype in {"text/csv", "application/csv", "text/plain"} or name_lower.endswith(".csv"):
+        text = content.decode("utf-8", errors="ignore")
+        reader = csv.DictReader(io.StringIO(text))
+        headers = reader.fieldnames or []
+        for i, row in enumerate(reader):
+            parsed_rows.append(row)
+            if i >= 4999:
+                break
+    elif name_lower.endswith(".xlsx") or ctype in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
+        tables = _extract_xlsx_tables(content)
+        # Heuristic: pick the largest table for analysis
+        best = max(tables, key=lambda t: len(t.get("rows") or []))
+        sheet_name = str(best.get("sheet") or "")
+        headers = list(best.get("headers") or [])
+        parsed_rows = list(best.get("rows") or [])
+    else:
+        raise HTTPException(status_code=415, detail="Unsupported file type. Upload CSV or XLSX")
+
+    kind = (import_kind or "activities").strip().lower()
+    if kind not in {"activities", "crm", "content", "budget"}:
+        kind = "activities"
+
+    # Baseline deterministic suggestions
+    if kind == "crm":
+        base_mapping = _suggest_mapping_crm(headers)
+    elif kind == "content":
+        base_mapping = _suggest_mapping_content(headers)
+    elif kind == "budget":
+        base_mapping = _suggest_mapping_budget(headers)
+    else:
+        # reuse preview's local heuristic
+        def _s(headers_in: List[str]) -> Dict[str, Optional[str]]:
+            headers_l = [h.lower().replace(" ", "_") for h in headers_in]
+            def suggest(*names: str) -> Optional[str]:
+                for n in names:
+                    if n in headers_l:
+                        return headers_in[headers_l.index(n)]
+                return None
+            return {
+                "title": suggest("title", "name", "massnahme", "maßnahme", "aktion", "initiative", "kampagne", "projekt"),
+                "category": suggest("category", "type", "kategorie", "bereich", "thema", "channel", "kanal"),
+                "status": suggest("status", "phase", "workflow"),
+                "budget": suggest("budget", "budgetchf", "kosten", "betrag", "chf"),
+                "notes": suggest("notes", "expected_output", "beschreibung", "kommentar", "notiz", "bemerkung"),
+                "start": suggest("start", "start_date", "beginn", "von", "ab", "startdatum"),
+                "end": suggest("end", "end_date", "ende", "bis", "enddatum"),
+                "weight": suggest("weight", "gewicht", "prio", "priority"),
+            }
+        base_mapping = _s(headers)
+
+    # Build masked sample payload
+    sample_n = min(25, len(parsed_rows))
+    sampled = parsed_rows[:sample_n]
+    masked_samples = []
+    for r in sampled:
+        masked_samples.append({h: _mask_value(r.get(h)) for h in headers[:80]})
+
+    missingness = _compute_missingness(headers, sampled) if sampled else {}
+    top_cats = []
+    # best-effort: detect category-like header for insights
+    for h in headers[:80]:
+        hn = _norm_header(h)
+        if hn in {"category", "kategorie", "type", "bereich", "kanal", "channel"}:
+            top_cats = _top_values(sampled, h, limit=6)
+            break
+
+    # Fallback (no OpenAI): return deterministic mapping + simple insights
+    if not settings.openai_api_key:
+        return {
+            "ok": True,
+            "provider": "fallback",
+            "kind": kind,
+            "recommended_kinds": [{"kind": kind, "score": 0.6, "reason": "Regel-basiert (kein OPENAI_API_KEY konfiguriert)."}],
+            "suggested_mapping": base_mapping,
+            "confidence": {k: (0.7 if v else 0.0) for k, v in base_mapping.items()},
+            "clean_rules": [
+                "Leere Werte wie '—'/'n/a' ignorieren",
+                "Zahlen: 1'234.50 und 1.234,50 unterstützen",
+                "Datumsfelder: YYYY-MM-DD und DD.MM.YYYY unterstützen",
+            ],
+            "insights": {
+                "rows_scanned": len(parsed_rows),
+                "rows_sampled": sample_n,
+                "missingness": {k: float(v) for k, v in list(missingness.items())[:25]},
+                "top_categories": top_cats,
+                "notes": ["AI ist optional. Für bessere Vorschläge: OPENAI_API_KEY setzen."],
+            },
+        }
+
+    # OpenAI: ask for mapping + clean rules + module recommendations
+    system = (
+        "Du bist ein Daten-Import Assistent für eine Marketing-CRM Plattform. "
+        "Du bekommst Tabellen-Header und maskierte Beispielzeilen. "
+        "Deine Aufgabe: 1) empfehle Import-Modus (activities|crm|content|budget) "
+        "2) schlage ein Mapping für den aktuellen Modus vor (field->headerName oder null) "
+        "3) gib Clean-Regeln als kurze Liste 4) gib kurze Insights.\n\n"
+        "Antworte ausschließlich als JSON mit exakt diesen Keys:\n"
+        "{"
+        "\"recommended_kinds\": [{\"kind\":\"activities|crm|content|budget\",\"score\":0..1,\"reason\":\"...\"}],"
+        "\"suggested_mapping\": {\"field\": \"header\"|null},"
+        "\"confidence\": {\"field\": 0..1},"
+        "\"clean_rules\": [\"...\"],"
+        "\"insights\": {\"notes\":[\"...\"],\"top_categories\":[{\"value\":\"...\",\"count\":n}],\"budget_range_chf\":{\"min\":n,\"max\":n},\"period_guess\":{\"from\":\"...\",\"to\":\"...\"}}"
+        "}"
+        "Kein Markdown, kein zusätzlicher Text."
+    )
+
+    user_msg = {
+        "filename": file.filename,
+        "sheet": sheet_name,
+        "current_kind": kind,
+        "headers": headers[:120],
+        "samples": masked_samples,
+        "baseline_mapping": base_mapping,
+        "missingness": {k: float(v) for k, v in list(missingness.items())[:40]},
+        "top_categories": top_cats,
+    }
+
+    payload = {
+        "model": settings.openai_model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(user_msg, ensure_ascii=False)},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 900,
+    }
+    headers_req = {"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=25) as client:
+            r = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers_req)
+            if r.status_code >= 400:
+                raise Exception("openai_error")
+            data = r.json()
+            reply = data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+            obj = json.loads(reply)
+
+            suggested_mapping = obj.get("suggested_mapping") or {}
+            confidence = obj.get("confidence") or {}
+            clean_rules = obj.get("clean_rules") or []
+            insights = obj.get("insights") or {}
+            recommended_kinds = obj.get("recommended_kinds") or [{"kind": kind, "score": 0.5, "reason": "AI"}]
+
+            merged_mapping = dict(base_mapping)
+            for k2, v2 in dict(suggested_mapping).items():
+                if k2 in merged_mapping:
+                    merged_mapping[k2] = v2
+
+            return {
+                "ok": True,
+                "provider": "openai",
+                "kind": kind,
+                "recommended_kinds": recommended_kinds,
+                "suggested_mapping": merged_mapping,
+                "confidence": confidence,
+                "clean_rules": clean_rules,
+                "insights": {
+                    "rows_scanned": len(parsed_rows),
+                    "rows_sampled": sample_n,
+                    "missingness": {k: float(v) for k, v in list(missingness.items())[:25]},
+                    **insights,
+                },
+            }
+    except Exception:
+        return {
+            "ok": True,
+            "provider": "fallback",
+            "kind": kind,
+            "recommended_kinds": [{"kind": kind, "score": 0.55, "reason": "Fallback (AI nicht erreichbar)."}],
+            "suggested_mapping": base_mapping,
+            "confidence": {k: (0.7 if v else 0.0) for k, v in base_mapping.items()},
+            "clean_rules": [
+                "Leere Werte wie '—'/'n/a' ignorieren",
+                "Zahlen: 1'234.50 und 1.234,50 unterstützen",
+                "Datumsfelder: YYYY-MM-DD und DD.MM.YYYY unterstützen",
+            ],
+            "insights": {
+                "rows_scanned": len(parsed_rows),
+                "rows_sampled": sample_n,
+                "missingness": {k: float(v) for k, v in list(missingness.items())[:25]},
+                "top_categories": top_cats,
+                "notes": ["AI Analyse war nicht verfügbar, Mapping basiert auf Regeln."],
+            },
+        }
+
+
+@router.post("/smart-import")
+def smart_import_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    """
+    Smart import for mixed tables:
+    - parses CSV/XLSX (supports multiple sheets, best-effort 1 table per sheet)
+    - creates Activities, ContentItems, and Budget/KPI targets when matching columns exist
+    - does NOT require manual mapping
+    """
+    enforce_rate_limit(request, scope="uploads_smart_import", limit=8, window_seconds=60)
+    settings = get_settings()
+    org = get_org_id(current_user)
+
+    content = file.file.read() or b""
+    if len(content) > settings.upload_max_bytes:
+        raise HTTPException(status_code=413, detail=f"File too large for current plan (max {settings.upload_max_bytes} bytes).")
+
+    # Store upload bytes (same behavior as /uploads)
+    upload = Upload(
+        original_name=file.filename or "file",
+        file_type=file.content_type or "",
+        file_size=len(content),
+        organization_id=org,
+        owner_id=current_user.id,
+        sha256=hashlib.sha256(content).hexdigest(),
+        stored_in_db=bool(settings.upload_store_in_db),
+    )
+    if settings.upload_store_in_db:
+        upload.content = content
+    db.add(upload)
+    db.commit()
+    db.refresh(upload)
+
+    ctype = (file.content_type or "").lower()
+    name_lower = (file.filename or "").lower()
+
+    tables: List[Dict[str, Any]] = []
+    if ctype in {"text/csv", "application/csv", "text/plain"} or name_lower.endswith(".csv"):
+        text = content.decode("utf-8", errors="ignore")
+        reader = csv.DictReader(io.StringIO(text))
+        headers = reader.fieldnames or []
+        rows = []
+        for i, row in enumerate(reader):
+            rows.append(row)
+            if i >= 4999:
+                break
+        tables = [{"sheet": "CSV", "headers": headers, "rows": rows}]
+    elif name_lower.endswith(".xlsx") or ctype in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
+        tables = _extract_xlsx_tables(content)
+    else:
+        raise HTTPException(status_code=415, detail="Unsupported file type. Upload CSV or XLSX")
+
+    # Suggested mappings per module (per table)
+    totals = {
+        "activities_created": 0,
+        "activities_skipped": 0,
+        "content_created": 0,
+        "content_skipped": 0,
+        "budget_rows_applied": 0,
+        "budget_rows_skipped": 0,
+    }
+
+    default_period = _current_period()
+
+    for t in tables:
+        headers = list(t.get("headers") or [])
+        rows = list(t.get("rows") or [])
+        if not headers or not rows:
+            continue
+
+        map_act = {
+            **{
+                "title": None,
+                "category": None,
+                "status": None,
+                "budget": None,
+                "notes": None,
+                "start": None,
+                "end": None,
+                "weight": None,
+            },
+            **(  # local heuristic
+                (lambda hs: {
+                    "title": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
+                              next((hs[hsl.index(n)] for n in ["title","name","massnahme","maßnahme","aktion","initiative","kampagne","projekt"] if n in hsl), None))(),
+                    "category": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
+                                 next((hs[hsl.index(n)] for n in ["category","type","kategorie","bereich","thema","channel","kanal"] if n in hsl), None))(),
+                    "status": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
+                               next((hs[hsl.index(n)] for n in ["status","phase","workflow"] if n in hsl), None))(),
+                    "budget": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
+                               next((hs[hsl.index(n)] for n in ["budget","budgetchf","kosten","betrag","chf"] if n in hsl), None))(),
+                    "notes": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
+                              next((hs[hsl.index(n)] for n in ["notes","expected_output","beschreibung","kommentar","notiz","bemerkung"] if n in hsl), None))(),
+                    "start": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
+                              next((hs[hsl.index(n)] for n in ["start","start_date","beginn","von","ab","startdatum"] if n in hsl), None))(),
+                    "end": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
+                            next((hs[hsl.index(n)] for n in ["end","end_date","ende","bis","enddatum"] if n in hsl), None))(),
+                    "weight": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
+                               next((hs[hsl.index(n)] for n in ["weight","gewicht","prio","priority"] if n in hsl), None))(),
+                })(headers)
+            ),
+        }
+        map_content = _suggest_mapping_content(headers)
+        map_budget = _suggest_mapping_budget(headers)
+
+        def cell(row: Dict[str, Any], header: Optional[str]) -> Any:
+            if not header:
+                return None
+            return row.get(header)
+
+        for row in rows:
+            # --- Budget rows ---
+            try:
+                per_raw = cell(row, map_budget.get("period")) or default_period
+                period = str(per_raw).strip() if per_raw not in (None, "") else default_period
+                if not period:
+                    period = default_period
+                cat_raw = cell(row, map_budget.get("category"))
+                amt_raw = cell(row, map_budget.get("amount"))
+                metric_raw = cell(row, map_budget.get("metric"))
+                target_raw = cell(row, map_budget.get("target"))
+                unit_raw = cell(row, map_budget.get("unit"))
+
+                did_budget = False
+                amount = _parse_float(amt_raw)
+                if cat_raw not in (None, "") and amount is not None:
+                    category = _norm_budget_category(cat_raw)
+                    existing = (
+                        db.query(BudgetTarget)
+                        .filter(BudgetTarget.organization_id == org, BudgetTarget.period == period, BudgetTarget.category == category)
+                        .first()
+                    )
+                    if existing:
+                        existing.amount_chf = float(amount)
+                        db.add(existing)
+                    else:
+                        db.add(BudgetTarget(organization_id=org, period=period, category=category, amount_chf=float(amount)))
+                    did_budget = True
+
+                target_val = _parse_float(target_raw)
+                if metric_raw not in (None, "") and target_val is not None:
+                    m = str(metric_raw).strip()
+                    if m:
+                        existing_k = (
+                            db.query(KpiTarget)
+                            .filter(KpiTarget.organization_id == org, KpiTarget.period == period, KpiTarget.metric == m)
+                            .first()
+                        )
+                        unit = str(unit_raw).strip()[:20] if unit_raw not in (None, "") else None
+                        if existing_k:
+                            existing_k.target_value = float(target_val)
+                            if unit:
+                                existing_k.unit = unit
+                            db.add(existing_k)
+                        else:
+                            db.add(KpiTarget(organization_id=org, period=period, metric=m, target_value=float(target_val), unit=unit))
+                        did_budget = True
+
+                if did_budget:
+                    totals["budget_rows_applied"] += 1
+                else:
+                    totals["budget_rows_skipped"] += 1
+            except Exception:
+                totals["budget_rows_skipped"] += 1
+
+            # --- Content rows ---
+            try:
+                c_title = cell(row, map_content.get("title"))
+                c_channel = cell(row, map_content.get("channel"))
+                c_scheduled = cell(row, map_content.get("scheduled_at"))
+                c_due = cell(row, map_content.get("due_at"))
+                c_body = cell(row, map_content.get("body"))
+                c_brief = cell(row, map_content.get("brief"))
+
+                # create only if looks like an editorial row (title + one of these)
+                if not _is_blankish(c_title) and (
+                    (not _is_blankish(c_channel))
+                    or (not _is_blankish(c_scheduled))
+                    or (not _is_blankish(c_due))
+                    or (not _is_blankish(c_body))
+                    or (not _is_blankish(c_brief))
+                ):
+                    title = str(c_title).strip()
+                    channel = str(c_channel or "Website").strip()[:100]
+                    fmt = cell(row, map_content.get("format"))
+                    fmt_s = str(fmt).strip()[:100] if not _is_blankish(fmt) else None
+
+                    raw_status = str(cell(row, map_content.get("status")) or "").strip().lower()
+                    status_map = {
+                        "idea": ContentItemStatus.IDEA,
+                        "idee": ContentItemStatus.IDEA,
+                        "draft": ContentItemStatus.DRAFT,
+                        "entwurf": ContentItemStatus.DRAFT,
+                        "review": ContentItemStatus.REVIEW,
+                        "prüfung": ContentItemStatus.REVIEW,
+                        "pruefung": ContentItemStatus.REVIEW,
+                        "approved": ContentItemStatus.APPROVED,
+                        "freigegeben": ContentItemStatus.APPROVED,
+                        "scheduled": ContentItemStatus.SCHEDULED,
+                        "geplant": ContentItemStatus.SCHEDULED,
+                        "published": ContentItemStatus.PUBLISHED,
+                        "veröffentlicht": ContentItemStatus.PUBLISHED,
+                        "veroeffentlicht": ContentItemStatus.PUBLISHED,
+                        "archived": ContentItemStatus.ARCHIVED,
+                        "archiviert": ContentItemStatus.ARCHIVED,
+                    }
+                    status = status_map.get(raw_status, ContentItemStatus.DRAFT)
+
+                    due_at = _parse_datetime_loose(cell(row, map_content.get("due_at")))
+                    scheduled_at = _parse_datetime_loose(cell(row, map_content.get("scheduled_at")))
+                    tags = _parse_tags(cell(row, map_content.get("tags")))
+                    brief = cell(row, map_content.get("brief"))
+                    body = cell(row, map_content.get("body"))
+                    language = cell(row, map_content.get("language")) or "de"
+                    tone = cell(row, map_content.get("tone"))
+
+                    owner_id = current_user.id
+                    owner_email = cell(row, map_content.get("owner_email"))
+                    if not _is_blankish(owner_email):
+                        try:
+                            oe = str(owner_email).strip().lower()
+                            u = db.query(User).filter(User.organization_id == org, User.email == oe).first()
+                            if u:
+                                owner_id = u.id
+                        except Exception:
+                            pass
+
+                    db.add(
+                        ContentItem(
+                            organization_id=org,
+                            owner_id=owner_id,
+                            title=title[:255],
+                            channel=channel,
+                            format=fmt_s,
+                            status=status,
+                            tags=tags,
+                            brief=str(brief).strip() if not _is_blankish(brief) else None,
+                            body=str(body).strip() if not _is_blankish(body) else None,
+                            language=str(language).strip()[:10] if not _is_blankish(language) else "de",
+                            tone=str(tone).strip()[:50] if not _is_blankish(tone) else None,
+                            due_at=due_at,
+                            scheduled_at=scheduled_at,
+                        )
+                    )
+                    totals["content_created"] += 1
+                else:
+                    totals["content_skipped"] += 1
+            except Exception:
+                totals["content_skipped"] += 1
+
+            # --- Activities rows ---
+            try:
+                a_title = cell(row, map_act.get("title"))
+                if _is_blankish(a_title):
+                    totals["activities_skipped"] += 1
+                else:
+                    # create only if looks like an activity row (has at least category/status/budget/date)
+                    cat = cell(row, map_act.get("category"))
+                    bud = cell(row, map_act.get("budget"))
+                    st = cell(row, map_act.get("status"))
+                    sd = cell(row, map_act.get("start"))
+                    ed = cell(row, map_act.get("end"))
+                    if (
+                        not _is_blankish(cat)
+                        or not _is_blankish(bud)
+                        or not _is_blankish(st)
+                        or not _is_blankish(sd)
+                        or not _is_blankish(ed)
+                    ):
+                        title = str(a_title).strip() or "Untitled"
+                        category = str(cat or "VERKAUFSFOERDERUNG").strip()
+                        status_raw = str(st or "ACTIVE").strip()
+                        budget = _parse_float(bud)
+                        weight = _parse_float(cell(row, map_act.get("weight")))
+                        notes = cell(row, map_act.get("notes"))
+                        start = _parse_datetime_loose(sd)
+                        end = _parse_datetime_loose(ed)
+
+                        db.add(
+                            Activity(
+                                title=title,
+                                type=_map_category_to_activity_type(category),
+                                category_name=category,
+                                status=status_raw.upper(),
+                                budget=budget,
+                                weight=weight,
+                                expected_output=str(notes).strip() if not _is_blankish(notes) else None,
+                                start_date=start.date() if hasattr(start, "date") and start else None,
+                                end_date=end.date() if hasattr(end, "date") and end else None,
+                                owner_id=current_user.id,
+                                organization_id=org,
+                            )
+                        )
+                        totals["activities_created"] += 1
+                    else:
+                        totals["activities_skipped"] += 1
+            except Exception:
+                totals["activities_skipped"] += 1
+
+        db.commit()
+
+    # Record a job for visibility
+    job = Job(
+        rq_id=f"local-smart-{upload.id}",
+        type="import_smart",
+        status="finished",
+        result=json.dumps(totals),
+        organization_id=org,
+    )
+    db.add(job)
+    db.commit()
+
+    return {
+        "ok": True,
+        "upload_id": int(upload.id),
+        "import": totals,
+        "tables": [{"sheet": t.get("sheet"), "rows": len(t.get("rows") or []), "cols": len(t.get("headers") or [])} for t in tables],
     }
 
 

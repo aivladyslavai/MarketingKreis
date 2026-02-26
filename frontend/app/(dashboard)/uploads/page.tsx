@@ -33,7 +33,7 @@ import { GlassSelect } from "@/components/ui/glass-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import RadialCircle from "@/components/circle/radial-circle"
-import { useJobsApi, useUploadsApi } from "@/hooks/use-uploads-api"
+import { useJobsApi, useUploadsApi, type AiAnalyzeResult, type ImportKind } from "@/hooks/use-uploads-api"
 import { useUserCategories } from "@/hooks/use-user-categories"
 
 function formatBytes(bytes: number) {
@@ -153,7 +153,10 @@ export default function UploadsPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
   const [previewLoading, setPreviewLoading] = React.useState(false)
-  const [importKind, setImportKind] = React.useState<"activities" | "crm">("activities")
+  const [importKind, setImportKind] = React.useState<ImportKind>("activities")
+  const [aiLoading, setAiLoading] = React.useState(false)
+  const [aiResult, setAiResult] = React.useState<AiAnalyzeResult | null>(null)
+  const [smartLoading, setSmartLoading] = React.useState(false)
   const [preview, setPreview] = React.useState<{
     headers: string[]
     samples: any[]
@@ -205,7 +208,7 @@ export default function UploadsPage() {
   const [isSmall, setIsSmall] = React.useState(false)
   const [showAllPreviewCols, setShowAllPreviewCols] = React.useState(false)
 
-  const { uploads, isLoading, refresh, uploadFile, previewFile } = useUploadsApi()
+  const { uploads, isLoading, refresh, uploadFile, previewFile, aiAnalyzeFile, smartImportFile } = useUploadsApi()
   const { jobs, isLoading: jobsLoading, refresh: refreshJobs } = useJobsApi()
   const { categories: userCategories } = useUserCategories()
 
@@ -247,6 +250,7 @@ export default function UploadsPage() {
     async (file: File) => {
       setShowAllPreviewCols(false)
       setPreview(null)
+      setAiResult(null)
       setCategoryValueMap({})
       setBulkCategoryTarget("")
       setError(null)
@@ -267,6 +271,24 @@ export default function UploadsPage() {
     },
     [previewFile, importKind, crmMappingDefaults, activityMappingDefaults],
   )
+
+  const runAiAnalyze = React.useCallback(async () => {
+    if (!selectedFile) return
+    setAiLoading(true)
+    setError(null)
+    try {
+      const res = await aiAnalyzeFile(selectedFile, importKind)
+      setAiResult(res)
+      // If AI suggests mapping for current kind, apply it on top of defaults
+      if (res?.suggested_mapping) {
+        setMapping((prev) => ({ ...prev, ...res.suggested_mapping }))
+      }
+    } catch (e: any) {
+      setError(e?.message || "AI Analyse fehlgeschlagen")
+    } finally {
+      setAiLoading(false)
+    }
+  }, [selectedFile, aiAnalyzeFile, importKind])
 
   const selectFile = React.useCallback(
     async (file: File) => {
@@ -406,7 +428,9 @@ export default function UploadsPage() {
     (selectedIsTabular
       ? importKind === "crm"
         ? Boolean((mapping as any).company_name) // at least a company key
-        : Boolean((mapping as any).title) && (!categoryMappingRequired || categoryMappingOk)
+        : importKind === "budget"
+          ? true // budget can be imported via category+amount or metric+target; allow mapping-free imports
+          : Boolean((mapping as any).title) && (!categoryMappingRequired || categoryMappingOk)
       : true)
 
   const categoryMappingRows = React.useMemo(() => {
@@ -498,6 +522,33 @@ export default function UploadsPage() {
       setError(e?.message || (isTab ? "Import fehlgeschlagen" : "Upload fehlgeschlagen"))
     } finally {
       setUploading(false)
+    }
+  }
+
+  const doSmartImport = async () => {
+    if (!selectedFile) return
+    if (!selectedIsTabular) return
+    setError(null)
+    setSmartLoading(true)
+    try {
+      const res = await smartImportFile(selectedFile)
+      setSelectedFile(null)
+      setPreview(null)
+      setAiResult(null)
+      setMapping(importKind === "crm" ? crmMappingDefaults : activityMappingDefaults)
+      setCategoryValueMap({})
+      setBulkCategoryTarget("")
+      await Promise.all([refresh(), refreshJobs()])
+      // kick other pages to refetch
+      try {
+        // best-effort: these events exist in parts of the app that listen to sync
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        res?.import
+      } catch {}
+    } catch (e: any) {
+      setError(e?.message || "Smart Import fehlgeschlagen")
+    } finally {
+      setSmartLoading(false)
     }
   }
 
@@ -899,6 +950,8 @@ export default function UploadsPage() {
                       options={[
                         { value: "activities", label: "Aktivitäten (Marketing Circle)" },
                         { value: "crm", label: "CRM (Companies/Contacts/Deals)" },
+                        { value: "content", label: "Content Hub (Editorial Plan)" },
+                        { value: "budget", label: "Budget & KPI Targets" },
                       ]}
                       className="h-9"
                     />
@@ -907,18 +960,41 @@ export default function UploadsPage() {
               </div>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              {selectedIsTabular && (
+                <Button
+                  variant="outline"
+                  className="glass-card w-full sm:w-auto"
+                  onClick={runAiAnalyze}
+                  disabled={uploading || previewLoading || aiLoading || !selectedFile}
+                  title="AI analysiert die Tabelle und schlägt Mapping + Clean-Regeln vor"
+                >
+                  {aiLoading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                  AI analysieren
+                </Button>
+              )}
+              {selectedIsTabular && (
+                <Button
+                  className="bg-gradient-to-r from-fuchsia-600 to-kaboom-red hover:from-fuchsia-500 hover:to-red-600 w-full sm:w-auto"
+                  onClick={doSmartImport}
+                  disabled={uploading || previewLoading || smartLoading || !selectedFile}
+                  title="Smart Import: verteilt gemischte Tabellen automatisch auf Aktivitäten, Content und Budget"
+                >
+                  {smartLoading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <ArrowUpRight className="h-4 w-4 mr-2" />}
+                  Smart Import
+                </Button>
+              )}
               <Button
                 variant="outline"
                 className="glass-card w-full sm:w-auto"
                 onClick={onPick}
-                disabled={uploading || previewLoading}
+                disabled={uploading || previewLoading || smartLoading}
               >
                 Datei wählen
               </Button>
               <Button
                 className="bg-kaboom-red hover:bg-red-600 w-full sm:w-auto"
                 onClick={doImport}
-                disabled={uploading || previewLoading || !canProceed}
+                disabled={uploading || previewLoading || smartLoading || !canProceed}
                 title={
                   !canProceed
                     ? selectedIsTabular
@@ -939,11 +1015,74 @@ export default function UploadsPage() {
 
           {preview && (
             <div className="mt-6 space-y-4">
+              {aiResult && (
+                <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-fuchsia-500/10 via-blue-500/10 to-emerald-500/10 p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-fuchsia-300" />
+                        AI Import‑Analyse
+                        <Badge className="text-[10px]">{aiResult.provider}</Badge>
+                      </div>
+                      <div className="text-xs text-slate-600 dark:text-slate-400">
+                        Vorschlag: <span className="font-semibold">{aiResult.recommended_kinds?.[0]?.kind || aiResult.kind}</span>{" "}
+                        {aiResult.recommended_kinds?.[0]?.reason ? (
+                          <span className="text-slate-500">— {aiResult.recommended_kinds[0].reason}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    {aiResult.recommended_kinds?.[0]?.kind && aiResult.recommended_kinds[0].kind !== importKind && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="glass-card"
+                        onClick={() => setImportKind(aiResult.recommended_kinds[0].kind)}
+                      >
+                        Modus übernehmen
+                      </Button>
+                    )}
+                  </div>
+
+                  {(aiResult.clean_rules?.length || aiResult.insights?.notes?.length) ? (
+                    <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      {aiResult.clean_rules?.length ? (
+                        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                          <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">Clean‑Regeln</div>
+                          <ul className="mt-2 space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                            {aiResult.clean_rules.slice(0, 6).map((r, idx) => (
+                              <li key={idx} className="flex gap-2">
+                                <span className="text-slate-400">•</span>
+                                <span className="break-words">{r}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {aiResult.insights?.notes?.length ? (
+                        <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                          <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">Insights</div>
+                          <ul className="mt-2 space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                            {aiResult.insights.notes.slice(0, 6).map((r, idx) => (
+                              <li key={idx} className="flex gap-2">
+                                <span className="text-slate-400">•</span>
+                                <span className="break-words">{r}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
               <div className="flex items-center justify-between gap-2" data-tour="uploads-mapping">
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Mapping</div>
                 <div className="text-xs text-slate-600 dark:text-slate-400">
                   Pflicht:{" "}
-                  <span className="font-semibold">{importKind === "crm" ? "company_name" : "title"}</span>
+                  <span className="font-semibold">
+                    {importKind === "crm" ? "company_name" : importKind === "budget" ? "(category+amount) oder (metric+target)" : "title"}
+                  </span>
                 </div>
               </div>
 

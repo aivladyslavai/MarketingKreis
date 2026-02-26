@@ -21,6 +21,28 @@ export interface JobItem {
   progress?: number
 }
 
+export type ImportKind = "activities" | "crm" | "content" | "budget"
+
+export interface AiAnalyzeResult {
+  ok: boolean
+  provider: "openai" | "fallback"
+  kind: ImportKind
+  recommended_kinds: Array<{ kind: ImportKind; score: number; reason: string }>
+  suggested_mapping: Record<string, string | null>
+  confidence: Record<string, number>
+  clean_rules: string[]
+  insights: {
+    rows_scanned: number
+    rows_sampled: number
+    header_row_detected?: boolean
+    period_guess?: { from?: string; to?: string }
+    budget_range_chf?: { min?: number; max?: number }
+    top_categories?: Array<{ value: string; count: number }>
+    missingness?: Record<string, number>
+    notes?: string[]
+  }
+}
+
 export function useUploadsApi() {
   const { data, isLoading, error, mutate } = useSWR('/uploads', async (url) => {
     const res = await authFetch(url)
@@ -42,7 +64,7 @@ export function useUploadsApi() {
     error,
     previewFile: async (
       file: File,
-      importKind?: "activities" | "crm",
+      importKind?: ImportKind,
     ): Promise<{
       headers: string[]
       samples: any[]
@@ -57,11 +79,60 @@ export function useUploadsApi() {
       if (!res.ok) throw new Error(await res.text())
       return await res.json()
     },
+    aiAnalyzeFile: async (
+      file: File,
+      importKind?: ImportKind,
+    ): Promise<AiAnalyzeResult> => {
+      const fd = new FormData()
+      fd.append('file', file)
+      if (importKind) fd.append('import_kind', importKind)
+      const res = await fetch(`${apiBase}/uploads/ai-analyze`, { method: 'POST', body: fd, credentials: 'include' })
+      if (!res.ok) {
+        const text = await res.text().catch(() => "")
+        let msg = res.statusText
+        if (text) {
+          try {
+            const j = JSON.parse(text)
+            msg = (j as any)?.detail || (j as any)?.error || msg
+          } catch {
+            msg = text || msg
+          }
+        }
+        throw new Error(msg)
+      }
+      return await res.json()
+    },
+    smartImportFile: async (
+      file: File,
+    ): Promise<{
+      ok: boolean
+      upload_id: number
+      import: Record<string, number>
+      tables: Array<{ sheet: string; rows: number; cols: number }>
+    }> => {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`${apiBase}/uploads/smart-import`, { method: 'POST', body: fd, credentials: 'include' })
+      if (!res.ok) {
+        const text = await res.text().catch(() => "")
+        let msg = res.statusText
+        if (text) {
+          try {
+            const j = JSON.parse(text)
+            msg = (j as any)?.detail || (j as any)?.error || msg
+          } catch {
+            msg = text || msg
+          }
+        }
+        throw new Error(msg)
+      }
+      return await res.json()
+    },
     uploadFile: async (
       file: File,
       onProgress?: (p: number) => void,
       mapping?: Record<string, string | null>,
-      importKind?: "activities" | "crm",
+      importKind?: ImportKind,
     ) => {
       const fd = new FormData()
       fd.append('file', file)
@@ -96,6 +167,12 @@ export function useUploadsApi() {
           }
           if ((importKind || "activities") === "crm") {
             sync.emit('crm:companies:changed')
+          }
+          if ((importKind || "activities") === "content") {
+            sync.emit('content:items:changed')
+          }
+          if ((importKind || "activities") === "budget") {
+            sync.emit('budget:changed')
           }
         }
       } catch {}
