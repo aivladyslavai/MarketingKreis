@@ -1085,6 +1085,41 @@ def _mask_value(v: Any) -> Any:
     return s
 
 
+def _safe_json_from_model_reply(reply: str) -> Dict[str, Any]:
+    """
+    OpenAI may return JSON wrapped in code fences or with surrounding text.
+    Extract a JSON object robustly.
+    """
+    s = (reply or "").strip()
+    if not s:
+        raise ValueError("empty_reply")
+
+    # Strip common ```json ... ``` wrappers
+    if s.startswith("```"):
+        lines = s.split("\n")
+        if len(lines) >= 2:
+            lines = lines[1:]
+        s = "\n".join(lines)
+        if s.endswith("```"):
+            s = s[:-3]
+        s = s.strip()
+
+    try:
+        obj = json.loads(s)
+        if isinstance(obj, dict):
+            return obj
+        raise ValueError("reply_not_object")
+    except Exception:
+        i = s.find("{")
+        j = s.rfind("}")
+        if i >= 0 and j > i:
+            cand = s[i : j + 1]
+            obj2 = json.loads(cand)
+            if isinstance(obj2, dict):
+                return obj2
+        raise
+
+
 def _compute_missingness(headers: List[str], rows: List[Dict[str, Any]]) -> Dict[str, float]:
     out: Dict[str, float] = {}
     if not headers:
@@ -1518,6 +1553,7 @@ async def ai_analyze_upload(
         ],
         "temperature": 0.2,
         "max_tokens": 900,
+        "response_format": {"type": "json_object"},
     }
     api_key = (settings.openai_api_key or "").strip()
     if not api_key:
@@ -1547,14 +1583,22 @@ async def ai_analyze_upload(
 
     headers_req = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=35) as client:
+        async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers_req)
+            if r.status_code == 400:
+                # Some models may not support response_format. Retry once without it.
+                payload2 = dict(payload)
+                payload2.pop("response_format", None)
+                r = await client.post("https://api.openai.com/v1/chat/completions", json=payload2, headers=headers_req)
             if r.status_code >= 400:
                 # Avoid leaking sensitive details; include only status and a short hint.
                 raise RuntimeError(f"openai_http_{r.status_code}")
             data = r.json()
             reply = data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
-            obj = json.loads(reply)
+            try:
+                obj = _safe_json_from_model_reply(reply)
+            except Exception:
+                raise RuntimeError("openai_invalid_json")
 
             suggested_mapping = obj.get("suggested_mapping") or {}
             confidence = obj.get("confidence") or {}
@@ -1589,10 +1633,16 @@ async def ai_analyze_upload(
             if "openai_http_" in msg:
                 code = msg.split("openai_http_")[-1].strip().split()[0]
                 reason = f"OpenAI Anfrage fehlgeschlagen (HTTP {code}). Prüfe OPENAI_API_KEY/Model/Quota."
+            elif "openai_invalid_json" in msg:
+                reason = "OpenAI Antwort war kein gültiges JSON. Bitte erneut versuchen (oder Modell wechseln)."
+            elif isinstance(e, json.JSONDecodeError):
+                reason = "OpenAI Antwort konnte nicht als JSON gelesen werden (Decode-Fehler)."
             elif isinstance(e, httpx.TimeoutException):
                 reason = "OpenAI Timeout. Bitte später erneut versuchen oder Timeout erhöhen."
             elif isinstance(e, httpx.ConnectError):
                 reason = "OpenAI Connection Error (Netzwerk/DNS)."
+            elif isinstance(e, httpx.HTTPError):
+                reason = "OpenAI Request Error (Transport/Netzwerk)."
         except Exception:
             pass
         return {
@@ -1614,7 +1664,7 @@ async def ai_analyze_upload(
                 "group_counts": group.get("counts"),
                 "missingness": {k: float(v) for k, v in list(missingness.items())[:25]},
                 "top_categories": top_cats,
-                "notes": (anomaly_notes or []) + [reason],
+                "notes": (anomaly_notes or []) + [reason, f"Diag: {type(e).__name__}"],
                 "column_stats": stats.get("columns"),
             },
         }
