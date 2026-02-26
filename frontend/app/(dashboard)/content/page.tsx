@@ -2573,21 +2573,176 @@ function ContentPageInner() {
             </TabsContent>
 
             <TabsContent value="tasks" className="space-y-2">
-              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <div className="text-sm font-semibold text-slate-100">Task Board</div>
-                <div className="mt-1 text-xs text-slate-400">Das Task Board befindet sich weiter unten auf der Seite.</div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3 glass-card"
-                  onClick={() => {
-                    const el = document.getElementById("mk-task-board")
-                    el?.scrollIntoView({ behavior: "smooth", block: "start" })
-                  }}
-                >
-                  Zum Task Board
-                </Button>
-              </div>
+              <Card className="glass-card">
+                <CardHeader className="px-4 sm:px-6 pt-4 pb-3 border-b border-white/10">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs">
+                          ✦
+                        </span>
+                        Task Board
+                      </CardTitle>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Operative Aufgaben für Content‑Produktion. Alle manuellen Tasks werden im Backend gespeichert.
+                      </p>
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      {tasksLoading ? "Lade Tasks..." : `${tasks.length} Tasks gesamt`}
+                      {tasksError && <span className="ml-2 text-amber-300">· {tasksError}</span>}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                    <Input
+                      value={taskQ}
+                      onChange={(e) => setTaskQ(e.target.value)}
+                      placeholder="Suche Tasks..."
+                      className="sm:max-w-[320px] min-w-0 bg-white/10 dark:bg-slate-900/50 text-white placeholder:text-white/50 border border-white/20 dark:border-slate-700"
+                    />
+                    {isAdmin && (
+                      <GlassSelect
+                        value={taskScope}
+                        onChange={(v) => setTaskScope(v as any)}
+                        options={[
+                          { value: "mine", label: "Nur meine" },
+                          { value: "all", label: "Alle" },
+                        ]}
+                        className="sm:w-40 min-w-0"
+                      />
+                    )}
+                    {isAdmin && taskScope === "all" && (
+                      <GlassSelect
+                        value={ownerFilter}
+                        onChange={(v) => setOwnerFilter(v)}
+                        options={[
+                          { value: "all", label: "Alle Owner" },
+                          { value: "unassigned", label: "Unassigned" },
+                          ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
+                        ]}
+                        className="sm:w-64 min-w-0"
+                      />
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="sm:ml-auto glass-card shrink-0 whitespace-nowrap"
+                      onClick={() => refetchTasks()}
+                    >
+                      Refresh
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-white text-slate-900 hover:bg-white/90 shrink-0 whitespace-nowrap"
+                      onClick={() =>
+                        openModal({
+                          type: "custom",
+                          title: "Neue Content‑Aufgabe",
+                          content: (
+                            <TaskQuickCreate
+                              defaultStatus={"TODO"}
+                              taxonomy={twoLevelTaxonomy}
+                              ownerOptions={
+                                isAdmin
+                                  ? [
+                                      { value: "", label: "Zuweisen (optional)" },
+                                      { value: "unassigned", label: "— Unassigned —" },
+                                      ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
+                                    ]
+                                  : undefined
+                              }
+                              defaultOwnerId={
+                                isAdmin
+                                  ? ownerFilter === "unassigned"
+                                    ? "unassigned"
+                                    : ownerFilter !== "all"
+                                      ? ownerFilter
+                                      : ""
+                                  : undefined
+                              }
+                              onCreate={async (payload) => {
+                                await addTask(payload as any)
+                                refetchTasks()
+                              }}
+                            />
+                          ),
+                        })
+                      }
+                    >
+                      <Plus className="h-4 w-4 mr-2" /> Task
+                    </Button>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="px-2 sm:px-4 py-4">
+                  <KanbanBoard
+                    tasks={tasks}
+                    onTaskMove={async (taskId, newStatus) => {
+                      const task = tasks.find((t) => t.id === taskId)
+                      if (!task) return
+                      await updateTask(taskId, { status: newStatus as any })
+                    }}
+                    onTaskClick={(task) => {
+                      const backendId =
+                        (task as any)?.backendId ??
+                        (() => {
+                          const m = String((task as any)?.id || "").match(/content-(\d+)/)
+                          return m ? Number(m[1]) : undefined
+                        })()
+                      openModal({
+                        type: "custom",
+                        title: "Task bearbeiten",
+                        description: backendId ? `#${backendId}` : undefined,
+                        content: (
+                          <TaskEditForm
+                            task={task as any}
+                            taxonomy={twoLevelTaxonomy}
+                            isAdmin={!!isAdmin}
+                            users={adminUsers}
+                            onSave={updateTask as any}
+                            onDelete={deleteTask as any}
+                          />
+                        ),
+                      })
+                    }}
+                    onCreateTask={(status: KanbanStatus) => {
+                      openModal({
+                        type: "custom",
+                        title: "Neue Content‑Aufgabe",
+                        content: (
+                          <TaskQuickCreate
+                            defaultStatus={status}
+                            taxonomy={twoLevelTaxonomy}
+                            ownerOptions={
+                              isAdmin
+                                ? [
+                                    { value: "", label: "Zuweisen (optional)" },
+                                    { value: "unassigned", label: "— Unassigned —" },
+                                    ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
+                                  ]
+                                : undefined
+                            }
+                            defaultOwnerId={
+                              isAdmin
+                                ? ownerFilter === "unassigned"
+                                  ? "unassigned"
+                                  : ownerFilter !== "all"
+                                    ? ownerFilter
+                                    : ""
+                                : undefined
+                            }
+                            onCreate={async (payload) => {
+                              await addTask(payload)
+                              refetchTasks()
+                            }}
+                          />
+                        ),
+                      })
+                    }}
+                    onDeleteTask={(taskId) => deleteTask(taskId)}
+                  />
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="templates" className="space-y-2">
@@ -2741,175 +2896,6 @@ function ContentPageInner() {
         </Card>
       )}
 
-      {/* Task Board – реальная двухуровневая система задач, сохраняется в Backend */}
-      <Card className="glass-card" id="mk-task-board">
-        <CardHeader className="px-4 sm:px-6 pt-4 pb-3 border-b border-white/10">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs">
-                  ✦
-                </span>
-                Task Board
-              </CardTitle>
-              <p className="text-xs text-slate-400 mt-1">
-                Operative Aufgaben für Content‑Produktion. Alle manuellen Tasks werden im Backend gespeichert.
-              </p>
-            </div>
-            <div className="text-[11px] text-slate-400">
-              {tasksLoading ? "Lade Tasks..." : `${tasks.length} Tasks gesamt`}
-              {tasksError && <span className="ml-2 text-amber-300">· {tasksError}</span>}
-            </div>
-          </div>
-          <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
-            <Input
-              value={taskQ}
-              onChange={(e) => setTaskQ(e.target.value)}
-              placeholder="Suche Tasks..."
-              className="sm:max-w-[320px] min-w-0 bg-white/10 dark:bg-slate-900/50 text-white placeholder:text-white/50 border border-white/20 dark:border-slate-700"
-            />
-            {isAdmin && (
-              <GlassSelect
-                value={taskScope}
-                onChange={(v) => setTaskScope(v as any)}
-                options={[
-                  { value: "mine", label: "Nur meine" },
-                  { value: "all", label: "Alle" },
-                ]}
-                className="sm:w-40 min-w-0"
-              />
-            )}
-            {isAdmin && taskScope === "all" && (
-              <GlassSelect
-                value={ownerFilter}
-                onChange={(v) => setOwnerFilter(v)}
-                options={[
-                  { value: "all", label: "Alle Owner" },
-                  { value: "unassigned", label: "Unassigned" },
-                  ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
-                ]}
-                className="sm:w-64 min-w-0"
-              />
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="sm:ml-auto glass-card shrink-0 whitespace-nowrap"
-              onClick={() => refetchTasks()}
-            >
-              Refresh
-            </Button>
-            <Button
-              size="sm"
-              className="bg-white text-slate-900 hover:bg-white/90 shrink-0 whitespace-nowrap"
-              onClick={() =>
-                openModal({
-                  type: "custom",
-                  title: "Neue Content‑Aufgabe",
-                  content: (
-                    <TaskQuickCreate
-                      defaultStatus={"TODO"}
-                      taxonomy={twoLevelTaxonomy}
-                      ownerOptions={
-                        isAdmin
-                          ? [
-                              { value: "", label: "Zuweisen (optional)" },
-                              { value: "unassigned", label: "— Unassigned —" },
-                              ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
-                            ]
-                          : undefined
-                      }
-                      defaultOwnerId={
-                        isAdmin
-                          ? ownerFilter === "unassigned"
-                            ? "unassigned"
-                            : ownerFilter !== "all"
-                            ? ownerFilter
-                            : ""
-                          : undefined
-                      }
-                      onCreate={async (payload) => {
-                        await addTask(payload as any)
-                        refetchTasks()
-                      }}
-                    />
-                  ),
-                })
-              }
-            >
-              <Plus className="h-4 w-4 mr-2" /> Task
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="px-2 sm:px-4 py-4">
-          <KanbanBoard
-            tasks={tasks}
-            onTaskMove={async (taskId, newStatus) => {
-              const task = tasks.find(t => t.id === taskId)
-              if (!task) return
-              await updateTask(taskId, { status: newStatus as any })
-            }}
-            onTaskClick={(task) => {
-              const backendId =
-                (task as any)?.backendId ??
-                (() => {
-                  const m = String((task as any)?.id || "").match(/content-(\d+)/)
-                  return m ? Number(m[1]) : undefined
-                })()
-              openModal({
-                type: "custom",
-                title: "Task bearbeiten",
-                description: backendId ? `#${backendId}` : undefined,
-                content: (
-                  <TaskEditForm
-                    task={task as any}
-                    taxonomy={twoLevelTaxonomy}
-                    isAdmin={!!isAdmin}
-                    users={adminUsers}
-                    onSave={updateTask as any}
-                    onDelete={deleteTask as any}
-                  />
-                ),
-              })
-            }}
-            onCreateTask={(status: KanbanStatus) => {
-              openModal({
-                type: "custom",
-                title: "Neue Content‑Aufgabe",
-                content: (
-                  <TaskQuickCreate
-                    defaultStatus={status}
-                    taxonomy={twoLevelTaxonomy}
-                    ownerOptions={
-                      isAdmin
-                        ? [
-                            { value: "", label: "Zuweisen (optional)" },
-                            { value: "unassigned", label: "— Unassigned —" },
-                            ...adminUsers.map((u) => ({ value: String(u.id), label: u.email })),
-                          ]
-                        : undefined
-                    }
-                    defaultOwnerId={
-                      isAdmin
-                        ? ownerFilter === "unassigned"
-                          ? "unassigned"
-                          : ownerFilter !== "all"
-                          ? ownerFilter
-                          : ""
-                        : undefined
-                    }
-                    onCreate={async (payload) => {
-                      await addTask(payload)
-                      refetchTasks()
-                    }}
-                  />
-                ),
-              })
-            }}
-            onDeleteTask={(taskId) => deleteTask(taskId)}
-          />
-        </CardContent>
-      </Card>
     </div>
   )
 }
