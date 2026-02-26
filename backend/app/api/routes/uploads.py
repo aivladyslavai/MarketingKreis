@@ -19,6 +19,8 @@ from app.models.company import Company
 from app.models.contact import Contact
 from app.models.deal import Deal
 from app.models.content_item import ContentItem, ContentItemStatus
+from app.models.content_task import ContentTask, ContentTaskStatus, ContentTaskPriority
+from app.models.calendar import CalendarEntry
 from app.models.user import User, UserRole
 from app.api.deps import get_current_user, get_org_id, is_demo_user, require_writable_user
 from app.core.config import get_settings
@@ -1732,6 +1734,9 @@ def smart_import_upload(
         "activities_skipped": 0,
         "content_created": 0,
         "content_skipped": 0,
+        "tasks_created": 0,
+        "tasks_skipped": 0,
+        "calendar_created": 0,
         "budget_rows_applied": 0,
         "budget_rows_skipped": 0,
     }
@@ -1747,6 +1752,13 @@ def smart_import_upload(
         map_act = _suggest_mapping_activities(headers)
         map_content = _suggest_mapping_content(headers)
         map_budget = _suggest_mapping_budget(headers)
+
+        # Extra heuristics for Task Board imports (separate from ContentItem mapping)
+        task_title_h = _suggest_header(headers, "task", "aufgabe", "todo", "massnahme", "massnahmen", "maßnahme", "maßnahmen", "aktion", "activity")
+        task_deadline_h = _suggest_header(headers, "deadline", "due", "due_date", "faellig", "fällig", "stichtag", "abgabe", "abgabedatum", "end", "end_date", "ende", "enddatum", "bis")
+        task_status_h = _suggest_header(headers, "task_status", "status", "phase", "workflow")
+        task_priority_h = _suggest_header(headers, "priority", "prio", "dringend", "importance")
+        item_title_h = _suggest_header(headers, "title", "titel", "thema", "subject", "betreff", "name")
 
         def cell(row: Dict[str, Any], header: Optional[str]) -> Any:
             if not header:
@@ -1825,7 +1837,9 @@ def smart_import_upload(
                     or (not _is_blankish(c_body))
                     or (not _is_blankish(c_brief))
                 ):
-                    title = str(c_title).strip()
+                    # Prefer a "real" item title column if present (separate from task/action column).
+                    title_raw = cell(row, item_title_h) if item_title_h else c_title
+                    title = str(title_raw).strip() if not _is_blankish(title_raw) else str(c_title).strip()
                     channel = str(c_channel or "Website").strip()[:100]
                     fmt = cell(row, map_content.get("format"))
                     fmt_s = str(fmt).strip()[:100] if not _is_blankish(fmt) else None
@@ -1870,24 +1884,134 @@ def smart_import_upload(
                         except Exception:
                             pass
 
-                    db.add(
-                        ContentItem(
-                            organization_id=org,
-                            owner_id=owner_id,
-                            title=title[:255],
-                            channel=channel,
-                            format=fmt_s,
-                            status=status,
-                            tags=tags,
-                            brief=str(brief).strip() if not _is_blankish(brief) else None,
-                            body=str(body).strip() if not _is_blankish(body) else None,
-                            language=str(language).strip()[:10] if not _is_blankish(language) else "de",
-                            tone=str(tone).strip()[:50] if not _is_blankish(tone) else None,
-                            due_at=due_at,
-                            scheduled_at=scheduled_at,
-                        )
+                    item = ContentItem(
+                        organization_id=org,
+                        owner_id=owner_id,
+                        title=title[:255],
+                        channel=channel,
+                        format=fmt_s,
+                        status=status,
+                        tags=tags,
+                        brief=str(brief).strip() if not _is_blankish(brief) else None,
+                        body=str(body).strip() if not _is_blankish(body) else None,
+                        language=str(language).strip()[:10] if not _is_blankish(language) else "de",
+                        tone=str(tone).strip()[:50] if not _is_blankish(tone) else None,
+                        due_at=due_at,
+                        scheduled_at=scheduled_at,
                     )
+                    db.add(item)
+                    db.flush()
                     totals["content_created"] += 1
+
+                    # --- Task Board: create ContentTask when row looks task-like ---
+                    try:
+                        # Prefer a dedicated task title column; otherwise fall back to item title.
+                        t_title_raw = cell(row, task_title_h) if task_title_h else None
+                        t_title = None
+                        if not _is_blankish(t_title_raw):
+                            t_title = str(t_title_raw).strip()
+                        elif not _is_blankish(title):
+                            # If no explicit task column exists, still create a task for the item
+                            # when there is a deadline or workflow-ish status.
+                            t_title = str(title).strip()
+
+                        # Deadline
+                        deadline = _parse_datetime_loose(cell(row, task_deadline_h)) if task_deadline_h else None
+                        if deadline is None:
+                            deadline = due_at
+
+                        # Status
+                        raw_t_status = str(cell(row, task_status_h) or raw_status or "").strip().lower()
+                        t_status_map = {
+                            "todo": ContentTaskStatus.TODO,
+                            "to_do": ContentTaskStatus.TODO,
+                            "open": ContentTaskStatus.TODO,
+                            "offen": ContentTaskStatus.TODO,
+                            "in_progress": ContentTaskStatus.IN_PROGRESS,
+                            "in bearbeitung": ContentTaskStatus.IN_PROGRESS,
+                            "bearbeitung": ContentTaskStatus.IN_PROGRESS,
+                            "doing": ContentTaskStatus.IN_PROGRESS,
+                            "review": ContentTaskStatus.REVIEW,
+                            "prüfung": ContentTaskStatus.REVIEW,
+                            "pruefung": ContentTaskStatus.REVIEW,
+                            "approved": ContentTaskStatus.APPROVED,
+                            "freigegeben": ContentTaskStatus.APPROVED,
+                            "published": ContentTaskStatus.PUBLISHED,
+                            "veröffentlicht": ContentTaskStatus.PUBLISHED,
+                            "veroeffentlicht": ContentTaskStatus.PUBLISHED,
+                            "archived": ContentTaskStatus.ARCHIVED,
+                            "archiviert": ContentTaskStatus.ARCHIVED,
+                            "done": ContentTaskStatus.PUBLISHED,
+                            "completed": ContentTaskStatus.PUBLISHED,
+                            "erledigt": ContentTaskStatus.PUBLISHED,
+                        }
+                        t_status = t_status_map.get(raw_t_status, ContentTaskStatus.TODO)
+
+                        # Priority
+                        raw_prio = str(cell(row, task_priority_h) or "").strip().lower() if task_priority_h else ""
+                        prio_map = {
+                            "low": ContentTaskPriority.LOW,
+                            "niedrig": ContentTaskPriority.LOW,
+                            "medium": ContentTaskPriority.MEDIUM,
+                            "mittel": ContentTaskPriority.MEDIUM,
+                            "high": ContentTaskPriority.HIGH,
+                            "hoch": ContentTaskPriority.HIGH,
+                            "urgent": ContentTaskPriority.URGENT,
+                            "dringend": ContentTaskPriority.URGENT,
+                        }
+                        t_prio = prio_map.get(raw_prio, ContentTaskPriority.MEDIUM)
+
+                        # Only create if we have at least a title AND some task signal (deadline or explicit task column)
+                        has_explicit_task = task_title_h is not None and not _is_blankish(t_title_raw)
+                        if t_title and (has_explicit_task or deadline is not None):
+                            t_notes = None
+                            if not _is_blankish(c_brief):
+                                t_notes = str(c_brief).strip()[:2000]
+                            elif not _is_blankish(c_body):
+                                t_notes = str(c_body).strip()[:2000]
+                            db.add(
+                                ContentTask(
+                                    organization_id=org,
+                                    owner_id=owner_id,
+                                    title=str(t_title).strip()[:255],
+                                    channel=channel,
+                                    format=fmt_s,
+                                    status=t_status,
+                                    priority=t_prio,
+                                    notes=t_notes,
+                                    deadline=deadline,
+                                    content_item_id=int(item.id) if getattr(item, "id", None) is not None else None,
+                                )
+                            )
+                            totals["tasks_created"] += 1
+                        else:
+                            totals["tasks_skipped"] += 1
+                    except Exception:
+                        totals["tasks_skipped"] += 1
+
+                    # --- Calendar sync: mirror scheduled_at into CalendarEntry (global calendar) ---
+                    try:
+                        if scheduled_at:
+                            from datetime import timedelta
+
+                            ev = CalendarEntry(
+                                title=f"Content: {item.title}",
+                                description=(item.brief or None),
+                                start_time=scheduled_at,
+                                end_time=scheduled_at + timedelta(minutes=30),
+                                event_type="content",
+                                status="PLANNED",
+                                category=(item.channel or "Content").strip() if item.channel else "Content",
+                                priority="medium",
+                                color="#a78bfa",
+                                content_item_id=item.id,
+                                owner_id=owner_id,
+                                organization_id=org,
+                            )
+                            db.add(ev)
+                            totals["calendar_created"] += 1
+                    except Exception:
+                        pass
                 else:
                     totals["content_skipped"] += 1
             except Exception:

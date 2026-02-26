@@ -35,6 +35,7 @@ import { useModal } from "@/components/ui/modal/ModalProvider"
 import RadialCircle from "@/components/circle/radial-circle"
 import { useJobsApi, useUploadsApi, type AiAnalyzeResult, type ImportKind } from "@/hooks/use-uploads-api"
 import { useUserCategories } from "@/hooks/use-user-categories"
+import { sync } from "@/lib/sync"
 
 function formatBytes(bytes: number) {
   if (!bytes || bytes < 0) return "0 B"
@@ -535,15 +536,19 @@ export default function UploadsPage() {
       const imp = (res as any)?.import || {}
       const created =
         Number(imp?.activities_created || 0) + Number(imp?.content_created || 0) + Number(imp?.budget_rows_applied || 0)
+      const tasksCreated = Number(imp?.tasks_created || 0)
 
       openModal({
         type: "info",
         title: "Smart Import Ergebnis",
-        description: created > 0 ? "Daten wurden verteilt und importiert." : "Es wurden keine passenden Zeilen erkannt.",
+        description:
+          created > 0 || tasksCreated > 0
+            ? "Daten wurden verteilt und importiert."
+            : "Es wurden keine passenden Zeilen erkannt.",
         okText: "OK",
         content: (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
               <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="text-xs text-slate-500 dark:text-slate-400">Aktivitäten</div>
                 <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -555,6 +560,10 @@ export default function UploadsPage() {
                 <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
                   {Number(imp?.content_created || 0)}
                 </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Tasks</div>
+                <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{tasksCreated}</div>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="text-xs text-slate-500 dark:text-slate-400">Budget/KPI</div>
@@ -600,6 +609,12 @@ export default function UploadsPage() {
       setCategoryValueMap({})
       setBulkCategoryTarget("")
       await Promise.all([refresh(), refreshJobs()])
+      // kick other pages to refetch (Content page listens to content:changed)
+      try {
+        if (Number(imp?.content_created || 0) > 0 || Number(imp?.tasks_created || 0) > 0) sync.emit("content:changed")
+        if (Number(imp?.activities_created || 0) > 0) sync.emit("activities:changed")
+        if (Number(imp?.budget_rows_applied || 0) > 0) sync.emit("budget:changed")
+      } catch {}
       // kick other pages to refetch
       try {
         // best-effort: these events exist in parts of the app that listen to sync
