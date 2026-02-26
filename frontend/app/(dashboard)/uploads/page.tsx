@@ -532,6 +532,67 @@ export default function UploadsPage() {
     setSmartLoading(true)
     try {
       const res = await smartImportFile(selectedFile)
+      const imp = (res as any)?.import || {}
+      const created =
+        Number(imp?.activities_created || 0) + Number(imp?.content_created || 0) + Number(imp?.budget_rows_applied || 0)
+
+      openModal({
+        type: "info",
+        title: "Smart Import Ergebnis",
+        description: created > 0 ? "Daten wurden verteilt und importiert." : "Es wurden keine passenden Zeilen erkannt.",
+        okText: "OK",
+        content: (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Aktivitäten</div>
+                <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  {Number(imp?.activities_created || 0)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Content Items</div>
+                <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  {Number(imp?.content_created || 0)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs text-slate-500 dark:text-slate-400">Budget/KPI</div>
+                <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  {Number(imp?.budget_rows_applied || 0)}
+                </div>
+              </div>
+            </div>
+
+            {Array.isArray((res as any)?.tables) && (res as any).tables.length ? (
+              <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-slate-700 dark:text-slate-300">
+                <div className="font-semibold text-slate-900 dark:text-slate-100">Sheets</div>
+                <div className="mt-2 space-y-1">
+                  {(res as any).tables.slice(0, 8).map((t: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between gap-3">
+                      <span className="truncate">{String(t?.sheet || "Sheet")}</span>
+                      <span className="text-slate-500">{Number(t?.rows || 0)} rows · {Number(t?.cols || 0)} cols</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {created === 0 ? (
+              <div className="text-xs text-slate-600 dark:text-slate-400">
+                Tipp: Klick auf <span className="font-semibold">AI analysieren</span> und schau, welche Spalten erkannt werden.
+                Häufig sind Header z.B. „Kosten (CHF)“ oder „Maßnahmen / Aufgabe“ — das wird jetzt besser erkannt, aber bei sehr freien Strukturen
+                brauchen wir ggf. 1–2 zusätzliche Synonyme.
+              </div>
+            ) : (
+              <div className="text-xs text-slate-600 dark:text-slate-400">
+                Öffne jetzt <span className="font-semibold">Activities</span>, <span className="font-semibold">Content</span> oder <span className="font-semibold">Budget</span> und aktualisiere ggf. einmal.
+              </div>
+            )}
+          </div>
+        ),
+      })
+
       setSelectedFile(null)
       setPreview(null)
       setAiResult(null)

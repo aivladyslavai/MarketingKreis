@@ -35,11 +35,25 @@ export interface AiAnalyzeResult {
     rows_scanned: number
     rows_sampled: number
     header_row_detected?: boolean
+    tables?: Array<{ sheet: string; rows: number; cols: number }>
+    group_counts?: Record<string, number>
     period_guess?: { from?: string; to?: string }
     budget_range_chf?: { min?: number; max?: number }
     top_categories?: Array<{ value: string; count: number }>
     missingness?: Record<string, number>
     notes?: string[]
+    todo?: Array<{ title: string; why?: string; how?: string }>
+    column_stats?: Record<
+      string,
+      {
+        missing_ratio?: number
+        inferred_type?: "number" | "date" | "text"
+        unique_sampled?: number
+        top_values?: Array<{ value: string; count: number }>
+        number?: { min?: number; max?: number; avg?: number; ok?: number; bad?: number }
+        date?: { min?: string; max?: string; ok?: number; bad?: number }
+      }
+    >
   }
 }
 

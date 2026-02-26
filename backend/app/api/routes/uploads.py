@@ -7,6 +7,7 @@ import io
 import hashlib
 import json
 import httpx
+import re
 
 from app.db.session import get_db_session
 from app.core.rate_limit import enforce_rate_limit
@@ -57,7 +58,47 @@ def _is_blankish(v: Any) -> bool:
 
 
 def _norm_header(s: str) -> str:
-    return (str(s or "").strip().lower().replace(" ", "_").replace("-", "_"))
+    s2 = str(s or "").strip().lower()
+    # Normalize German chars for matching (ß->ss, umlauts->ae/oe/ue)
+    s2 = (
+        s2.replace("ß", "ss")
+        .replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+    )
+    # Replace any non-alphanumeric with underscores, collapse repeats
+    s2 = re.sub(r"[^a-z0-9]+", "_", s2)
+    s2 = re.sub(r"_+", "_", s2).strip("_")
+    return s2
+
+
+def _suggest_header(headers_in: List[str], *names: str) -> Optional[str]:
+    """
+    Fuzzy header matcher:
+    - normalizes punctuation (e.g. "Kosten (CHF)" -> "kosten_chf")
+    - matches by exact, token, prefix or substring (handles plurals like "massnahmen")
+    """
+    prepared: List[tuple[str, str, List[str]]] = []
+    for h in headers_in:
+        hn = _norm_header(h)
+        parts = [p for p in hn.split("_") if p]
+        prepared.append((h, hn, parts))
+
+    for n in names:
+        n2 = _norm_header(n)
+        if not n2:
+            continue
+        for orig, hn, parts in prepared:
+            if not hn:
+                continue
+            if hn == n2:
+                return orig
+            if n2 in hn or hn in n2:
+                return orig
+            for p in parts:
+                if p == n2 or p.startswith(n2) or n2.startswith(p):
+                    return orig
+    return None
 
 def _dedupe_headers(headers: List[str]) -> List[str]:
     seen: Dict[str, int] = {}
@@ -195,55 +236,38 @@ def _extract_xlsx_tables(content: bytes, *, max_sheets: int = 8) -> List[Dict[st
 
 
 def _suggest_mapping_crm(headers_in: List[str]) -> Dict[str, Optional[str]]:
-    h_norm = [_norm_header(h) for h in headers_in]
-
-    def suggest(*names: str) -> Optional[str]:
-        for n in names:
-            n2 = _norm_header(n)
-            if n2 in h_norm:
-                return headers_in[h_norm.index(n2)]
-        return None
-
     return {
         # Company
-        "company_name": suggest("company", "company_name", "firma", "unternehmen", "kundename", "name"),
-        "company_website": suggest("website", "web", "url", "domain"),
-        "company_industry": suggest("industry", "branche"),
-        "company_email": suggest("company_email", "email", "e-mail"),
-        "company_phone": suggest("phone", "telefon", "tel"),
-        "company_notes": suggest("notes", "notiz", "bemerkung", "kommentar"),
+        "company_name": _suggest_header(headers_in, "company", "company_name", "firma", "unternehmen", "kundename", "name"),
+        "company_website": _suggest_header(headers_in, "website", "web", "url", "domain"),
+        "company_industry": _suggest_header(headers_in, "industry", "branche"),
+        "company_email": _suggest_header(headers_in, "company_email", "email", "e-mail", "e_mail"),
+        "company_phone": _suggest_header(headers_in, "phone", "telefon", "tel", "handy"),
+        "company_notes": _suggest_header(headers_in, "notes", "notiz", "bemerkung", "kommentar"),
         # Contact
-        "contact_name": suggest("contact", "contact_name", "ansprechpartner", "kontakt", "kontakt_name"),
-        "contact_email": suggest("contact_email", "ansprechpartner_email", "kontakt_email"),
-        "contact_phone": suggest("contact_phone", "ansprechpartner_phone", "kontakt_phone"),
-        "contact_position": suggest("position", "rolle", "funktion", "title"),
+        "contact_name": _suggest_header(headers_in, "contact", "contact_name", "ansprechpartner", "kontakt", "kontakt_name"),
+        "contact_email": _suggest_header(headers_in, "contact_email", "ansprechpartner_email", "kontakt_email"),
+        "contact_phone": _suggest_header(headers_in, "contact_phone", "ansprechpartner_phone", "kontakt_phone", "telefon", "handy"),
+        "contact_position": _suggest_header(headers_in, "position", "rolle", "funktion", "title"),
         # Deal
-        "deal_title": suggest("deal", "deal_title", "opportunity", "projekt", "project", "angebot"),
-        "deal_value": suggest("value", "betrag", "amount", "sum", "umsatz", "revenue", "chf"),
-        "deal_stage": suggest("stage", "status", "phase"),
-        "deal_probability": suggest("probability", "chance", "wahrscheinlichkeit"),
-        "deal_expected_close_date": suggest("expected_close_date", "close_date", "abschluss", "abschlussdatum"),
-        "deal_owner": suggest("owner", "deal_owner", "verantwortlich", "owner_email"),
-        "deal_notes": suggest("deal_notes", "notes_deal", "bemerkung_deal"),
+        "deal_title": _suggest_header(headers_in, "deal", "deal_title", "opportunity", "projekt", "project", "angebot"),
+        "deal_value": _suggest_header(headers_in, "value", "betrag", "amount", "sum", "umsatz", "revenue", "chf", "preis"),
+        "deal_stage": _suggest_header(headers_in, "stage", "status", "phase"),
+        "deal_probability": _suggest_header(headers_in, "probability", "chance", "wahrscheinlichkeit"),
+        "deal_expected_close_date": _suggest_header(headers_in, "expected_close_date", "close_date", "abschluss", "abschlussdatum"),
+        "deal_owner": _suggest_header(headers_in, "owner", "deal_owner", "verantwortlich", "owner_email"),
+        "deal_notes": _suggest_header(headers_in, "deal_notes", "notes_deal", "bemerkung_deal", "kommentar"),
     }
 
 def _suggest_mapping_content(headers_in: List[str]) -> Dict[str, Optional[str]]:
-    h_norm = [_norm_header(h) for h in headers_in]
-
-    def suggest(*names: str) -> Optional[str]:
-        for n in names:
-            n2 = _norm_header(n)
-            if n2 in h_norm:
-                return headers_in[h_norm.index(n2)]
-        return None
-
     return {
-        "title": suggest("title", "name", "titel", "thema", "betreff", "subject"),
-        "channel": suggest("channel", "kanal", "plattform", "platform"),
-        "format": suggest("format", "type", "typ", "content_type"),
-        "status": suggest("status", "phase", "workflow"),
-        "due_at": suggest("due", "due_at", "deadline", "fällig", "faellig", "abgabe", "abgabedatum", "due_date"),
-        "scheduled_at": suggest(
+        "title": _suggest_header(headers_in, "title", "name", "titel", "thema", "betreff", "subject", "aufgabe", "todo", "task", "massnahme", "massnahmen", "aktion"),
+        "channel": _suggest_header(headers_in, "channel", "kanal", "plattform", "platform"),
+        "format": _suggest_header(headers_in, "format", "type", "typ", "content_type"),
+        "status": _suggest_header(headers_in, "status", "phase", "workflow"),
+        "due_at": _suggest_header(headers_in, "due", "due_at", "deadline", "faellig", "fällig", "abgabe", "abgabedatum", "due_date"),
+        "scheduled_at": _suggest_header(
+            headers_in,
             "scheduled",
             "scheduled_at",
             "publish",
@@ -254,32 +278,36 @@ def _suggest_mapping_content(headers_in: List[str]) -> Dict[str, Optional[str]]:
             "termin",
             "datum",
         ),
-        "tags": suggest("tags", "tag", "labels", "label"),
-        "brief": suggest("brief", "beschreibung", "notes", "notiz", "kommentar", "bemerkung"),
-        "body": suggest("body", "text", "copy", "inhalt", "content", "post"),
-        "language": suggest("language", "sprache", "lang"),
-        "tone": suggest("tone", "stil", "tonalität", "tonalitaet"),
-        "owner_email": suggest("owner", "owner_email", "verantwortlich", "zuständig", "zustaendig", "assigned_to", "assignee"),
+        "tags": _suggest_header(headers_in, "tags", "tag", "labels", "label"),
+        "brief": _suggest_header(headers_in, "brief", "beschreibung", "notes", "notiz", "kommentar", "bemerkung"),
+        "body": _suggest_header(headers_in, "body", "text", "copy", "inhalt", "content", "post"),
+        "language": _suggest_header(headers_in, "language", "sprache", "lang"),
+        "tone": _suggest_header(headers_in, "tone", "stil", "tonalitaet", "tonalität"),
+        "owner_email": _suggest_header(headers_in, "owner", "owner_email", "verantwortlich", "zustaendig", "zuständig", "assigned_to", "assignee"),
     }
 
 
 def _suggest_mapping_budget(headers_in: List[str]) -> Dict[str, Optional[str]]:
-    h_norm = [_norm_header(h) for h in headers_in]
-
-    def suggest(*names: str) -> Optional[str]:
-        for n in names:
-            n2 = _norm_header(n)
-            if n2 in h_norm:
-                return headers_in[h_norm.index(n2)]
-        return None
-
     return {
-        "period": suggest("period", "quartal", "quarter", "q", "jahr_quartal", "year_quarter"),
-        "category": suggest("category", "kategorie", "bereich", "thema", "type"),
-        "amount": suggest("amount", "budget", "budget_chf", "budgetchf", "kosten", "betrag", "chf", "summe", "spend"),
-        "metric": suggest("metric", "kpi", "kennzahl", "ziel_kpi", "kpi_name", "name"),
-        "target": suggest("target", "zielwert", "target_value", "wert", "value"),
-        "unit": suggest("unit", "einheit", "currency"),
+        "period": _suggest_header(headers_in, "period", "quartal", "quarter", "q", "jahr_quartal", "year_quarter", "jahr", "year"),
+        "category": _suggest_header(headers_in, "category", "kategorie", "bereich", "thema", "type", "kpi_kategorie"),
+        "amount": _suggest_header(headers_in, "amount", "budget", "budget_chf", "budgetchf", "kosten", "betrag", "chf", "summe", "spend", "preis", "kosten_chf"),
+        "metric": _suggest_header(headers_in, "metric", "kpi", "kennzahl", "ziel_kpi", "kpi_name", "name"),
+        "target": _suggest_header(headers_in, "target", "zielwert", "target_value", "wert", "value", "ziel"),
+        "unit": _suggest_header(headers_in, "unit", "einheit", "currency"),
+    }
+
+
+def _suggest_mapping_activities(headers_in: List[str]) -> Dict[str, Optional[str]]:
+    return {
+        "title": _suggest_header(headers_in, "title", "name", "massnahme", "massnahmen", "maßnahme", "maßnahmen", "aufgabe", "todo", "task", "aktion", "initiative", "kampagne", "projekt"),
+        "category": _suggest_header(headers_in, "category", "type", "kategorie", "bereich", "thema", "channel", "kanal"),
+        "status": _suggest_header(headers_in, "status", "phase", "workflow"),
+        "budget": _suggest_header(headers_in, "budget", "budgetchf", "budget_chf", "kosten", "betrag", "chf", "summe", "preis"),
+        "notes": _suggest_header(headers_in, "notes", "expected_output", "beschreibung", "kommentar", "notiz", "bemerkung"),
+        "start": _suggest_header(headers_in, "start", "start_date", "beginn", "von", "ab", "startdatum", "datum_start"),
+        "end": _suggest_header(headers_in, "end", "end_date", "ende", "bis", "enddatum", "datum_ende"),
+        "weight": _suggest_header(headers_in, "weight", "gewicht", "prio", "priority"),
     }
 
 
@@ -958,25 +986,7 @@ def preview_upload(
     max_unique_categories = 200
 
     def suggest_mapping(headers_in: List[str]) -> Dict[str, Optional[str]]:
-        headers_l = [h.lower().replace(" ", "_") for h in headers_in]
-
-        def suggest(*names: str) -> Optional[str]:
-            for n in names:
-                if n in headers_l:
-                    idx = headers_l.index(n)
-                    return headers_in[idx]
-            return None
-
-        return {
-            "title": suggest("title", "name", "massnahme", "maßnahme", "aktion", "initiative", "kampagne", "projekt"),
-            "category": suggest("category", "type", "kategorie", "bereich", "thema", "channel", "kanal"),
-            "status": suggest("status", "phase", "workflow"),
-            "budget": suggest("budget", "budgetchf", "kosten", "betrag", "chf"),
-            "notes": suggest("notes", "expected_output", "beschreibung", "kommentar", "notiz", "bemerkung"),
-            "start": suggest("start", "start_date", "beginn", "von", "ab", "startdatum"),
-            "end": suggest("end", "end_date", "ende", "bis", "enddatum"),
-            "weight": suggest("weight", "gewicht", "prio", "priority"),
-        }
+        return _suggest_mapping_activities(headers_in)
 
     kind = (import_kind or "activities").strip().lower()
     if kind not in {"activities", "crm", "content", "budget"}:
@@ -1103,6 +1113,231 @@ def _top_values(rows: List[Dict[str, Any]], header: str, limit: int = 8) -> List
         c[s] += 1
     return [{"value": k, "count": int(v)} for k, v in c.most_common(limit)]
 
+def _column_stats(headers: List[str], rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Compute full-table statistics per column:
+    - missing ratio
+    - inferred type (number/date/text)
+    - numeric min/max/avg
+    - date min/max
+    - top values (categorical)
+    """
+    from collections import Counter
+
+    out: Dict[str, Any] = {"columns": {}, "row_count": len(rows)}
+    if not headers or not rows:
+        return out
+
+    for h in headers[:120]:
+        miss = 0
+        num_ok = 0
+        num_bad = 0
+        date_ok = 0
+        date_bad = 0
+        nums: List[float] = []
+        dates = []
+        top = Counter()
+        unique = set()
+        unique_cap = 800
+
+        for r in rows:
+            v = r.get(h)
+            if _is_blankish(v):
+                miss += 1
+                continue
+
+            # track uniques (capped)
+            try:
+                s = str(v).strip()
+            except Exception:
+                s = ""
+            if s and len(unique) < unique_cap:
+                unique.add(s)
+            if s and len(s) <= 80:
+                top[s] += 1
+
+            f = _parse_float(v)
+            if f is not None:
+                num_ok += 1
+                nums.append(float(f))
+            else:
+                # only count as numeric bad if it looks number-ish
+                if any(ch.isdigit() for ch in s):
+                    num_bad += 1
+
+            dt = _parse_datetime_loose(v)
+            if dt is not None:
+                date_ok += 1
+                dates.append(dt)
+            else:
+                # count as date bad if it contains common separators
+                if any(ch in s for ch in [".", "-", "/"]) and any(ch.isdigit() for ch in s):
+                    date_bad += 1
+
+        n = max(1, len(rows))
+        missing_ratio = miss / n
+
+        # Infer type by dominance
+        typ = "text"
+        if num_ok >= max(3, int(0.5 * (n - miss))):
+            typ = "number"
+        elif date_ok >= max(3, int(0.4 * (n - miss))):
+            typ = "date"
+
+        col: Dict[str, Any] = {
+            "missing_ratio": missing_ratio,
+            "inferred_type": typ,
+            "unique_sampled": len(unique),
+            "top_values": [{"value": k, "count": int(v)} for k, v in top.most_common(10)],
+        }
+        if nums:
+            col["number"] = {
+                "min": float(min(nums)),
+                "max": float(max(nums)),
+                "avg": float(sum(nums) / max(1, len(nums))),
+                "ok": int(num_ok),
+                "bad": int(num_bad),
+            }
+        else:
+            col["number"] = {"ok": int(num_ok), "bad": int(num_bad)}
+        if dates:
+            try:
+                dates_sorted = sorted(dates)
+                col["date"] = {
+                    "min": dates_sorted[0].isoformat(),
+                    "max": dates_sorted[-1].isoformat(),
+                    "ok": int(date_ok),
+                    "bad": int(date_bad),
+                }
+            except Exception:
+                col["date"] = {"ok": int(date_ok), "bad": int(date_bad)}
+        else:
+            col["date"] = {"ok": int(date_ok), "bad": int(date_bad)}
+
+        out["columns"][h] = col
+
+    return out
+
+
+def _group_rows_for_modules(headers: List[str], rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Rule-based grouping for mixed tables.
+    Returns counts + masked representative samples per group.
+    """
+    # derive module mappings from headers
+    map_act = _suggest_mapping_activities(headers)
+    map_content = _suggest_mapping_content(headers)
+    map_budget = _suggest_mapping_budget(headers)
+    map_crm = _suggest_mapping_crm(headers)
+
+    def cell(row: Dict[str, Any], header: Optional[str]) -> Any:
+        if not header:
+            return None
+        return row.get(header)
+
+    def has_any(row: Dict[str, Any], mapping: Dict[str, Optional[str]], fields: List[str]) -> int:
+        c = 0
+        for f in fields:
+            if not _is_blankish(cell(row, mapping.get(f))):
+                c += 1
+        return c
+
+    groups = {"activities": [], "content": [], "budget": [], "crm": [], "other": []}  # masked samples
+    counts = {k: 0 for k in groups.keys()}
+
+    for row in rows:
+        # Budget
+        b_score = 0
+        if not _is_blankish(cell(row, map_budget.get("category"))) and not _is_blankish(cell(row, map_budget.get("amount"))):
+            b_score += 3
+        if not _is_blankish(cell(row, map_budget.get("metric"))) and not _is_blankish(cell(row, map_budget.get("target"))):
+            b_score += 3
+        if not _is_blankish(cell(row, map_budget.get("period"))):
+            b_score += 1
+
+        # Content
+        c_score = 0
+        if not _is_blankish(cell(row, map_content.get("title"))):
+            c_score += 2
+        c_score += has_any(row, map_content, ["channel", "format", "status", "due_at", "scheduled_at", "tags", "brief", "body"])
+
+        # Activities
+        a_score = 0
+        if not _is_blankish(cell(row, map_act.get("title"))):
+            a_score += 2
+        a_score += has_any(row, map_act, ["category", "status", "budget", "start", "end", "notes", "weight"])
+
+        # CRM
+        crm_score = 0
+        if not _is_blankish(cell(row, map_crm.get("company_name"))):
+            crm_score += 3
+        crm_score += has_any(row, map_crm, ["contact_name", "contact_email", "deal_title", "deal_value"])
+
+        # Pick best
+        scores = [
+            ("budget", b_score),
+            ("content", c_score),
+            ("activities", a_score),
+            ("crm", crm_score),
+        ]
+        best_kind, best = max(scores, key=lambda x: x[1])
+        chosen = best_kind if best >= 4 else "other"
+
+        counts[chosen] += 1
+        if len(groups[chosen]) < 10:
+            groups[chosen].append({h: _mask_value(row.get(h)) for h in headers[:80]})
+
+    return {"counts": counts, "samples": groups, "mappings": {"activities": map_act, "content": map_content, "budget": map_budget, "crm": map_crm}}
+
+
+def _anomaly_notes(headers: List[str], rows: List[Dict[str, Any]], stats: Dict[str, Any], group: Dict[str, Any]) -> List[str]:
+    notes: List[str] = []
+    n = int(stats.get("row_count") or len(rows) or 0)
+    cols = stats.get("columns") or {}
+    if not n:
+        return notes
+
+    # Many missing columns
+    high_missing = [h for h, s in cols.items() if float(s.get("missing_ratio") or 0) >= 0.6]
+    if len(high_missing) >= 6:
+        notes.append(f"Viele Spalten sind stark leer (≥60% missing): z.B. {', '.join(high_missing[:6])}.")
+
+    # Status normalization hint
+    st_h = _suggest_header(headers, "status", "phase", "workflow")
+    if st_h:
+        vals = [str(r.get(st_h) or "").strip() for r in rows if not _is_blankish(r.get(st_h))]
+        uniq = set(v for v in vals if v)
+        if len(uniq) >= 10:
+            notes.append(f"Status hat sehr viele Varianten ({len(uniq)}). Empfehlung: Normalisieren (z.B. geplant/aktiv/done/blocked).")
+
+    # Date parse issues
+    date_bad_cols = []
+    for h, s in cols.items():
+        if s.get("inferred_type") == "date":
+            bad = int((s.get("date") or {}).get("bad") or 0)
+            if bad >= max(3, int(0.05 * n)):
+                date_bad_cols.append(h)
+    if date_bad_cols:
+        notes.append(f"Datumsfelder mit vielen unlesbaren Werten: {', '.join(date_bad_cols[:5])}.")
+
+    # Number parse issues
+    num_bad_cols = []
+    for h, s in cols.items():
+        if s.get("inferred_type") == "number":
+            bad = int((s.get("number") or {}).get("bad") or 0)
+            if bad >= max(3, int(0.05 * n)):
+                num_bad_cols.append(h)
+    if num_bad_cols:
+        notes.append(f"Zahlenfelder mit vielen unlesbaren Werten: {', '.join(num_bad_cols[:5])} (z.B. Tausendertrennzeichen/Währung).")
+
+    # Mixed-table detection
+    counts = (group.get("counts") or {}) if isinstance(group, dict) else {}
+    if sum(int(v or 0) for v in counts.values()) > 0:
+        top = sorted([(k, int(v or 0)) for k, v in counts.items()], key=lambda x: x[1], reverse=True)
+        if len([1 for _k, v in top if v > 0]) >= 3:
+            notes.append("Tabelle wirkt gemischt (mehrere Module gleichzeitig). Smart Import ist sinnvoll; alternativ: separate Sheets/Tabellenbereiche.")
+
+    return notes
 
 @router.post("/ai-analyze")
 async def ai_analyze_upload(
@@ -1122,10 +1357,11 @@ async def ai_analyze_upload(
     ctype = (file.content_type or "").lower()
     name_lower = (file.filename or "").lower()
 
-    # Parse similar to preview (best-effort)
+    # Parse full file (best-effort) — we analyze ALL rows locally.
     headers: List[str] = []
     parsed_rows: List[Dict[str, Any]] = []
     sheet_name: Optional[str] = None
+    tables_meta: List[Dict[str, Any]] = []
     if ctype in {"text/csv", "application/csv", "text/plain"} or name_lower.endswith(".csv"):
         text = content.decode("utf-8", errors="ignore")
         reader = csv.DictReader(io.StringIO(text))
@@ -1134,13 +1370,24 @@ async def ai_analyze_upload(
             parsed_rows.append(row)
             if i >= 4999:
                 break
+        tables_meta = [{"sheet": "CSV", "rows": len(parsed_rows), "cols": len(headers)}]
     elif name_lower.endswith(".xlsx") or ctype in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
         tables = _extract_xlsx_tables(content)
-        # Heuristic: pick the largest table for analysis
+        tables_meta = [{"sheet": t.get("sheet"), "rows": len(t.get("rows") or []), "cols": len(t.get("headers") or [])} for t in tables]
+        # Heuristic: pick the largest table's headers, but analyze ALL rows across sheets.
         best = max(tables, key=lambda t: len(t.get("rows") or []))
         sheet_name = str(best.get("sheet") or "")
         headers = list(best.get("headers") or [])
-        parsed_rows = list(best.get("rows") or [])
+        # Merge rows across all sheets; keep a soft cap
+        merged: List[Dict[str, Any]] = []
+        for t in tables:
+            for r in list(t.get("rows") or []):
+                merged.append(r)
+                if len(merged) >= 8000:
+                    break
+            if len(merged) >= 8000:
+                break
+        parsed_rows = merged
     else:
         raise HTTPException(status_code=415, detail="Unsupported file type. Upload CSV or XLSX")
 
@@ -1176,21 +1423,23 @@ async def ai_analyze_upload(
             }
         base_mapping = _s(headers)
 
-    # Build masked sample payload
-    sample_n = min(25, len(parsed_rows))
-    sampled = parsed_rows[:sample_n]
-    masked_samples = []
-    for r in sampled:
-        masked_samples.append({h: _mask_value(r.get(h)) for h in headers[:80]})
+    # Full-table statistics + grouping (local, private)
+    stats = _column_stats(headers, parsed_rows)
+    group = _group_rows_for_modules(headers, parsed_rows)
+    anomaly_notes = _anomaly_notes(headers, parsed_rows, stats, group)
 
-    missingness = _compute_missingness(headers, sampled) if sampled else {}
+    # Representative samples: take grouped samples (masked)
+    masked_samples = []
+    for k in ["budget", "content", "activities", "crm", "other"]:
+        for r in (group.get("samples") or {}).get(k, [])[:6]:
+            masked_samples.append({"__group": k, **(r or {})})
+    sample_n = len(masked_samples)
+
+    missingness = _compute_missingness(headers, parsed_rows[:min(400, len(parsed_rows))]) if parsed_rows else {}
     top_cats = []
-    # best-effort: detect category-like header for insights
-    for h in headers[:80]:
-        hn = _norm_header(h)
-        if hn in {"category", "kategorie", "type", "bereich", "kanal", "channel"}:
-            top_cats = _top_values(sampled, h, limit=6)
-            break
+    cat_h = _suggest_header(headers, "category", "kategorie", "type", "bereich", "kanal", "channel")
+    if cat_h:
+        top_cats = _top_values(parsed_rows[:min(600, len(parsed_rows))], cat_h, limit=6)
 
     # Fallback (no OpenAI): return deterministic mapping + simple insights
     if not settings.openai_api_key:
@@ -1209,26 +1458,39 @@ async def ai_analyze_upload(
             "insights": {
                 "rows_scanned": len(parsed_rows),
                 "rows_sampled": sample_n,
+                "tables": tables_meta,
+                "group_counts": group.get("counts"),
                 "missingness": {k: float(v) for k, v in list(missingness.items())[:25]},
                 "top_categories": top_cats,
-                "notes": ["AI ist optional. Für bessere Vorschläge: OPENAI_API_KEY setzen."],
+                "notes": (anomaly_notes or []) + ["AI ist optional. Für bessere Vorschläge: OPENAI_API_KEY setzen."],
+                "column_stats": stats.get("columns"),
             },
         }
 
     # OpenAI: ask for mapping + clean rules + module recommendations
     system = (
         "Du bist ein Daten-Import Assistent für eine Marketing-CRM Plattform. "
-        "Du bekommst Tabellen-Header und maskierte Beispielzeilen. "
-        "Deine Aufgabe: 1) empfehle Import-Modus (activities|crm|content|budget) "
-        "2) schlage ein Mapping für den aktuellen Modus vor (field->headerName oder null) "
-        "3) gib Clean-Regeln als kurze Liste 4) gib kurze Insights.\n\n"
+        "Du bekommst Header, Volltabellen-Statistiken (column_stats), erkannte Gruppen (group_counts) "
+        "und maskierte repräsentative Beispielzeilen (samples). "
+        "Gib nur dichte, umsetzbare Empfehlungen (keine Floskeln).\n\n"
+        "Deine Aufgabe:\n"
+        "1) Empfehle Import-Modus (activities|crm|content|budget) mit Score+Begründung\n"
+        "2) Schlage Mapping für current_kind vor (field->headerName oder null) + confidence je Feld\n"
+        "3) Gib Clean-Regeln (max 12, konkret)\n"
+        "4) Gib Insights als kurze bullets + konkrete To-dos (z.B. 'Status normalisieren: ...').\n\n"
         "Antworte ausschließlich als JSON mit exakt diesen Keys:\n"
         "{"
         "\"recommended_kinds\": [{\"kind\":\"activities|crm|content|budget\",\"score\":0..1,\"reason\":\"...\"}],"
         "\"suggested_mapping\": {\"field\": \"header\"|null},"
         "\"confidence\": {\"field\": 0..1},"
         "\"clean_rules\": [\"...\"],"
-        "\"insights\": {\"notes\":[\"...\"],\"top_categories\":[{\"value\":\"...\",\"count\":n}],\"budget_range_chf\":{\"min\":n,\"max\":n},\"period_guess\":{\"from\":\"...\",\"to\":\"...\"}}"
+        "\"insights\": {"
+        "\"notes\":[\"...\"],"
+        "\"todo\":[{\"title\":\"...\",\"why\":\"...\",\"how\":\"...\"}],"
+        "\"top_categories\":[{\"value\":\"...\",\"count\":n}],"
+        "\"budget_range_chf\":{\"min\":n,\"max\":n},"
+        "\"period_guess\":{\"from\":\"...\",\"to\":\"...\"}"
+        "}"
         "}"
         "Kein Markdown, kein zusätzlicher Text."
     )
@@ -1240,6 +1502,10 @@ async def ai_analyze_upload(
         "headers": headers[:120],
         "samples": masked_samples,
         "baseline_mapping": base_mapping,
+        "tables": tables_meta,
+        "group_counts": group.get("counts"),
+        "column_stats": stats.get("columns"),
+        "anomaly_notes": anomaly_notes,
         "missingness": {k: float(v) for k, v in list(missingness.items())[:40]},
         "top_categories": top_cats,
     }
@@ -1386,38 +1652,7 @@ def smart_import_upload(
         if not headers or not rows:
             continue
 
-        map_act = {
-            **{
-                "title": None,
-                "category": None,
-                "status": None,
-                "budget": None,
-                "notes": None,
-                "start": None,
-                "end": None,
-                "weight": None,
-            },
-            **(  # local heuristic
-                (lambda hs: {
-                    "title": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
-                              next((hs[hsl.index(n)] for n in ["title","name","massnahme","maßnahme","aktion","initiative","kampagne","projekt"] if n in hsl), None))(),
-                    "category": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
-                                 next((hs[hsl.index(n)] for n in ["category","type","kategorie","bereich","thema","channel","kanal"] if n in hsl), None))(),
-                    "status": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
-                               next((hs[hsl.index(n)] for n in ["status","phase","workflow"] if n in hsl), None))(),
-                    "budget": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
-                               next((hs[hsl.index(n)] for n in ["budget","budgetchf","kosten","betrag","chf"] if n in hsl), None))(),
-                    "notes": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
-                              next((hs[hsl.index(n)] for n in ["notes","expected_output","beschreibung","kommentar","notiz","bemerkung"] if n in hsl), None))(),
-                    "start": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
-                              next((hs[hsl.index(n)] for n in ["start","start_date","beginn","von","ab","startdatum"] if n in hsl), None))(),
-                    "end": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
-                            next((hs[hsl.index(n)] for n in ["end","end_date","ende","bis","enddatum"] if n in hsl), None))(),
-                    "weight": (lambda hsl=[h.lower().replace(" ", "_") for h in hs]:
-                               next((hs[hsl.index(n)] for n in ["weight","gewicht","prio","priority"] if n in hsl), None))(),
-                })(headers)
-            ),
-        }
+        map_act = _suggest_mapping_activities(headers)
         map_content = _suggest_mapping_content(headers)
         map_budget = _suggest_mapping_budget(headers)
 
