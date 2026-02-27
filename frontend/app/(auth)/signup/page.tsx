@@ -60,15 +60,14 @@ function SignupInner() {
 
   // Warm up backend (Render free tier often sleeps; first request can be slow).
   useEffect(() => {
-    if (mode !== "login") return
     const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), 3000)
+    const t = setTimeout(() => ctrl.abort(), 8000)
     fetch("/api/health", { cache: "no-store", signal: ctrl.signal }).catch(() => {})
     return () => {
       clearTimeout(t)
       ctrl.abort()
     }
-  }, [mode])
+  }, [])
 
   const passwordStrength = useMemo(() => {
     if (!password) return { score: 0, label: "", color: "" }
@@ -99,13 +98,29 @@ function SignupInner() {
     setSuccess(false)
     try {
       // Use Next.js API proxy so Vercel never needs direct CORS access to the backend.
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, token }),
-        credentials: "include",
-        cache: "no-store",
-      })
+      const payload = JSON.stringify({ email, password, token })
+      const doRegister = () =>
+        fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+          credentials: "include",
+          cache: "no-store",
+        })
+
+      let res = await doRegister()
+      // Retry transient gateway errors (cold start) a couple of times
+      if (!res.ok && [502, 503, 504].includes(res.status)) {
+        setMessage("Der Server startet gerade (Cold Start). Bitte kurz warten… (Retry 1/2)")
+        await new Promise((r) => setTimeout(r, 1200))
+        res = await doRegister()
+      }
+      if (!res.ok && [502, 503, 504].includes(res.status)) {
+        setMessage("Der Server startet gerade (Cold Start). Bitte kurz warten… (Retry 2/2)")
+        await new Promise((r) => setTimeout(r, 2200))
+        res = await doRegister()
+      }
+
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setMessage(data?.detail || data?.error || "Fehler bei der Registrierung")

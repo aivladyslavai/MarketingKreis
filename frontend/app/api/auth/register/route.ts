@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+export const maxDuration = 60
 
 function appendSetCookies(res: Response, next: NextResponse) {
   const anyHeaders: any = res.headers as any
@@ -23,18 +24,33 @@ function getBackendUrl() {
 
 export async function POST(req: NextRequest) {
   const controller = new AbortController()
-  const timeoutMs = 25_000
+  const timeoutMs = 60_000
   const t = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const apiUrl = getBackendUrl()
-    const r = await fetch(`${apiUrl}/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: await req.text(),
-      credentials: "include",
-      cache: "no-store",
-      signal: controller.signal,
-    })
+    const bodyText = await req.text()
+
+    const doRegister = () =>
+      fetch(`${apiUrl}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: bodyText,
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
+      })
+
+    let r = await doRegister()
+    // Retry transient gateway errors (Render cold starts)
+    if (!r.ok && [502, 503, 504].includes(r.status)) {
+      await new Promise((res) => setTimeout(res, 1200))
+      r = await doRegister()
+    }
+    if (!r.ok && [502, 503, 504].includes(r.status)) {
+      await new Promise((res) => setTimeout(res, 2200))
+      r = await doRegister()
+    }
+
     const text = await r.text()
 
     // Try to parse and auto-verify on the server to avoid exposing raw token to the client
@@ -73,7 +89,9 @@ export async function POST(req: NextRequest) {
       ? "Der Server startet gerade (Cold Start). Bitte 20–30 Sekunden warten und erneut versuchen."
       : e?.message || "Unexpected error"
     const status = isAbort ? 504 : 500
-    return NextResponse.json({ detail: msg }, { status })
+    const resp = NextResponse.json({ detail: msg }, { status })
+    if (isAbort) resp.headers.set("retry-after", "10")
+    return resp
   } finally {
     clearTimeout(t)
   }
