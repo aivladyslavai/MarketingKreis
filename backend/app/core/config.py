@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     # Auth & signup
     signup_mode: str = Field(default="invite_only", env="SIGNUP_MODE")  # invite_only | open
     default_role: str = Field(default="user", env="DEFAULT_ROLE")
+    # If set, open signups will join this org instead of creating a new workspace.
+    default_org_id: Optional[int] = Field(default=None, env="DEFAULT_ORG_ID")
     # Admin step-up (2FA) window for sensitive operations
     admin_step_up_max_age_minutes: int = Field(default=12 * 60, env="ADMIN_STEP_UP_MAX_AGE_MINUTES")
 

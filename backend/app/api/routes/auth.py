@@ -841,7 +841,15 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
                 # Ignore malformed token in open mode; treat as self-serve signup
                 invited_org_id = None
         if not invited_org_id:
-            create_new_org = True
+            # Single-tenant convenience: if DEFAULT_ORG_ID is set, attach open signups to that org.
+            # Otherwise, create a new workspace per signup (multi-tenant default behavior).
+            if getattr(settings, "default_org_id", None):
+                try:
+                    invited_org_id = int(getattr(settings, "default_org_id") or 0) or None
+                except Exception:
+                    invited_org_id = None
+            if not invited_org_id:
+                create_new_org = True
 
     # Case-insensitive check (Postgres UNIQUE is case-sensitive by default)
     existing = db.query(User).filter(func.lower(User.email) == body.email).first()
