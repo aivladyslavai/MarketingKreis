@@ -393,10 +393,10 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                   <div className="text-xs font-semibold text-slate-200">Account</div>
                   <div className="mt-1 text-sm font-medium text-white truncate">
                     {primaryLabel}
-                  </div>
-                </div>
-                <button
-                  type="button"
+            </div>
+          </div>
+                  <button
+                    type="button"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-slate-200 hover:bg-white/10 flex-shrink-0"
                   onClick={async () => {
                     try {
@@ -1022,12 +1022,12 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                                     </Button>
                                   </div>
                                 </details>
-                              </div>
-                            </div>
+          </div>
+        </div>
 
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                               <div className="flex items-start justify-between gap-3">
-                                <div>
+          <div>
                                   <div className="text-xs font-semibold text-slate-200">Aktueller Code</div>
                                   <div className="mt-1 text-[11px] text-slate-400">
                                     Aktualisiert automatisch (Standard: 30 Sekunden).
@@ -1211,8 +1211,8 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                 <span className="font-semibold text-slate-200">Support:</span> Wenn etwas komisch aussieht, mach einen
                 Screenshot und sag kurz welche Seite — ich fix es.
               </div>
-            </div>
-          </div>
+        </div>
+      </div>
         </TabsContent>
       </Tabs>
     </div>
