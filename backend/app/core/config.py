@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     smtp_starttls: bool = Field(default=True, env="SMTP_STARTTLS")
     email_from: Optional[str] = Field(default=None, env="EMAIL_FROM")
     frontend_url: Optional[str] = Field(default=None, env="FRONTEND_URL")
+
+    # Email API provider (preferred on hosts that block SMTP egress)
+    resend_api_key: Optional[str] = Field(default=None, env="RESEND_API_KEY")
     # Admin bootstrap (optional, use only for first setup)
     admin_bootstrap_token: Optional[str] = Field(default=None, env="ADMIN_BOOTSTRAP_TOKEN")
     # Feature flags

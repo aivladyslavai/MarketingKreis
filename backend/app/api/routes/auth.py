@@ -949,7 +949,10 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     text = f"Welcome! Please confirm your email by opening this link: {verify_link_front or ('/verify?token=' + verify_token)}"
     html = f"<p>Welcome!</p><p>Please confirm your email by clicking: <a href=\"{verify_link_front or ('/verify?token=' + verify_token)}\">Verify email</a></p>"
     sent = False
-    delivery_enabled = bool(getattr(settings, "smtp_host", None) and getattr(settings, "smtp_user", None) and getattr(settings, "smtp_pass", None))
+    delivery_enabled = bool(
+        getattr(settings, "resend_api_key", None)
+        or (getattr(settings, "smtp_host", None) and getattr(settings, "smtp_user", None) and getattr(settings, "smtp_pass", None))
+    )
     try:
         if delivery_enabled:
             sent = send_email(user.email, subject, text, html)
@@ -1266,7 +1269,10 @@ def resend_verify_email(body: ResendVerifyRequest, request: Request, db: Session
     except Exception:
         pass
 
-    delivery_enabled = bool(getattr(settings, "smtp_host", None) and getattr(settings, "smtp_user", None) and getattr(settings, "smtp_pass", None))
+    delivery_enabled = bool(
+        getattr(settings, "resend_api_key", None)
+        or (getattr(settings, "smtp_host", None) and getattr(settings, "smtp_user", None) and getattr(settings, "smtp_pass", None))
+    )
     return {"ok": True, "delivery": {"enabled": delivery_enabled}}
 
 

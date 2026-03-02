@@ -3,6 +3,7 @@ import smtplib
 from typing import Optional
 import ssl
 import logging
+import httpx
 from app.core.config import get_settings
 
 
@@ -24,6 +25,40 @@ def _mask_email(v: str) -> str:
 
 def send_email(to: str, subject: str, text: str, html: Optional[str] = None) -> bool:
     settings = get_settings()
+
+    # Prefer HTTPS email provider if configured (works on hosts that block SMTP egress).
+    resend_key = (getattr(settings, "resend_api_key", None) or "").strip()  # type: ignore[attr-defined]
+    if resend_key:
+        email_from = (settings.email_from or "").strip()
+        if not email_from:
+            logger.error("resend_missing_email_from to=%s", _mask_email(to))
+            return False
+        try:
+            with httpx.Client(timeout=20.0) as c:
+                r = c.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                    json={
+                        "from": email_from,
+                        "to": [to],
+                        "subject": subject,
+                        "text": text,
+                        **({"html": html} if html else {}),
+                    },
+                )
+            if 200 <= r.status_code < 300:
+                return True
+            logger.error(
+                "resend_send_failed to=%s status=%s body=%s",
+                _mask_email(to),
+                r.status_code,
+                (r.text or "")[:400],
+            )
+            return False
+        except Exception as e:
+            logger.error("resend_send_failed to=%s error=%s", _mask_email(to), repr(e), exc_info=True)
+            return False
+
     host = settings.smtp_host
     port = settings.smtp_port or 587
     user = settings.smtp_user
