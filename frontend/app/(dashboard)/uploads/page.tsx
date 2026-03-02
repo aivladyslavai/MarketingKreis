@@ -727,11 +727,11 @@ export default function UploadsPage() {
             <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-rose-500/20 to-orange-500/10 border border-white/10 flex items-center justify-center backdrop-blur-sm">
               <UploadCloud className="h-6 w-6 sm:h-7 sm:w-7 text-rose-400" />
             </div>
-            <div>
+          <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl sm:text-3xl font-light tracking-tight text-slate-100">Uploads</h1>
                 <Badge className="glass-card text-[10px] sm:text-xs px-2 py-1">Import Center</Badge>
-              </div>
+          </div>
               <p className="text-xs sm:text-sm text-slate-400 mt-2 leading-relaxed">
                 CSV/XLSX importieren, Dateien verwalten und den Status im Blick behalten.
               </p>
@@ -773,9 +773,9 @@ export default function UploadsPage() {
           <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between">
             <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
               Letzter Upload: <span className="font-semibold text-slate-100">{formatRelativeTime(lastUploadAt)}</span>
-            </div>
+        </div>
             <ArrowUpRight className="h-4 w-4 text-slate-400" />
-          </div>
+      </div>
           <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between">
             <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
               Speicher genutzt: <span className="font-semibold text-slate-100">{formatBytes(totalSize)}</span>
@@ -813,15 +813,15 @@ export default function UploadsPage() {
             </div>
             <div className="h-12 w-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
               <FileText className="h-6 w-6 text-slate-400" />
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </CardContent>
+      </Card>
         <Card className="glass-card">
           <CardContent className="p-5 sm:p-6 flex items-center justify-between">
             <div>
               <div className="text-xs text-slate-600 dark:text-slate-400">Speicher</div>
               <div className="text-xl font-semibold text-slate-900 dark:text-slate-100">{formatBytes(totalSize)}</div>
-            </div>
+              </div>
             <div className="h-12 w-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
               <HardDrive className="h-6 w-6 text-slate-400" />
             </div>
@@ -1243,22 +1243,22 @@ export default function UploadsPage() {
                           <th key={h} className="px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-200">
                             {h}
                           </th>
-                        ))}
-                      </tr>
-                    </thead>
+                    ))}
+                  </tr>
+                </thead>
                     <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800">
-                      {preview.samples.map((row, idx) => (
-                        <tr key={idx}>
+                  {preview.samples.map((row, idx) => (
+                    <tr key={idx}>
                           {preview.headers.slice(0, previewCols).map((h) => (
                             <td key={h} className="px-4 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">
                               {row?.[h] != null ? String(row[h]).slice(0, 120) : ""}
                             </td>
-                          ))}
-                        </tr>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
               )}
 
               <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1267,7 +1267,7 @@ export default function UploadsPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                       {importKind === "crm" ? "CRM Vorschau" : "Kreis Vorschau"}
-                    </div>
+                  </div>
                     <div className="text-xs text-slate-600 dark:text-slate-400">
                       basiert auf {preview.samples.length} Zeilen
                     </div>
@@ -1322,7 +1322,7 @@ export default function UploadsPage() {
                           : "alles zugeordnet"}
                       </Badge>
                     )}
-                  </div>
+                </div>
 
                   {importKind !== "activities" ? (
                     <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
@@ -1347,7 +1347,7 @@ export default function UploadsPage() {
                       <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
                         Wenn Kategorien aus der Datei nicht zu deinen Kategorien am Kreis passen, kannst du sie hier
                         ersetzen. Beim Import wird die ersetzte Kategorie in der DB gespeichert.
-                      </div>
+            </div>
 
                       <div className="mt-4 flex flex-wrap items-center gap-2">
                         <GlassSelect
@@ -1358,7 +1358,7 @@ export default function UploadsPage() {
                           options={platformCategoryOptions.map((opt) => ({ value: opt.name, label: opt.name }))}
                           className="min-w-[220px]"
                         />
-                        <Button
+              <Button
                           size="sm"
                           variant="outline"
                           className="glass-card"
@@ -1373,21 +1373,21 @@ export default function UploadsPage() {
                           }}
                         >
                           Für alle offenen übernehmen
-                        </Button>
+              </Button>
                         {Object.keys(categoryValueMap).length > 0 && (
-                          <Button
+              <Button
                             size="sm"
                             variant="ghost"
                             className="text-slate-600 dark:text-slate-300"
-                            onClick={() => {
+                onClick={() => {
                               setCategoryValueMap({})
                               setBulkCategoryTarget("")
                             }}
                           >
                             Reset
-                          </Button>
+              </Button>
                         )}
-                      </div>
+            </div>
 
                       <div className="mt-4 space-y-3 max-h-[360px] overflow-auto pr-1">
                         {categoryMappingRows.map((c) => {
@@ -1429,8 +1429,8 @@ export default function UploadsPage() {
                                   options={platformCategoryOptions.map((opt) => ({ value: opt.name, label: opt.name }))}
                                   className="min-w-[180px]"
                                 />
-                              </div>
-                            </div>
+              </div>
+            </div>
                           )
                         })}
                       </div>
@@ -1438,10 +1438,10 @@ export default function UploadsPage() {
                   )}
                 </div>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+      )}
+          </CardContent>
+        </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Upload list */}
@@ -1456,8 +1456,8 @@ export default function UploadsPage() {
                 placeholder="Suche nach Dateinamen, Typ oder ID…"
                 className="pl-9 bg-white/60 dark:bg-slate-900/60"
               />
-            </div>
-          </CardHeader>
+      </div>
+        </CardHeader>
           <CardContent className="space-y-4">
             {isLoading ? (
               <div className="space-y-2">
@@ -1495,8 +1495,8 @@ export default function UploadsPage() {
                     Template XLSX
                   </Button>
                 </div>
-              </div>
-            ) : (
+            </div>
+          ) : (
               <div className="divide-y divide-slate-200/60 dark:divide-slate-800">
                 {filteredUploads.slice(0, 12).map((u: any) => {
                   const name = String(u.original_name || "")
@@ -1509,8 +1509,8 @@ export default function UploadsPage() {
                         <Icon className="h-4 w-4 text-slate-500 flex-shrink-0" />
                         <div className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                           {name}
-                        </div>
-                      </div>
+                    </div>
+                  </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
                         <Badge variant="outline" className="text-[10px]">
                           {labelFor(kind, name)}
@@ -1523,7 +1523,7 @@ export default function UploadsPage() {
                         <span className="inline-flex items-center gap-1">
                           <HardDrive className="h-3.5 w-3.5" />
                           {formatBytes(Number(u.file_size || 0))}
-                        </span>
+                    </span>
                         <span className="inline-flex items-center gap-1">
                           <Clock className="h-3.5 w-3.5" />
                           {u.created_at ? new Date(u.created_at).toLocaleString("de-DE") : "—"}
@@ -1555,8 +1555,8 @@ export default function UploadsPage() {
                         <Eye className="h-4 w-4" />
                       </Button>
                       <Button size="sm" variant="outline" className="glass-card" onClick={() => notAvailable("Download")}>
-                        <Download className="h-4 w-4" />
-                      </Button>
+                      <Download className="h-4 w-4" />
+                    </Button>
                       <Button size="sm" variant="outline" className="glass-card" onClick={() => notAvailable("Teilen")}>
                         <Share2 className="h-4 w-4" />
                       </Button>
@@ -1568,14 +1568,14 @@ export default function UploadsPage() {
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                    </div>
                   </div>
+                </div>
                   )
                 })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
         {/* Jobs list */}
         <Card className="glass-card" data-tour="jobs-list">
@@ -1592,11 +1592,11 @@ export default function UploadsPage() {
                 <Badge className="bg-red-500/15 text-red-200 border border-red-500/30 text-[10px]">
                   failed {jobsByStatus.failed}
                 </Badge>
-              </div>
             </div>
+                  </div>
             <div className="text-xs text-slate-600 dark:text-slate-400">
               Imports laufen im Hintergrund. Hier siehst du den Status der letzten Jobs.
-            </div>
+                    </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {jobsLoading ? (
@@ -1604,20 +1604,20 @@ export default function UploadsPage() {
                 {[...Array(5)].map((_, i) => (
                   <Skeleton key={i} className="h-12 rounded-xl bg-white/5" />
                 ))}
-              </div>
+                  </div>
             ) : jobs.length === 0 ? (
               <div className="rounded-xl border border-dashed border-white/15 bg-white/5 p-7">
                 <div className="flex items-start gap-3">
                   <div className="h-10 w-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
                     <Briefcase className="h-5 w-5 text-slate-300" />
-                  </div>
+                </div>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Noch keine Jobs</div>
                     <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                       Starte einen CSV/XLSX Import – danach erscheinen hier die Job-Details.
-                    </div>
-                  </div>
-                </div>
+            </div>
+      </div>
+    </div>
               </div>
             ) : (
               <div className="divide-y divide-slate-200/60 dark:divide-slate-800">
@@ -1632,7 +1632,7 @@ export default function UploadsPage() {
                         : s === "processing"
                           ? "bg-amber-400"
                           : "bg-slate-400"
-                  return (
+  return (
                   <div key={j.id} className="py-4 flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -1641,13 +1641,13 @@ export default function UploadsPage() {
                           <span className={`h-2 w-2 rounded-full ${dot}`} />
                           {status}
                         </span>
-                      </div>
+      </div>
                       <div className="mt-1 text-xs text-slate-700 dark:text-slate-300">
                         {j.created_at ? new Date(j.created_at).toLocaleString("de-DE") : "—"}
-                      </div>
-                    </div>
+        </div>
+      </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">#{j.id}</div>
-                  </div>
+    </div>
                   )
                 })}
               </div>
