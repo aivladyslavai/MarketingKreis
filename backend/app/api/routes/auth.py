@@ -772,6 +772,79 @@ class ResendVerifyRequest(BaseModel):
 def _hash_password(pw: str) -> str:
     return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
+def _build_verify_email(verify_url: str) -> tuple[str, str, str]:
+    subject = "E‑Mail bestätigen – Marketing Kreis"
+    text = (
+        "Willkommen bei Marketing Kreis!\n\n"
+        "Bitte bestätigen Sie Ihre E‑Mail‑Adresse, indem Sie diesen Link öffnen:\n"
+        f"{verify_url}\n\n"
+        "Der Link ist 72 Stunden gültig.\n"
+        "Falls Sie kein Konto erstellt haben, können Sie diese E‑Mail ignorieren.\n"
+    )
+
+    # Keep HTML broadly compatible with mail clients (table layout + inline styles).
+    html = f"""\
+<!doctype html>
+<html lang="de">
+  <body style="margin:0;padding:0;background:#060b1a;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#060b1a;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;border-radius:24px;overflow:hidden;border:1px solid rgba(148,163,184,.20);background:rgba(15,23,42,.78);backdrop-filter:blur(18px);">
+            <tr>
+              <td style="padding:28px 28px 10px 28px;">
+                <div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:rgba(148,163,184,.9);">
+                  Marketing Kreis
+                </div>
+                <div style="margin-top:10px;font-size:22px;line-height:1.25;font-weight:700;color:#e2e8f0;">
+                  Bitte bestätigen Sie Ihre E‑Mail
+                </div>
+                <div style="margin-top:10px;font-size:14px;line-height:1.6;color:rgba(226,232,240,.78);">
+                  Danke für Ihre Registrierung. Zur Sicherheit müssen Sie Ihre E‑Mail‑Adresse bestätigen, bevor Sie sich einloggen können.
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 28px 22px 28px;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td align="center" style="border-radius:14px;background:linear-gradient(90deg,#7c3aed,#d946ef);">
+                      <a href="{verify_url}" style="display:inline-block;padding:12px 18px;font-size:14px;font-weight:700;text-decoration:none;color:#ffffff;">
+                        E‑Mail bestätigen
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+                <div style="margin-top:14px;font-size:12px;line-height:1.6;color:rgba(148,163,184,.9);">
+                  Falls der Button nicht funktioniert, kopieren Sie diesen Link in Ihren Browser:
+                </div>
+                <div style="margin-top:8px;word-break:break-all;font-size:12px;line-height:1.6;">
+                  <a href="{verify_url}" style="color:#a78bfa;text-decoration:underline;">{verify_url}</a>
+                </div>
+                <div style="margin-top:14px;font-size:12px;line-height:1.6;color:rgba(148,163,184,.9);">
+                  Der Link ist <b style="color:#e2e8f0;">72 Stunden</b> gültig.
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 28px 26px 28px;">
+                <div style="border-top:1px solid rgba(148,163,184,.18);padding-top:14px;font-size:12px;line-height:1.6;color:rgba(148,163,184,.85);">
+                  Wenn Sie kein Konto erstellt haben, können Sie diese E‑Mail ignorieren.
+                </div>
+              </td>
+            </tr>
+          </table>
+          <div style="max-width:560px;margin-top:12px;text-align:center;font-size:11px;color:rgba(148,163,184,.7);">
+            © {datetime.now(timezone.utc).year} Marketing Kreis
+          </div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+    return subject, text, html
+
 def _encode_special(payload: dict, minutes: int) -> str:
     settings = get_settings()
     return jwt.encode(
@@ -945,9 +1018,8 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     verify_token = _encode_special({"typ": "verify", "email": user.email}, minutes=60*24*3)
     # Send email if SMTP configured
     verify_link_front = (settings.frontend_url or "").rstrip("/") + f"/verify?token={verify_token}" if settings.frontend_url else None
-    subject = "Verify your email"
-    text = f"Welcome! Please confirm your email by opening this link: {verify_link_front or ('/verify?token=' + verify_token)}"
-    html = f"<p>Welcome!</p><p>Please confirm your email by clicking: <a href=\"{verify_link_front or ('/verify?token=' + verify_token)}\">Verify email</a></p>"
+    verify_url = verify_link_front or ("(FRONTEND_URL fehlt) /verify?token=" + verify_token)
+    subject, text, html = _build_verify_email(verify_url)
     sent = False
     delivery_enabled = bool(
         getattr(settings, "resend_api_key", None)
@@ -1259,9 +1331,8 @@ def resend_verify_email(body: ResendVerifyRequest, request: Request, db: Session
                 if settings.frontend_url
                 else None
             )
-            subject = "Verify your email"
-            text = f"Please confirm your email by opening this link: {verify_link_front or ('/verify?token=' + verify_token)}"
-            html = f"<p>Please confirm your email:</p><p><a href=\"{verify_link_front or ('/verify?token=' + verify_token)}\">Verify email</a></p>"
+            verify_url = verify_link_front or ("(FRONTEND_URL fehlt) /verify?token=" + verify_token)
+            subject, text, html = _build_verify_email(verify_url)
             try:
                 send_email(user.email, subject, text, html)
             except Exception:
