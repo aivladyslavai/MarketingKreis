@@ -46,6 +46,26 @@ function SignupInner() {
 
   const token = params?.get("token") || ""
 
+  const wakeBackend = () => {
+    const base = (process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/$/, "")
+    // If we don't know the backend URL in the client, at least touch the proxy.
+    if (!base) {
+      fetch("/api/health", { cache: "no-store" }).catch(() => {})
+      return
+    }
+
+    const url = `${base}/health?t=${Date.now()}`
+    try {
+      // Fire-and-forget request that doesn't require CORS.
+      const img = new Image()
+      ;(img as any).referrerPolicy = "no-referrer"
+      img.src = url
+    } catch {}
+
+    // Also try fetch in no-cors mode (still wakes the service).
+    fetch(url, { mode: "no-cors", cache: "no-store" }).catch(() => {})
+  }
+
   useEffect(() => {
     try {
       const saved = typeof window !== "undefined" ? localStorage.getItem("mk_remember_email") : null
@@ -60,13 +80,7 @@ function SignupInner() {
 
   // Warm up backend (Render free tier often sleeps; first request can be slow).
   useEffect(() => {
-    const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), 8000)
-    fetch("/api/health", { cache: "no-store", signal: ctrl.signal }).catch(() => {})
-    return () => {
-      clearTimeout(t)
-      ctrl.abort()
-    }
+    wakeBackend()
   }, [])
 
   const passwordStrength = useMemo(() => {
@@ -97,6 +111,7 @@ function SignupInner() {
     setMessage(null)
     setSuccess(false)
     try {
+      wakeBackend()
       // Use Next.js API proxy so Vercel never needs direct CORS access to the backend.
       const payload = JSON.stringify({ email, password, token })
       const doRegister = () =>
@@ -112,12 +127,14 @@ function SignupInner() {
       // Retry transient gateway errors (cold start) a couple of times
       if (!res.ok && [502, 503, 504].includes(res.status)) {
         setMessage("Der Server startet gerade (Cold Start). Bitte kurz warten… (Retry 1/2)")
-        await new Promise((r) => setTimeout(r, 1200))
+        wakeBackend()
+        await new Promise((r) => setTimeout(r, 8000))
         res = await doRegister()
       }
       if (!res.ok && [502, 503, 504].includes(res.status)) {
         setMessage("Der Server startet gerade (Cold Start). Bitte kurz warten… (Retry 2/2)")
-        await new Promise((r) => setTimeout(r, 2200))
+        wakeBackend()
+        await new Promise((r) => setTimeout(r, 12000))
         res = await doRegister()
       }
 
@@ -192,6 +209,7 @@ function SignupInner() {
     setLoginLoading(true)
     setLogin2faError(null)
     try {
+      wakeBackend()
       // Use Next.js API proxy to avoid any direct browser CORS issues.
       // Also handle transient 502/503/504 (cold starts) gracefully.
       const payload = JSON.stringify({ email: loginEmail, password: loginPassword })
@@ -209,7 +227,8 @@ function SignupInner() {
 
       // One retry for transient gateway errors (Render cold start, etc.)
       if (!res.ok && [502, 503, 504].includes(res.status)) {
-        await new Promise((r) => setTimeout(r, 1200))
+        wakeBackend()
+        await new Promise((r) => setTimeout(r, 5000))
         res = await doLogin()
       }
 
