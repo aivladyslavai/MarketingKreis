@@ -1,10 +1,16 @@
 /** @type {import('next').NextConfig} */
+const path = require('path')
+
 const nextConfig = {
   reactStrictMode: false,
+  // Reduce the deployed output size (helps Vercel "Deploying outputs" flakiness in large monorepos)
+  output: 'standalone',
   transpilePackages: ['recharts', 'victory-vendor', 'd3-array', 'd3-scale', 'd3-shape'],
   experimental: {
     // Disable automatic package import optimization that breaks some d3 modules
     optimizePackageImports: [],
+    // Ensure output file tracing stays inside /frontend (avoid pulling huge repo files into the bundle)
+    outputFileTracingRoot: path.join(__dirname),
   },
   eslint: {
     // In production we fail the build on any ESLint errors.
