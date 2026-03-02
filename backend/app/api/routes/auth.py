@@ -949,12 +949,14 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     text = f"Welcome! Please confirm your email by opening this link: {verify_link_front or ('/verify?token=' + verify_token)}"
     html = f"<p>Welcome!</p><p>Please confirm your email by clicking: <a href=\"{verify_link_front or ('/verify?token=' + verify_token)}\">Verify email</a></p>"
     sent = False
+    delivery_enabled = bool(getattr(settings, "smtp_host", None) and getattr(settings, "smtp_user", None) and getattr(settings, "smtp_pass", None))
     try:
-        sent = send_email(user.email, subject, text, html)
+        if delivery_enabled:
+            sent = send_email(user.email, subject, text, html)
     except Exception:
         sent = False
     role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
-    verify_payload: dict = {"sent": sent}
+    verify_payload: dict = {"sent": sent, "delivery": {"enabled": delivery_enabled}}
     # Do NOT leak verification tokens in production responses.
     if settings.environment != "production" and settings.debug:
         verify_payload["token"] = verify_token

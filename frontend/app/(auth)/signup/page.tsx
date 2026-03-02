@@ -7,6 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Mail, Lock, Eye, EyeOff, UserPlus, Sparkles, CheckCircle2, XCircle, Info } from "lucide-react"
 
 export const dynamic = "force-dynamic"
@@ -25,6 +33,10 @@ function SignupInner() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [capsLock, setCapsLock] = useState(false)
+  const [postSignupOpen, setPostSignupOpen] = useState(false)
+  const [postSignupSent, setPostSignupSent] = useState<boolean | null>(null)
+  const [postSignupDeliveryEnabled, setPostSignupDeliveryEnabled] = useState<boolean | null>(null)
+  const [postSignupResendStatus, setPostSignupResendStatus] = useState<string | null>(null)
 
   // Login state
   const [mode, setMode] = useState<"signup" | "login">(() => {
@@ -146,12 +158,24 @@ function SignupInner() {
       }
       setSuccess(true)
       const sent = (data as any)?.verify?.sent
+      const deliveryEnabled = (data as any)?.verify?.delivery?.enabled
+      setPostSignupSent(typeof sent === "boolean" ? sent : null)
+      setPostSignupDeliveryEnabled(typeof deliveryEnabled === "boolean" ? deliveryEnabled : null)
+      setPostSignupResendStatus(null)
+      setPostSignupOpen(true)
+
       if (sent === false) {
-        setMessage(
-          "Konto erfolgreich erstellt – aber Verifikations‑E‑Mail konnte nicht gesendet werden (SMTP nicht konfiguriert). Bitte Admin kontaktieren.",
-        )
+        if (deliveryEnabled === false) {
+          setMessage(
+            "Konto erfolgreich erstellt – aber Verifikations‑E‑Mail konnte nicht gesendet werden (SMTP nicht konfiguriert). Bitte Admin kontaktieren.",
+          )
+        } else {
+          setMessage(
+            "Konto erfolgreich erstellt – aber Verifikations‑E‑Mail konnte nicht gesendet werden. Bitte später erneut versuchen oder Admin kontaktieren.",
+          )
+        }
       } else {
-        setMessage("Konto erfolgreich erstellt! Sie können sich jetzt einloggen.")
+        setMessage("Konto erfolgreich erstellt! Bitte E‑Mail verifizieren, dann einloggen.")
       }
       setMode("login")
       setLoginEmail(email)
@@ -298,6 +322,33 @@ function SignupInner() {
       }
     } catch (e: any) {
       setLoginError(e?.message || "Senden fehlgeschlagen")
+    }
+  }
+
+  const resendVerifyFromModal = async () => {
+    setPostSignupResendStatus(null)
+    const emailToUse = (loginEmail || email || "").trim()
+    if (!emailToUse) {
+      setPostSignupResendStatus("Bitte E‑Mail eingeben.")
+      return
+    }
+    try {
+      const res = await fetch("/api/auth/verify-resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailToUse }),
+        cache: "no-store",
+      })
+      const j = await res.json().catch(() => ({} as any))
+      if (j?.delivery?.enabled === false) {
+        setPostSignupResendStatus(
+          "E‑Mail Versand ist nicht konfiguriert (SMTP). Bitte SMTP_* + EMAIL_FROM + FRONTEND_URL in Render setzen.",
+        )
+      } else {
+        setPostSignupResendStatus("Wenn das Konto existiert, wurde die Verifikations‑E‑Mail erneut gesendet. Bitte Spam prüfen.")
+      }
+    } catch (e: any) {
+      setPostSignupResendStatus(e?.message || "Senden fehlgeschlagen")
     }
   }
 
@@ -809,6 +860,47 @@ function SignupInner() {
           </p>
         </div>
       </div>
+
+      <Dialog open={postSignupOpen} onOpenChange={setPostSignupOpen}>
+        <DialogContent className="w-[min(560px,calc(100vw-1.5rem))]">
+          <DialogHeader>
+            <DialogTitle>Konto erstellt</DialogTitle>
+            <DialogDescription>
+              Ihr Konto wurde erfolgreich erstellt. Zur Sicherheit müssen Sie Ihre E‑Mail bestätigen.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-2 space-y-3">
+            <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3">
+              <div className="text-sm text-slate-200">
+                <span className="text-slate-400">E‑Mail:</span>{" "}
+                <span className="font-medium">{(loginEmail || email || "").trim()}</span>
+              </div>
+              <div className="mt-2 text-sm text-slate-300">
+                {postSignupSent === true && "Verifikations‑E‑Mail wurde gesendet. Bitte Posteingang/Spam prüfen."}
+                {postSignupSent === false && postSignupDeliveryEnabled === false &&
+                  "Verifikations‑E‑Mail konnte nicht gesendet werden, weil SMTP nicht konfiguriert ist."}
+                {postSignupSent === false && postSignupDeliveryEnabled !== false &&
+                  "Verifikations‑E‑Mail konnte nicht gesendet werden. Bitte erneut senden oder Render‑Logs prüfen (SMTP Auth/Port/TLS)."}
+                {postSignupSent === null && "Bitte prüfen Sie Ihre E‑Mails (inkl. Spam)."}
+              </div>
+            </div>
+
+            {postSignupResendStatus ? (
+              <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3 text-sm text-slate-200">
+                {postSignupResendStatus}
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPostSignupOpen(false)}>
+              Schließen
+            </Button>
+            <Button onClick={resendVerifyFromModal}>Verifikations‑E‑Mail erneut senden</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

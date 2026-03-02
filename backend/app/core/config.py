@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     smtp_port: Optional[int] = Field(default=None, env="SMTP_PORT")
     smtp_user: Optional[str] = Field(default=None, env="SMTP_USER")
     smtp_pass: Optional[str] = Field(default=None, env="SMTP_PASS")
+    # Some providers require implicit TLS (SMTP over SSL, usually port 465)
+    smtp_ssl: bool = Field(default=False, env="SMTP_SSL")
+    # STARTTLS is typically used on port 587; can be disabled for providers that reject it.
+    smtp_starttls: bool = Field(default=True, env="SMTP_STARTTLS")
     email_from: Optional[str] = Field(default=None, env="EMAIL_FROM")
     frontend_url: Optional[str] = Field(default=None, env="FRONTEND_URL")
     # Admin bootstrap (optional, use only for first setup)

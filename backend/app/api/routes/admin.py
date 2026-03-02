@@ -23,6 +23,34 @@ from app.utils.mailer import send_email
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+class SmtpTestRequest(BaseModel):
+    to: EmailStr
+
+
+@router.post("/smtp/test")
+def smtp_test(
+    body: SmtpTestRequest,
+    _: User = Depends(require_admin_step_up()),
+) -> Dict[str, Any]:
+    """
+    Admin-only SMTP delivery test.
+    Returns minimal diagnostics; detailed errors are in Render logs (mk.mailer).
+    """
+    settings = get_settings()
+    enabled = bool(getattr(settings, "smtp_host", None) and getattr(settings, "smtp_user", None) and getattr(settings, "smtp_pass", None))
+    if not enabled:
+        return {"ok": True, "delivery": {"enabled": False, "sent": False}}
+
+    # Send a simple text email.
+    sent = send_email(
+        str(body.to),
+        "MarketingKreis SMTP test",
+        "This is a test email from MarketingKreis. If you received this, SMTP delivery works.",
+        None,
+    )
+    return {"ok": True, "delivery": {"enabled": True, "sent": bool(sent)}}
+
+
 @router.get("/health")
 def admin_health(_: User = Depends(require_role(UserRole.admin))) -> Dict[str, str]:
     return {"status": "ok"}
