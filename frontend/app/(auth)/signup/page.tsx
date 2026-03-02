@@ -875,43 +875,136 @@ function SignupInner() {
       </div>
 
       <Dialog open={postSignupOpen} onOpenChange={setPostSignupOpen}>
-        <DialogContent className="w-[min(560px,calc(100vw-1.5rem))]">
-          <DialogHeader>
-            <DialogTitle>Konto erstellt</DialogTitle>
-            <DialogDescription>
-              Ihr Konto wurde erfolgreich erstellt. Zur Sicherheit müssen Sie Ihre E‑Mail bestätigen.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="w-[min(520px,calc(100vw-1.5rem))] overflow-hidden rounded-3xl border-slate-800/60 bg-[#0c1225]/95 p-0 shadow-2xl shadow-violet-500/10 backdrop-blur-2xl">
+          {/* Decorative gradient blobs */}
+          <div className="pointer-events-none absolute -top-20 -right-20 h-40 w-40 animate-pulse rounded-full bg-gradient-to-br from-emerald-500/30 to-cyan-500/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 -left-16 h-36 w-36 animate-pulse rounded-full bg-gradient-to-tr from-violet-500/25 to-fuchsia-500/15 blur-3xl" style={{ animationDelay: "0.7s" }} />
 
-          <div className="mt-2 space-y-3">
-            <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3">
-              <div className="text-sm text-slate-200">
-                <span className="text-slate-400">E‑Mail:</span>{" "}
-                <span className="font-medium">{(loginEmail || email || "").trim()}</span>
-              </div>
-              <div className="mt-2 text-sm text-slate-300">
-                {postSignupSent === true && "Verifikations‑E‑Mail wurde gesendet. Bitte Posteingang/Spam prüfen."}
-                {postSignupSent === false && postSignupDeliveryEnabled === false &&
-                  "Verifikations‑E‑Mail konnte nicht gesendet werden, weil SMTP nicht konfiguriert ist."}
-                {postSignupSent === false && postSignupDeliveryEnabled !== false &&
-                  "Verifikations‑E‑Mail konnte nicht gesendet werden. Bitte erneut senden oder Render‑Logs prüfen (SMTP Auth/Port/TLS)."}
-                {postSignupSent === null && "Bitte prüfen Sie Ihre E‑Mails (inkl. Spam)."}
+          <div className="relative z-10 px-6 pt-7 pb-6 sm:px-8">
+            {/* Success icon */}
+            <div className="mb-5 flex justify-center">
+              <div className="relative">
+                <div className="absolute inset-0 animate-ping rounded-full bg-emerald-500/20" style={{ animationDuration: "2s" }} />
+                <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 ring-1 ring-emerald-500/30">
+                  <CheckCircle2 className="h-8 w-8 text-emerald-400" />
+                </div>
               </div>
             </div>
 
-            {postSignupResendStatus ? (
-              <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3 text-sm text-slate-200">
+            {/* Title */}
+            <h3 className="text-center text-xl font-bold tracking-tight">
+              <span className="bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
+                Willkommen bei Marketing Kreis
+              </span>
+            </h3>
+            <p className="mt-1.5 text-center text-sm text-slate-400">
+              Ihr Konto wurde erfolgreich erstellt
+            </p>
+
+            {/* Email card */}
+            <div className="mt-5 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 ring-1 ring-violet-500/20">
+                  <Mail className="h-5 w-5 text-violet-300" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-slate-100">
+                    {(loginEmail || email || "").trim()}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    Verifikation ausstehend
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Status message */}
+            <div className="mt-4 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4">
+              {postSignupSent === true && (
+                <div className="flex items-start gap-2.5">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-emerald-300">E‑Mail gesendet</div>
+                    <div className="mt-0.5 text-xs text-slate-400">
+                      Bitte prüfen Sie Ihren Posteingang und Spam‑Ordner.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {postSignupSent === false && postSignupDeliveryEnabled === false && (
+                <div className="flex items-start gap-2.5">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
+                    <Info className="h-3.5 w-3.5 text-amber-400" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-amber-300">E‑Mail Versand nicht aktiv</div>
+                    <div className="mt-0.5 text-xs text-slate-400">
+                      SMTP / E‑Mail‑Provider ist nicht konfiguriert. Bitte Admin kontaktieren.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {postSignupSent === false && postSignupDeliveryEnabled !== false && (
+                <div className="flex items-start gap-2.5">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
+                    <Info className="h-3.5 w-3.5 text-amber-400" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-amber-300">Versand fehlgeschlagen</div>
+                    <div className="mt-0.5 text-xs text-slate-400">
+                      Bitte versuchen Sie es erneut oder kontaktieren Sie den Admin.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {postSignupSent === null && (
+                <div className="flex items-start gap-2.5">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-500/15">
+                    <Mail className="h-3.5 w-3.5 text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-slate-200">Bestätigung erforderlich</div>
+                    <div className="mt-0.5 text-xs text-slate-400">
+                      Bitte prüfen Sie Ihre E‑Mails (inkl. Spam).
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Resend status */}
+            {postSignupResendStatus && (
+              <div className="mt-3 rounded-xl border border-violet-500/20 bg-violet-500/[0.07] p-3 text-xs text-violet-200">
                 {postSignupResendStatus}
               </div>
-            ) : null}
-          </div>
+            )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPostSignupOpen(false)}>
-              Schließen
-            </Button>
-            <Button onClick={resendVerifyFromModal}>Verifikations‑E‑Mail erneut senden</Button>
-          </DialogFooter>
+            {/* Actions */}
+            <div className="mt-6 flex flex-col gap-2.5 sm:flex-row-reverse">
+              <button
+                type="button"
+                onClick={resendVerifyFromModal}
+                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-sm font-medium text-white shadow-lg shadow-violet-500/25 transition-all hover:from-violet-500 hover:to-fuchsia-500 hover:shadow-violet-500/40 active:scale-[0.98]"
+              >
+                <Mail className="h-4 w-4" />
+                E‑Mail erneut senden
+              </button>
+              <button
+                type="button"
+                onClick={() => setPostSignupOpen(false)}
+                className="flex h-11 flex-1 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-sm font-medium text-slate-300 transition-all hover:bg-white/[0.08] hover:text-white active:scale-[0.98]"
+              >
+                Weiter zum Login
+              </button>
+            </div>
+
+            {/* Hint */}
+            <p className="mt-4 text-center text-[11px] text-slate-600">
+              Nach der Bestätigung können Sie sich sofort einloggen.
+            </p>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
