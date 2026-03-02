@@ -629,7 +629,20 @@ function SignupInner() {
                 <form onSubmit={onLoginSubmit} className="space-y-4">
                   {loginError && (
                     <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-                      {loginError}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">{loginError}</div>
+                        {String(loginError || "")
+                          .toLowerCase()
+                          .includes("email not verified") && (
+                          <button
+                            type="button"
+                            onClick={resendVerify}
+                            className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-violet-200 underline decoration-violet-400/70 underline-offset-4 hover:text-violet-100"
+                          >
+                            E‑Mail erneut senden
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                   {login2faError && (
