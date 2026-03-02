@@ -128,7 +128,14 @@ function SignupInner() {
         return
       }
       setSuccess(true)
-      setMessage("Konto erfolgreich erstellt! Sie können sich jetzt einloggen.")
+      const sent = (data as any)?.verify?.sent
+      if (sent === false) {
+        setMessage(
+          "Konto erfolgreich erstellt – aber Verifikations‑E‑Mail konnte nicht gesendet werden (SMTP nicht konfiguriert). Bitte Admin kontaktieren.",
+        )
+      } else {
+        setMessage("Konto erfolgreich erstellt! Sie können sich jetzt einloggen.")
+      }
       setMode("login")
       setLoginEmail(email)
       setPassword("")
@@ -241,6 +248,37 @@ function SignupInner() {
       setLoginError(e?.message || "Login fehlgeschlagen")
     } finally {
       setLoginLoading(false)
+    }
+  }
+
+  const resendVerify = async () => {
+    setLoginError(null)
+    try {
+      const emailToUse = (loginEmail || email || "").trim()
+      if (!emailToUse) {
+        setLoginError("Bitte E‑Mail eingeben.")
+        return
+      }
+      const res = await fetch("/api/auth/verify-resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailToUse }),
+        cache: "no-store",
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j?.detail || j?.error || "Senden fehlgeschlagen")
+      }
+      const j = await res.json().catch(() => ({} as any))
+      if (j?.delivery?.enabled === false) {
+        setLoginError(
+          "E‑Mail Versand ist nicht konfiguriert (SMTP). Bitte SMTP_* + EMAIL_FROM + FRONTEND_URL in Render setzen.",
+        )
+      } else {
+        setLoginError("Wenn das Konto existiert, wurde die Verifikations‑E‑Mail erneut gesendet. Bitte Spam prüfen.")
+      }
+    } catch (e: any) {
+      setLoginError(e?.message || "Senden fehlgeschlagen")
     }
   }
 
@@ -640,6 +678,7 @@ function SignupInner() {
                   </div>
 
                   {!login2faRequired ? (
+                    <>
                     <Button
                       type="submit"
                       disabled={loginLoading}
@@ -657,6 +696,18 @@ function SignupInner() {
                         <span className="inline-flex items-center gap-2">Einloggen</span>
                       )}
                     </Button>
+                    {String(loginError || "").toLowerCase().includes("email not verified") && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 w-full glass-card"
+                        onClick={resendVerify}
+                        disabled={loginLoading}
+                      >
+                        Verifikations‑E‑Mail erneut senden
+                      </Button>
+                    )}
+                    </>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <Button

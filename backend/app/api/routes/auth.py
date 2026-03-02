@@ -765,6 +765,10 @@ class RegisterRequest(BaseModel):
     name: Optional[str] = None
     token: Optional[str] = None  # invite token when invite_only
 
+
+class ResendVerifyRequest(BaseModel):
+    email: str
+
 def _hash_password(pw: str) -> str:
     return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
@@ -1213,5 +1217,54 @@ def verify_email(token: str, request: Request, db: Session = Depends(get_db_sess
     db.add(user)
     db.commit()
     return {"message": "verified"}
+
+
+@router.post("/verify/resend")
+def resend_verify_email(body: ResendVerifyRequest, request: Request, db: Session = Depends(get_db_session)):
+    """
+    Resend email verification link.
+
+    To avoid account enumeration, this endpoint returns ok=true even if the user does not exist.
+    """
+    settings = get_settings()
+    email = (body.email or "").strip().lower()
+    if not email:
+        return {"ok": True}
+
+    enforce_rate_limit(
+        request,
+        scope="auth_verify_resend_ip",
+        limit=30,
+        window_seconds=60 * 60,
+    )
+    enforce_rate_limit(
+        request,
+        scope="auth_verify_resend_email",
+        limit=10,
+        window_seconds=60 * 60,
+        discriminator=email,
+    )
+
+    try:
+        user = db.query(User).filter(func.lower(User.email) == email).first()
+        if user and not bool(getattr(user, "is_verified", False)):
+            verify_token = _encode_special({"typ": "verify", "email": user.email}, minutes=60 * 24 * 3)
+            verify_link_front = (
+                (settings.frontend_url or "").rstrip("/") + f"/verify?token={verify_token}"
+                if settings.frontend_url
+                else None
+            )
+            subject = "Verify your email"
+            text = f"Please confirm your email by opening this link: {verify_link_front or ('/verify?token=' + verify_token)}"
+            html = f"<p>Please confirm your email:</p><p><a href=\"{verify_link_front or ('/verify?token=' + verify_token)}\">Verify email</a></p>"
+            try:
+                send_email(user.email, subject, text, html)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    delivery_enabled = bool(getattr(settings, "smtp_host", None) and getattr(settings, "smtp_user", None) and getattr(settings, "smtp_pass", None))
+    return {"ok": True, "delivery": {"enabled": delivery_enabled}}
 
 
