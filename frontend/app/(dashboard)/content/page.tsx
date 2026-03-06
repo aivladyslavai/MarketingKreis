@@ -1883,7 +1883,7 @@ function ContentPageInner() {
             <div className="relative flex items-center gap-3">
               <div className="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center">
                 <Sparkles className="h-5 w-5 text-violet-200" />
-              </div>
+          </div>
               <div className="min-w-0">
                 <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2 leading-tight">
                   Content Items
@@ -1894,7 +1894,7 @@ function ContentPageInner() {
                 <p className="text-[11px] text-slate-400 mt-1">
                   Verwalte Kampagnen/Materialien in einem sauberen Prozess — von Idee bis Publish.
                 </p>
-              </div>
+        </div>
             </div>
             <div className="relative flex items-center gap-2 text-[11px] text-slate-300">
               <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
@@ -1967,17 +1967,17 @@ function ContentPageInner() {
               <div className="relative rounded-2xl border border-white/10 bg-slate-950/30 backdrop-blur-xl p-3 sm:p-4 overflow-hidden">
                 <div className="pointer-events-none absolute inset-x-0 -mt-4 h-20 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.10),transparent_60%)]" />
                 <div className="relative flex flex-col gap-2 sm:gap-3">
-                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
                     <div className="relative w-full sm:max-w-[340px]">
                       <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input
+          <Input
                         value={itemQ}
                         onChange={(e) => setItemQ(e.target.value)}
                         placeholder="Suche nach Titel, Tags, Channel…"
                         className="pl-9"
                       />
                     </div>
-                    <GlassSelect
+            <GlassSelect
                       value={itemStatus}
                       onChange={(v) => setItemStatus(v as ItemStatusFilter)}
                       options={ITEM_STATUS_OPTIONS}
@@ -1986,7 +1986,7 @@ function ContentPageInner() {
                     <GlassSelect
                       value={itemSort}
                       onChange={(v) => setItemSort(v)}
-                      options={[
+              options={[
                         { value: "updated_desc", label: "Sort: Zuletzt aktualisiert" },
                         { value: "updated_asc", label: "Sort: Älteste zuerst" },
                         { value: "due_asc", label: "Sort: Due (nächste zuerst)" },
@@ -1996,8 +1996,8 @@ function ContentPageInner() {
                         { value: "status_asc", label: "Sort: Status" },
                       ]}
                       className="sm:w-56 min-w-0"
-                    />
-                    <GlassSelect
+            />
+            <GlassSelect
                       value={itemChannel}
                       onChange={(v) => setItemChannel(v)}
                       options={channelOptions}
@@ -2031,7 +2031,7 @@ function ContentPageInner() {
                         >
                           Alle
                         </button>
-                      </div>
+          </div>
                     )}
                     {isAdmin && itemScope === "all" && (
                       <GlassSelect
@@ -2170,9 +2170,9 @@ function ContentPageInner() {
                         <Tag className="h-3.5 w-3.5" /> Tags
                       </span>
                     </div>
-                  </div>
-                </div>
-              </div>
+          </div>
+        </div>
+      </div>
 
               {itemsLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -2184,11 +2184,11 @@ function ContentPageInner() {
                       <div className="mt-4 flex gap-2">
                         <div className="h-5 w-16 bg-white/10 rounded-full" />
                         <div className="h-5 w-20 bg-white/5 rounded-full" />
-                      </div>
+              </div>
                       <div className="mt-4 h-3 w-3/4 bg-white/5 rounded" />
                     </div>
-                  ))}
-                </div>
+        ))}
+      </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                   {contentItems.length === 0 && (
@@ -2212,9 +2212,9 @@ function ContentPageInner() {
                           <Button className="h-11 bg-white text-slate-900 hover:bg-white/90" onClick={() => openContentItem()}>
                             <Plus className="h-4 w-4 mr-2" /> Neues Item
                           </Button>
-                        </div>
-                      </div>
-                    </div>
+                </div>
+                </div>
+              </div>
                   )}
                   {sortedItems.map((it) => (
                     <div
@@ -2235,21 +2235,21 @@ function ContentPageInner() {
                     >
                       <div className={["pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r", statusAccent(it.status)].join(" ")} />
                       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.06),transparent_55%)] opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3">
                             <div className="h-9 w-9 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center flex-shrink-0">
                               {iconForChannel(String(it.channel || ""))}
-                            </div>
-                            <div className="min-w-0">
+                    </div>
+                    <div className="min-w-0">
                               <div className="text-sm font-semibold text-slate-100 truncate">{it.title}</div>
                               <div className="mt-1 text-[11px] text-slate-400 truncate">
                                 {it.channel || "—"}
                                 {it.format ? ` · ${it.format}` : ""}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                      </div>
+                      </div>
+                    </div>
+                  </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {selectMode && (
                             <button
@@ -2358,8 +2358,8 @@ function ContentPageInner() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        </div>
-                      </div>
+                  </div>
+                </div>
                       <div className="mt-3 flex flex-wrap gap-1.5">
                         {(it.tags || []).slice(0, 4).map((t, idx) => (
                           <span
@@ -2374,8 +2374,8 @@ function ContentPageInner() {
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-300 border border-white/10">
                             +{(it.tags || []).length - 4}
                           </span>
-                        )}
-                      </div>
+          )}
+        </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
                         {it.dueAt && (
                           <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${datePill(it.dueAt, "due")}`}>
@@ -2398,7 +2398,7 @@ function ContentPageInner() {
                           </span>
                         )}
                         <span className="ml-auto text-slate-300/70 group-hover:text-slate-200 transition">Öffnen →</span>
-                      </div>
+                </div>
                     </div>
                   ))}
                 </div>
@@ -2430,7 +2430,7 @@ function ContentPageInner() {
                         >
                           <X className="h-4 w-4 mr-2" /> Fertig
                         </Button>
-                      </div>
+                        </div>
 
                       <div className="sm:ml-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                         <div className="flex items-center gap-2">
@@ -2454,7 +2454,7 @@ function ContentPageInner() {
                           >
                             Anwenden
                           </Button>
-                        </div>
+                      </div>
 
                         {isAdmin && (
                           <div className="flex items-center gap-2">
@@ -2480,7 +2480,7 @@ function ContentPageInner() {
                             >
                               Anwenden
                             </Button>
-                          </div>
+                    </div>
                         )}
 
                         <div className="flex items-center gap-2">
@@ -2553,12 +2553,12 @@ function ContentPageInner() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        </div>
-                      </div>
+                </div>
+              </div>
                     </div>
                   </div>
-                </div>
-              )}
+        </div>
+      )}
             </TabsContent>
 
             <TabsContent value="calendar" className="space-y-3">
@@ -2573,25 +2573,25 @@ function ContentPageInner() {
             </TabsContent>
 
             <TabsContent value="tasks" className="space-y-2">
-              <Card className="glass-card">
-                <CardHeader className="px-4 sm:px-6 pt-4 pb-3 border-b border-white/10">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div>
-                      <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2">
-                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs">
-                          ✦
-                        </span>
-                        Task Board
-                      </CardTitle>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Operative Aufgaben für Content‑Produktion. Alle manuellen Tasks werden im Backend gespeichert.
-                      </p>
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      {tasksLoading ? "Lade Tasks..." : `${tasks.length} Tasks gesamt`}
-                      {tasksError && <span className="ml-2 text-amber-300">· {tasksError}</span>}
-                    </div>
-                  </div>
+      <Card className="glass-card">
+        <CardHeader className="px-4 sm:px-6 pt-4 pb-3 border-b border-white/10">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs">
+                  ✦
+                </span>
+                Task Board
+              </CardTitle>
+              <p className="text-xs text-slate-400 mt-1">
+                Operative Aufgaben für Content‑Produktion. Alle manuellen Tasks werden im Backend gespeichert.
+              </p>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              {tasksLoading ? "Lade Tasks..." : `${tasks.length} Tasks gesamt`}
+              {tasksError && <span className="ml-2 text-amber-300">· {tasksError}</span>}
+            </div>
+          </div>
 
                   <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
                     <Input
@@ -2672,16 +2672,16 @@ function ContentPageInner() {
                       <Plus className="h-4 w-4 mr-2" /> Task
                     </Button>
                   </div>
-                </CardHeader>
+        </CardHeader>
 
-                <CardContent className="px-2 sm:px-4 py-4">
-                  <KanbanBoard
-                    tasks={tasks}
+        <CardContent className="px-2 sm:px-4 py-4">
+          <KanbanBoard
+            tasks={tasks}
                     onTaskMove={async (taskId, newStatus) => {
                       const task = tasks.find((t) => t.id === taskId)
-                      if (!task) return
-                      await updateTask(taskId, { status: newStatus as any })
-                    }}
+              if (!task) return
+              await updateTask(taskId, { status: newStatus as any })
+            }}
                     onTaskClick={(task) => {
                       const backendId =
                         (task as any)?.backendId ??
@@ -2705,13 +2705,13 @@ function ContentPageInner() {
                         ),
                       })
                     }}
-                    onCreateTask={(status: KanbanStatus) => {
-                      openModal({
-                        type: "custom",
-                        title: "Neue Content‑Aufgabe",
-                        content: (
-                          <TaskQuickCreate
-                            defaultStatus={status}
+            onCreateTask={(status: KanbanStatus) => {
+              openModal({
+                type: "custom",
+                title: "Neue Content‑Aufgabe",
+                content: (
+                  <TaskQuickCreate
+                    defaultStatus={status}
                             taxonomy={twoLevelTaxonomy}
                             ownerOptions={
                               isAdmin
@@ -2731,18 +2731,18 @@ function ContentPageInner() {
                                     : ""
                                 : undefined
                             }
-                            onCreate={async (payload) => {
-                              await addTask(payload)
+                    onCreate={async (payload) => {
+                      await addTask(payload)
                               refetchTasks()
-                            }}
-                          />
-                        ),
-                      })
                     }}
-                    onDeleteTask={(taskId) => deleteTask(taskId)}
                   />
-                </CardContent>
-              </Card>
+                ),
+              })
+            }}
+            onDeleteTask={(taskId) => deleteTask(taskId)}
+          />
+        </CardContent>
+      </Card>
             </TabsContent>
 
             <TabsContent value="templates" className="space-y-2">
