@@ -540,21 +540,55 @@ export default function RadialCircle({
       {rings.map((ring, i) => {
         const ringR = ringRadiusByCategory[ring.nameKey]
         const color = ringColorByCategory[ring.nameKey]
+        const fontSize = fs(11)
+        const lineH = fontSize * 1.15
+        const approxCharW = Math.max(6, fontSize * 0.56)
+        // Keep these labels compact; they are "category names" not activity titles.
+        const maxChars = isSmall ? 12 : 16
+        const lines = wrapLabel(ring.name, maxChars, 2)
+
+        // Spread labels around the top arc to avoid overlaps.
+        // Angles are centered around "12 o'clock" with a small fixed step.
+        const n = Math.max(1, rings.length)
+        const step = 0.22 // ~12.6deg
+        const base = -Math.PI / 2 - (n - 1) * step * 0.5
+        const ang = base + i * step
+        const labelRad = ringR + 12 * scale
+        const lx = cx + Math.cos(ang) * labelRad
+        const ly = cy + Math.sin(ang) * labelRad
+        const anchor: "start" | "end" | "middle" =
+          Math.abs(Math.cos(ang)) < 0.15 ? "middle" : Math.cos(ang) >= 0 ? "start" : "end"
         return (
           <g key={`ring-${ring.name}`}>
             <circle cx={cx} cy={cy} r={ringR} fill="none" stroke={color} strokeWidth={sw(1.5)} opacity={0.35} />
             {/* Ring labels are too noisy on mobile; use the legend outside the circle instead */}
             {!isSmall && (
               <text
-                x={cx}
-                y={cy - ringR - 12 * scale}
-                fontSize={fs(11)}
+                x={lx}
+                y={ly}
+                fontSize={fontSize}
                 fill={color}
-                textAnchor="middle"
+                textAnchor={anchor}
                 dominantBaseline="middle"
-                fontWeight="600"
+                fontWeight="700"
+                style={{
+                  pointerEvents: "none",
+                  paintOrder: "stroke",
+                  stroke: "rgba(2, 6, 23, 0.92)",
+                  strokeWidth: sw(4),
+                }}
               >
-                {ring.name}
+                {lines.length > 0
+                  ? lines.map((t, idx) => (
+                      <tspan
+                        key={idx}
+                        x={lx}
+                        dy={idx === 0 ? -((lines.length - 1) * lineH) / 2 : lineH}
+                      >
+                        {t}
+                      </tspan>
+                    ))
+                  : ring.name}
               </text>
             )}
           </g>
