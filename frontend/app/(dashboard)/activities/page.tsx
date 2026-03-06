@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -42,6 +42,7 @@ export default function ActivitiesPage() {
   const [ready, setReady] = useState(false)
   const [selectedActivity, setSelectedActivity] = useState<any>(null)
   const [year, setYear] = useState<number>(new Date().getFullYear())
+  const didAutoYearRef = useRef(false)
   const [isSmall, setIsSmall] = useState(false)
   const [zoom, setZoom] = useState<number>(() => {
     if (typeof window === "undefined") return 1
@@ -75,6 +76,31 @@ export default function ActivitiesPage() {
   useEffect(() => { try { localStorage.setItem("activities:preset", preset) } catch {} }, [preset])
   useEffect(() => { try { localStorage.setItem("activities:compact", compact ? "1" : "0") } catch {} }, [compact])
   useEffect(() => { try { localStorage.setItem("activities:zoom", String(zoom)) } catch {} }, [zoom])
+
+  // If imported activities live in a different year (e.g. media plan 2022/2023),
+  // auto-switch the year once so the circle isn't empty.
+  useEffect(() => {
+    if (didAutoYearRef.current) return
+    if (!Array.isArray(activities) || activities.length === 0) return
+
+    const years = new Set<number>()
+    for (const a of activities as any[]) {
+      const s = a?.start ? new Date(a.start as any) : null
+      const e = a?.end ? new Date(a.end as any) : null
+      if (s && !Number.isNaN(s.getTime())) years.add(s.getFullYear())
+      if (e && !Number.isNaN(e.getTime())) years.add(e.getFullYear())
+    }
+    if (years.size === 0) return
+
+    const y = year
+    const hasCurrent = years.has(y)
+    const latest = Math.max(...Array.from(years))
+    // Only auto-switch if current year isn't present and we're still on "today's year".
+    if (!hasCurrent && y === new Date().getFullYear()) {
+      didAutoYearRef.current = true
+      setYear(latest)
+    }
+  }, [activities, year])
 
   if (!ready || loading) {
     return (
@@ -307,10 +333,14 @@ export default function ActivitiesPage() {
             {/* Circle container with proper overflow handling */}
             <div className="w-full flex items-center justify-center px-2 sm:px-6">
               <RadialCircle
-                activities={visibleActivities.map((a: any) => ({
+                // Important: don't invent dates. Activities without a start date would otherwise
+                // render as "today" and collapse into a single dot cluster.
+                activities={visibleActivities
+                  .filter((a: any) => Boolean(a?.start))
+                  .map((a: any) => ({
                   ...a,
                   status: (String(a.status).toUpperCase() === 'COMPLETED' ? 'DONE' : a.status) as any,
-                  start: a.start ? new Date(a.start as any) : new Date(),
+                  start: a.start ? new Date(a.start as any) : undefined,
                   end: a.end ? new Date(a.end as any) : undefined,
                   weight: a.weight || 50,
                   budgetCHF: a.budgetCHF || 0,
