@@ -225,8 +225,316 @@ def _extract_xlsx_tables(content: bytes, *, max_sheets: int = 8) -> List[Dict[st
     except Exception:
         raise HTTPException(status_code=415, detail="Excel (.xlsx) not supported without openpyxl. Please upload CSV.")
     wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+
+    def _try_extract_sap_mediaplan(ws: Any) -> Optional[Dict[str, Any]]:
+        """
+        SAP Magazin media plan format encodes the schedule as cell fill colors (blue blocks).
+        We normalize it into a clean table with derived fields usable by the existing Activities importer.
+        """
+        try:
+            # Find header row containing "Medium" and "Form"
+            header_row: Optional[int] = None
+            for r in range(1, min(int(getattr(ws, "max_row", 0) or 0), 80) + 1):
+                found_medium = False
+                found_form = False
+                for c in range(1, min(int(getattr(ws, "max_column", 0) or 0), 40) + 1):
+                    v = ws.cell(r, c).value
+                    if v is None:
+                        continue
+                    s = str(v).strip().lower()
+                    if s == "medium":
+                        found_medium = True
+                    elif s == "form":
+                        found_form = True
+                if found_medium and found_form:
+                    header_row = r
+                    break
+
+            if not header_row:
+                return None
+
+            def _find_col(label: str) -> Optional[int]:
+                for c in range(1, int(getattr(ws, "max_column", 0) or 0) + 1):
+                    v = ws.cell(header_row, c).value
+                    if v is None:
+                        continue
+                    if str(v).strip().lower() == label.lower():
+                        return c
+                return None
+
+            medium_col = _find_col("Medium")
+            form_col = _find_col("Form")
+            if not medium_col or not form_col:
+                return None
+
+            # Find CHF columns (two adjacent "CHF")
+            chf_cols: List[int] = []
+            for c in range(1, int(getattr(ws, "max_column", 0) or 0) + 1):
+                v = ws.cell(header_row, c).value
+                if v is None:
+                    continue
+                if str(v).strip().upper() == "CHF":
+                    chf_cols.append(c)
+            if len(chf_cols) < 1:
+                return None
+
+            timeline_start = max(chf_cols) + 1
+            if timeline_start > int(getattr(ws, "max_column", 0) or 0):
+                return None
+
+            # Header rows above timeline
+            year_row = max(1, header_row - 3)
+            month_row = max(1, header_row - 2)
+            day_row = header_row
+
+            # month mapping (German + English + known typos)
+            m_map = {
+                "JANUAR": 1,
+                "JANUARY": 1,
+                "FEBRUAR": 2,
+                "FEBRUARY": 2,
+                "FEBURAR": 2,  # typo in the file
+                "MÄRZ": 3,
+                "MAERZ": 3,
+                "MARCH": 3,
+                "APRIL": 4,
+                "MAI": 5,
+                "MAY": 5,
+                "JUNI": 6,
+                "JUNE": 6,
+                "JULI": 7,
+                "JULY": 7,
+                "AUGUST": 8,
+                "SEPTEMBER": 9,
+                "OKTOBER": 10,
+                "OCTOBER": 10,
+                "NOVEMBER": 11,
+                "DEZEMBER": 12,
+                "DECEMBER": 12,
+            }
+
+            def _norm_month(v: Any) -> str:
+                s = str(v or "").strip().upper()
+                # Handle umlauts and normalize to lookup keys
+                s = s.replace("Ä", "AE").replace("Ö", "OE").replace("Ü", "UE")
+                if s == "MAERZ":
+                    return "MAERZ"
+                # Map back common forms
+                return s
+
+            def _rgb(fill: Any) -> Optional[str]:
+                try:
+                    pat = getattr(fill, "patternType", None)
+                    if not pat or pat == "none":
+                        return None
+                    fg = getattr(fill, "fgColor", None)
+                    if not fg:
+                        return None
+                    if getattr(fg, "type", None) == "rgb":
+                        rgb = getattr(fg, "rgb", None)
+                        if isinstance(rgb, str) and len(rgb) == 8:
+                            return rgb.upper()
+                except Exception:
+                    return None
+                return None
+
+            # Build date lookup per timeline column
+            from datetime import date as _date
+
+            col_date: Dict[int, _date] = {}
+            last_year: Optional[int] = None
+            last_month: Optional[int] = None
+            for c in range(timeline_start, int(getattr(ws, "max_column", 0) or 0) + 1):
+                yv = ws.cell(year_row, c).value
+                mv = ws.cell(month_row, c).value
+                dv = ws.cell(day_row, c).value
+
+                # forward fill year/month across merged cells
+                if yv not in (None, ""):
+                    try:
+                        last_year = int(str(yv).strip())
+                    except Exception:
+                        pass
+                if mv not in (None, ""):
+                    try:
+                        # Convert "MAERZ" back to month 3; keep original umlaut values too
+                        mkey = _norm_month(mv)
+                        if mkey == "MAERZ":
+                            last_month = 3
+                        else:
+                            # Try raw and normalized variants
+                            raw = str(mv or "").strip().upper()
+                            last_month = m_map.get(raw) or m_map.get(mkey)
+                    except Exception:
+                        pass
+
+                try:
+                    d = int(str(dv).strip()) if dv is not None and str(dv).strip().isdigit() else None
+                except Exception:
+                    d = None
+
+                if last_year and last_month and d:
+                    try:
+                        col_date[c] = _date(last_year, last_month, d)
+                    except Exception:
+                        pass
+
+            # Determine active fill color (prefer known SAP blue)
+            from collections import Counter
+
+            colors = Counter()
+            for r in range(header_row + 1, int(getattr(ws, "max_row", 0) or 0) + 1):
+                med = ws.cell(r, medium_col).value
+                if med is None:
+                    continue
+                for c in range(timeline_start, int(getattr(ws, "max_column", 0) or 0) + 1):
+                    rgb = _rgb(ws.cell(r, c).fill)
+                    if rgb:
+                        colors[rgb] += 1
+
+            active_rgb: Optional[str] = None
+            if colors:
+                active_rgb = "FF01B0F0" if "FF01B0F0" in colors else colors.most_common(1)[0][0]
+            if not active_rgb:
+                return None
+
+            def _segments_for_row(r: int) -> List[tuple[int, int]]:
+                seg: List[tuple[int, int]] = []
+                on = False
+                start: Optional[int] = None
+                for c in range(timeline_start, int(getattr(ws, "max_column", 0) or 0) + 1):
+                    rgb = _rgb(ws.cell(r, c).fill)
+                    is_on = bool(rgb and rgb == active_rgb)
+                    if is_on and not on:
+                        on = True
+                        start = c
+                    if on and not is_on:
+                        seg.append((start or c, c - 1))
+                        on = False
+                        start = None
+                if on and start is not None:
+                    seg.append((start, int(getattr(ws, "max_column", 0) or start)))
+                return seg
+
+            # Metric columns
+            impressions_col = _find_col("Impressions")
+            clicks_col = _find_col("Clicks")
+            views_col = _find_col("Views Adobe")
+            ctr_col = _find_col("CTR")
+
+            chf_2022_col = chf_cols[0]
+            chf_2023_col = chf_cols[1] if len(chf_cols) > 1 else None
+
+            headers_out = [
+                "market",
+                "section",
+                "medium",
+                "form",
+                "impressions",
+                "clicks",
+                "views_adobe",
+                "ctr",
+                "chf_2022",
+                "chf_2023",
+                "budget_chf",
+                "start",
+                "end",
+                "title",
+                "notes",
+            ]
+
+            rows_out: List[Dict[str, Any]] = []
+            current_market: Optional[str] = None
+            current_section: Optional[str] = None
+
+            for r in range(header_row + 1, int(getattr(ws, "max_row", 0) or 0) + 1):
+                medium = ws.cell(r, medium_col).value
+                form = ws.cell(r, form_col).value
+
+                med_s = str(medium or "").strip()
+                form_s = str(form or "").strip()
+                if not med_s and not form_s:
+                    continue
+
+                # Section / market heading rows
+                if med_s and not form_s:
+                    low = med_s.lower()
+                    if "deutsche schweiz" in low:
+                        current_market = "Deutsche Schweiz"
+                        current_section = med_s
+                        continue
+                    if "franz" in low and "schweiz" in low:
+                        current_market = "Französische Schweiz"
+                        current_section = med_s
+                        continue
+                    current_section = med_s
+                    continue
+
+                # Skip totals / summary rows
+                low = med_s.lower()
+                if low.startswith("total") or low.startswith("gesamttotal") or low.startswith("reserve"):
+                    continue
+
+                seg = _segments_for_row(r)
+                start_dt = col_date.get(seg[0][0]) if seg else None
+                end_dt = col_date.get(seg[-1][1]) if seg else None
+                if start_dt and not end_dt:
+                    end_dt = start_dt
+
+                impressions = ws.cell(r, impressions_col).value if impressions_col else None
+                clicks = ws.cell(r, clicks_col).value if clicks_col else None
+                views = ws.cell(r, views_col).value if views_col else None
+                ctr = ws.cell(r, ctr_col).value if ctr_col else None
+
+                chf_2022 = ws.cell(r, chf_2022_col).value if chf_2022_col else None
+                chf_2023 = ws.cell(r, chf_2023_col).value if chf_2023_col else None
+
+                b1 = _parse_float(chf_2022) or 0.0
+                b2 = _parse_float(chf_2023) or 0.0
+                budget = b1 + b2
+
+                title = f"{med_s} — {form_s}".strip(" —")
+                notes = (
+                    f"Market: {current_market or ''}\n"
+                    f"Section: {current_section or ''}\n"
+                    f"Medium: {med_s}\nForm: {form_s}\n"
+                    f"Impressions: {impressions or ''}\nClicks: {clicks or ''}\nViews: {views or ''}\nCTR: {ctr or ''}\n"
+                    f"Schedule: {(start_dt.isoformat() if start_dt else '')} → {(end_dt.isoformat() if end_dt else '')}"
+                ).strip()
+
+                rows_out.append(
+                    {
+                        "market": current_market,
+                        "section": current_section,
+                        "medium": med_s,
+                        "form": form_s,
+                        "impressions": impressions,
+                        "clicks": clicks,
+                        "views_adobe": views,
+                        "ctr": ctr,
+                        "chf_2022": chf_2022,
+                        "chf_2023": chf_2023,
+                        "budget_chf": budget if budget else None,
+                        "start": start_dt.isoformat() if start_dt else None,
+                        "end": end_dt.isoformat() if end_dt else None,
+                        "title": title,
+                        "notes": notes,
+                    }
+                )
+
+            if not rows_out:
+                return None
+
+            return {"sheet": str(getattr(ws, "title", "") or "Sheet"), "headers": headers_out, "rows": rows_out}
+        except Exception:
+            return None
+
     out: List[Dict[str, Any]] = []
     for ws in wb.worksheets[:max_sheets]:
+        special = _try_extract_sap_mediaplan(ws)
+        if special:
+            out.append(special)
+            continue
         headers, rows = _extract_xlsx_table_from_ws(ws)
         if headers and rows:
             out.append({"sheet": str(getattr(ws, "title", "") or "Sheet"), "headers": headers, "rows": rows})
@@ -508,8 +816,16 @@ def upload_file(
         if ctype in {"text/csv", "application/csv", "text/plain"} or name_lower.endswith(".csv"):
             rows = _parse_csv_to_activities(content)
         elif name_lower.endswith(".xlsx") or ctype in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
-            _headers, parsed_rows = _extract_xlsx_table(content)
-            rows = parsed_rows
+            # Use multi-sheet extraction with format-specific normalizers (e.g., SAP Mediaplan timeline fills).
+            tables = _extract_xlsx_tables(content)
+            picked = None
+            for t in tables:
+                if str(t.get("sheet") or "").strip().lower() == "mediaplan":
+                    picked = t
+                    break
+            if not picked and tables:
+                picked = max(tables, key=lambda t: len(t.get("rows") or []))
+            rows = list((picked or {}).get("rows") or [])
         else:
             # Non-tabular file: keep as stored upload only (no import)
             return {
@@ -1019,7 +1335,18 @@ def preview_upload(
             if i >= max_scan_rows or len(category_values) >= max_unique_categories:
                 break
     elif name_lower.endswith(".xlsx") or ctype in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
-        headers, parsed_rows = _extract_xlsx_table(content)
+        # Use multi-sheet extraction with format-specific normalizers (e.g., SAP Mediaplan timeline fills).
+        tables = _extract_xlsx_tables(content)
+        # Prefer a "Mediaplan" sheet if present; otherwise use the largest table.
+        picked = None
+        for t in tables:
+            if str(t.get("sheet") or "").strip().lower() == "mediaplan":
+                picked = t
+                break
+        if not picked and tables:
+            picked = max(tables, key=lambda t: len(t.get("rows") or []))
+        headers = list((picked or {}).get("headers") or [])
+        parsed_rows = list((picked or {}).get("rows") or [])
         if kind == "crm":
             suggested = _suggest_mapping_crm(headers)
         elif kind == "content":
