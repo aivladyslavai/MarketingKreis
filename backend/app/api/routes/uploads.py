@@ -22,10 +22,23 @@ from app.models.content_item import ContentItem, ContentItemStatus
 from app.models.content_task import ContentTask, ContentTaskStatus, ContentTaskPriority
 from app.models.calendar import CalendarEntry
 from app.models.user import User, UserRole
+from app.models.user_category import UserCategory
 from app.api.deps import get_current_user, get_org_id, is_demo_user, require_writable_user
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/uploads", tags=["uploads"]) 
+
+
+_CATEGORY_COLOR_PALETTE = [
+    "#ef4444",  # red
+    "#f97316",  # orange
+    "#eab308",  # amber
+    "#22c55e",  # green
+    "#06b6d4",  # cyan
+    "#3b82f6",  # blue
+    "#8b5cf6",  # violet
+    "#ec4899",  # pink
+]
 
 
 def _map_category_to_activity_type(category: str) -> ActivityType:
@@ -2071,6 +2084,128 @@ def smart_import_upload(
 
     default_period = _current_period()
 
+    def _is_sap_mediaplan_table(headers: List[str]) -> bool:
+        hs = {str(h or "").strip().lower() for h in (headers or [])}
+        return (
+            "section" in hs
+            and "market" in hs
+            and "title" in hs
+            and "start" in hs
+            and "end" in hs
+        )
+
+    def _bucket_for_mediaplan_row(row: Dict[str, Any]) -> str:
+        section = str(row.get("section") or "").strip()
+        medium = str(row.get("medium") or "").strip()
+        form = str(row.get("form") or "").strip()
+        blob = f"{section} {medium} {form}".lower()
+        if "sap intern" in (section or "").lower():
+            return "SAP intern"
+        if "paid social" in blob:
+            return "Paid Social"
+        if "organic" in blob:
+            return "Organic Social"
+        # Print often appears as "... Print" or printed version
+        if " print" in blob or blob.endswith("print") or "magazin gedruckte" in blob:
+            return "Print"
+        return "Online Ads"
+
+    def _activity_type_for_bucket(bucket: str) -> ActivityType:
+        b = (bucket or "").strip().lower()
+        if b == "print":
+            return ActivityType.branding
+        if b in {"paid social", "online ads"}:
+            return ActivityType.sales
+        if b == "organic social":
+            return ActivityType.branding
+        if b == "sap intern":
+            return ActivityType.kundenpflege
+        return ActivityType.sales
+
+    def _budget_category_for_type(t: ActivityType) -> str:
+        if t == ActivityType.branding:
+            return "IMAGE"
+        if t == ActivityType.employer_branding:
+            return "EMPLOYER_BRANDING"
+        if t == ActivityType.kundenpflege:
+            return "KUNDENPFLEGE"
+        return "VERKAUFSFOERDERUNG"
+
+    def _period_from_dt(dt) -> str:
+        try:
+            d = dt.date() if hasattr(dt, "date") else dt
+            y = int(getattr(d, "year", 0) or 0)
+            m = int(getattr(d, "month", 0) or 0)
+            if y and m:
+                q = (m - 1) // 3 + 1
+                return f"{y}-Q{q}"
+        except Exception:
+            pass
+        return default_period
+
+    # If the upload looks like a SAP Mediaplan, auto-create a small, harmonious set of ring categories
+    # and reuse them for activity.category_name (circle).
+    ring_category_color: Dict[str, str] = {}
+    ring_category_names: List[str] = []
+    try:
+        # Pick the first SAP table to compute buckets.
+        sap_tables = [t for t in tables if _is_sap_mediaplan_table(list(t.get("headers") or []))]
+        if sap_tables:
+            sap_rows = list((sap_tables[0].get("rows") or []))
+            # Candidate buckets in a stable order
+            preferred = ["Online Ads", "Print", "Paid Social", "Organic Social", "SAP intern"]
+            present = []
+            for name in preferred:
+                if any(_bucket_for_mediaplan_row(r) == name for r in sap_rows):
+                    present.append(name)
+            # Fallback: whatever appears, capped
+            if not present:
+                seen = []
+                for r in sap_rows:
+                    b = _bucket_for_mediaplan_row(r)
+                    if b not in seen:
+                        seen.append(b)
+                present = seen[:5]
+            ring_category_names = present[:5]
+
+            # Load existing user categories for this user+org
+            existing = (
+                db.query(UserCategory)
+                .filter(UserCategory.user_id == current_user.id, UserCategory.organization_id == org)
+                .order_by(UserCategory.position.asc(), UserCategory.id.asc())
+                .all()
+            )
+            used_colors = {str(c.color or "").strip() for c in existing if getattr(c, "color", None)}
+            name_to_color = {str(c.name or "").strip(): str(c.color or "").strip() for c in existing}
+            max_pos = max([int(getattr(c, "position", 0) or 0) for c in existing] + [-1])
+
+            # Ensure categories exist (do not delete/replace user's existing ones).
+            for idx, name in enumerate(ring_category_names):
+                if name in name_to_color and name_to_color[name]:
+                    ring_category_color[name] = name_to_color[name]
+                    continue
+                color = None
+                for cand in _CATEGORY_COLOR_PALETTE:
+                    if cand not in used_colors:
+                        color = cand
+                        break
+                if not color:
+                    color = _CATEGORY_COLOR_PALETTE[(idx + max_pos + 1) % len(_CATEGORY_COLOR_PALETTE)]
+                used_colors.add(color)
+                item = UserCategory(
+                    user_id=current_user.id,
+                    organization_id=org,
+                    name=name,
+                    color=color,
+                    position=max_pos + 1 + idx,
+                )
+                db.add(item)
+                ring_category_color[name] = color
+            # Don't commit yet; commit happens at the end of smart import.
+    except Exception:
+        ring_category_color = {}
+        ring_category_names = []
+
     for t in tables:
         headers = list(t.get("headers") or [])
         rows = list(t.get("rows") or [])
@@ -2365,7 +2500,12 @@ def smart_import_upload(
                         or not _is_blankish(ed)
                     ):
                         title = str(a_title).strip() or "Untitled"
+                        is_sap = _is_sap_mediaplan_table(headers)
+                        bucket = _bucket_for_mediaplan_row(row) if is_sap else None
                         category = str(cat or "VERKAUFSFOERDERUNG").strip()
+                        if is_sap and bucket:
+                            # Use ring bucket as the human category name, but keep Activity.type consistent.
+                            category = bucket
                         status_raw = str(st or "ACTIVE").strip()
                         budget = _parse_float(bud)
                         weight = _parse_float(cell(row, map_act.get("weight")))
@@ -2373,21 +2513,72 @@ def smart_import_upload(
                         start = _parse_datetime_loose(sd)
                         end = _parse_datetime_loose(ed)
 
-                        db.add(
-                            Activity(
-                                title=title,
-                                type=_map_category_to_activity_type(category),
-                                category_name=category,
-                                status=status_raw.upper(),
-                                budget=budget,
-                                weight=weight,
-                                expected_output=str(notes).strip() if not _is_blankish(notes) else None,
-                                start_date=start.date() if hasattr(start, "date") and start else None,
-                                end_date=end.date() if hasattr(end, "date") and end else None,
-                                owner_id=current_user.id,
-                                organization_id=org,
-                            )
+                        a_type = _activity_type_for_bucket(category) if is_sap and category in ring_category_names else _map_category_to_activity_type(category)
+                        act = Activity(
+                            title=title,
+                            type=a_type,
+                            category_name=category,
+                            status=status_raw.upper(),
+                            budget=budget,
+                            weight=weight,
+                            expected_output=str(notes).strip() if not _is_blankish(notes) else None,
+                            start_date=start.date() if hasattr(start, "date") and start else None,
+                            end_date=end.date() if hasattr(end, "date") and end else None,
+                            owner_id=current_user.id,
+                            organization_id=org,
                         )
+                        db.add(act)
+                        # Calendar entry for activities (helps make the import visible everywhere).
+                        try:
+                            if start:
+                                from datetime import timedelta
+
+                                st_dt = start
+                                en_dt = end or start
+                                # If end date is only a day, end event at +60min; if multi-day, end at end date + 1h.
+                                if en_dt == st_dt:
+                                    en_dt = st_dt + timedelta(minutes=60)
+                                else:
+                                    en_dt = en_dt + timedelta(minutes=60)
+                                color = ring_category_color.get(category) if is_sap else None
+                                ev = CalendarEntry(
+                                    title=f"Activity: {title}",
+                                    description=str(notes).strip() if not _is_blankish(notes) else None,
+                                    start_time=st_dt,
+                                    end_time=en_dt,
+                                    event_type="activity",
+                                    status=status_raw.upper(),
+                                    category=category,
+                                    priority="medium",
+                                    color=color,
+                                    activity=act,
+                                    owner_id=current_user.id,
+                                    organization_id=org,
+                                )
+                                db.add(ev)
+                                totals["calendar_created"] += 1
+                        except Exception:
+                            pass
+
+                        # Budget targets (aggregate planned spend into Budget module by quarter + high-level category).
+                        try:
+                            if budget is not None and start:
+                                period = _period_from_dt(start)
+                                bcat = _budget_category_for_type(a_type)
+                                existing_b = (
+                                    db.query(BudgetTarget)
+                                    .filter(BudgetTarget.organization_id == org, BudgetTarget.period == period, BudgetTarget.category == bcat)
+                                    .first()
+                                )
+                                if existing_b:
+                                    existing_b.amount_chf = float(existing_b.amount_chf or 0) + float(budget)
+                                    db.add(existing_b)
+                                else:
+                                    db.add(BudgetTarget(organization_id=org, period=period, category=bcat, amount_chf=float(budget)))
+                                totals["budget_rows_applied"] += 1
+                        except Exception:
+                            pass
+
                         totals["activities_created"] += 1
                     else:
                         totals["activities_skipped"] += 1
