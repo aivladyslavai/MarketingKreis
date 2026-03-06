@@ -189,6 +189,67 @@ export default function RadialCircle({
     return defaultRingKey ?? key
   }, [defaultRingKey, normalizeCategoryName])
 
+  // --- Anti-overlap ("lanes") within the same category ring ---
+  // When many activities sit on the same ring and have close dates, their arcs/dots overlap.
+  // We assign a small radial offset per activity (2–3 lanes) to keep the visualization readable.
+  const laneOffsetById = React.useMemo(() => {
+    const twoPi = Math.PI * 2
+    const normAng = (a: number) => {
+      let x = a
+      while (x < 0) x += twoPi
+      return x % twoPi
+    }
+
+    const byId: Record<string, number> = {}
+    const minSep = focus ? 0.05 : 0.085 // radians; tighter in month-focus
+    const laneGap = (focus ? 9 : 11) * Math.max(0.9, scale) // px-ish in our SVG units
+
+    const groups: Record<string, Array<{ id: string; ang: number }>> = {}
+    for (const a of renderActivities) {
+      const id = a.id
+      if (!id) continue
+      const ang = normAng(getAngle(a.start))
+      const key = resolveRingKey(a.category)
+      ;(groups[key] ||= []).push({ id, ang })
+    }
+
+    for (const key of Object.keys(groups)) {
+      const items = groups[key].sort((x, y) => x.ang - y.ang)
+      const lanes = items.length <= 2 ? 1 : items.length <= 8 ? 2 : 3
+      const lastAng: number[] = Array.from({ length: lanes }, () => -1e9)
+      const laneIdxById: Record<string, number> = {}
+
+      for (const it of items) {
+        // Find first lane that is far enough from the last placed item in that lane.
+        let chosen = 0
+        let bestScore = -1
+        for (let li = 0; li < lanes; li++) {
+          const prev = lastAng[li]
+          const ok = it.ang - prev >= minSep
+          const score = ok ? (it.ang - prev) : -1
+          if (score > bestScore) {
+            bestScore = score
+            chosen = li
+          }
+          if (ok) {
+            chosen = li
+            break
+          }
+        }
+        laneIdxById[it.id] = chosen
+        lastAng[chosen] = it.ang
+      }
+
+      for (const it of items) {
+        const li = laneIdxById[it.id] ?? 0
+        const center = (lanes - 1) / 2
+        byId[it.id] = (li - center) * laneGap
+      }
+    }
+
+    return byId
+  }, [focus, getAngle, renderActivities, resolveRingKey, scale])
+
   // Drag handling for start/end markers with live preview
   const [preview, setPreview] = React.useState<Record<string, { start?: Date; end?: Date }>>({})
   const draggingRef = React.useRef<null | { id: string; handle: 'start' | 'end' }>(null)
@@ -384,11 +445,12 @@ export default function RadialCircle({
   const getActivityAnchor = React.useCallback((a: Activity) => {
     const startAngle = getAngle(a.start)
     const catKey = resolveRingKey(a.category)
-    const r = ringRadiusByCategory[catKey] ?? radius * 0.7
+    const baseR = ringRadiusByCategory[catKey] ?? radius * 0.7
+    const r = baseR + (laneOffsetById[a.id] ?? 0)
     const x = cx + Math.cos(startAngle) * r
     const y = cy + Math.sin(startAngle) * r
     return { x, y }
-  }, [cx, cy, resolveRingKey, ringRadiusByCategory, radius])
+  }, [cx, cy, getAngle, laneOffsetById, resolveRingKey, ringRadiusByCategory, radius])
 
   // (not needed now) convert screen to local SVG coords
 
@@ -427,7 +489,8 @@ export default function RadialCircle({
       const start = a.start instanceof Date ? a.start : focus.start
       const ang = getAngle(start)
       const catKey = resolveRingKey(a.category)
-      const r = ringRadiusByCategory[catKey] ?? radius * 0.7
+      const baseR = ringRadiusByCategory[catKey] ?? radius * 0.7
+      const r = baseR + (laneOffsetById[a.id] ?? 0)
       const x0 = cx + Math.cos(ang) * r
       const y0 = cy + Math.sin(ang) * r
       const side: "left" | "right" = x0 >= cx ? "right" : "left"
@@ -703,7 +766,8 @@ export default function RadialCircle({
       {renderActivities.filter((a) => connectionIds.has(a.id)).map((a) => {
         const angle = getAngle(a.start)
         const catKey = resolveRingKey(a.category)
-        const r = ringRadiusByCategory[catKey] ?? radius * 0.7
+        const baseR = ringRadiusByCategory[catKey] ?? radius * 0.7
+        const r = baseR + (laneOffsetById[a.id] ?? 0)
         const x = cx + Math.cos(angle) * r
         const y = cy + Math.sin(angle) * r
         const edgeX = cx + Math.cos(angle) * radius
@@ -729,7 +793,8 @@ export default function RadialCircle({
       {renderActivities.map((a) => {
         const startAngle = getAngle(a.start)
         const catKey = resolveRingKey(a.category)
-        const r = ringRadiusByCategory[catKey] ?? radius * 0.7
+        const baseR = ringRadiusByCategory[catKey] ?? radius * 0.7
+        const r = baseR + (laneOffsetById[a.id] ?? 0)
         const x = cx + Math.cos(startAngle) * r
         const y = cy + Math.sin(startAngle) * r
         const color = ringColorByCategory[catKey] || "#64748b"
