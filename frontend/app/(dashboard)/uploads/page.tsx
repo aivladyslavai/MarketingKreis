@@ -1567,7 +1567,7 @@ export default function UploadsPage() {
                         onClick={() => notAvailable("Löschen")}
                       >
                         <Trash2 className="h-4 w-4" />
-                      </Button>
+                    </Button>
                   </div>
                 </div>
                   )

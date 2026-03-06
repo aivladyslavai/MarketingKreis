@@ -85,7 +85,8 @@ async function forward(req: NextRequest, pathSegments: string[]) {
 
     const controller = new AbortController()
     // Render free tier / cold starts can exceed 12s. Keep proxy timeout higher to avoid 504 loops.
-    const timeoutMs = ["GET", "HEAD"].includes(method) ? 55_000 : 60_000
+    // Keep some buffer below Vercel maxDuration to avoid FUNCTION_INVOCATION_TIMEOUT race conditions.
+    const timeoutMs = ["GET", "HEAD"].includes(method) ? 55_000 : 55_000
     const t = setTimeout(() => controller.abort(), timeoutMs)
     const res = await fetch(url, {
       method,

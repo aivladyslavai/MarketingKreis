@@ -1,7 +1,9 @@
 node_modules/
 **/node_modules/**
 **/node_modules.bak.*/**
+.DS_Store
 .next/
+.next_old*/
 out/
 dist/
 build/
@@ -20,6 +22,7 @@ frontend/.env.local
 # Frontend artifacts
 #
 frontend/.next/
+frontend/.next_old*/
 frontend/out/
 frontend/.vercel/
 frontend/test-results/

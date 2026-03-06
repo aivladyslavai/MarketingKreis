@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import { useEffect } from 'react'
 import { authFetch, apiBase } from '@/lib/api'
 import { sync } from '@/lib/sync'
+import { wakeBackend } from '@/lib/wake-backend'
 
 export interface UploadItem {
   id: string
@@ -57,8 +58,37 @@ export interface AiAnalyzeResult {
   }
 }
 
+async function readApiErrorMessage(res: Response): Promise<string> {
+  const text = await res.text().catch(() => "")
+  const t = String(text || "").trim()
+  const lower = t.toLowerCase()
+
+  const looksLikeVercelTimeout =
+    lower.includes("function_invocation_timeout") ||
+    lower.includes("an error occurred with your deployment") ||
+    lower.includes("function invocation timeout")
+
+  if (looksLikeVercelTimeout || [502, 503, 504].includes(res.status)) {
+    return "Der Server startet gerade (Cold Start). Bitte 20–30 Sekunden warten und erneut versuchen."
+  }
+
+  if (t) {
+    try {
+      const j = JSON.parse(t || "{}") as any
+      return String(j?.detail || j?.error || j?.message || t)
+    } catch {
+      // If it's HTML, prefer statusText.
+      if (t.includes("<html") || t.includes("<!doctype")) return res.statusText || `HTTP ${res.status}`
+      return t.length > 500 ? t.slice(0, 500) + "…" : t
+    }
+  }
+
+  return res.statusText || `HTTP ${res.status}`
+}
+
 export function useUploadsApi() {
   const { data, isLoading, error, mutate } = useSWR('/uploads', async (url) => {
+    await wakeBackend().catch(() => {})
     const res = await authFetch(url)
     try { return await res.json() } catch { return undefined }
   }, {
@@ -86,33 +116,25 @@ export function useUploadsApi() {
       category_values?: string[]
       import_kind?: string
     }> => {
+      await wakeBackend().catch(() => {})
       const fd = new FormData()
       fd.append('file', file)
       if (importKind) fd.append('import_kind', importKind)
       const res = await fetch(`${apiBase}/uploads/preview`, { method: 'POST', body: fd, credentials: 'include' })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) throw new Error(await readApiErrorMessage(res))
       return await res.json()
     },
     aiAnalyzeFile: async (
       file: File,
       importKind?: ImportKind,
     ): Promise<AiAnalyzeResult> => {
+      await wakeBackend().catch(() => {})
       const fd = new FormData()
       fd.append('file', file)
       if (importKind) fd.append('import_kind', importKind)
       const res = await fetch(`${apiBase}/uploads/ai-analyze`, { method: 'POST', body: fd, credentials: 'include' })
       if (!res.ok) {
-        const text = await res.text().catch(() => "")
-        let msg = res.statusText
-        if (text) {
-          try {
-            const j = JSON.parse(text)
-            msg = (j as any)?.detail || (j as any)?.error || msg
-          } catch {
-            msg = text || msg
-          }
-        }
-        throw new Error(msg)
+        throw new Error(await readApiErrorMessage(res))
       }
       return await res.json()
     },
@@ -124,21 +146,12 @@ export function useUploadsApi() {
       import: Record<string, number>
       tables: Array<{ sheet: string; rows: number; cols: number }>
     }> => {
+      await wakeBackend().catch(() => {})
       const fd = new FormData()
       fd.append('file', file)
       const res = await fetch(`${apiBase}/uploads/smart-import`, { method: 'POST', body: fd, credentials: 'include' })
       if (!res.ok) {
-        const text = await res.text().catch(() => "")
-        let msg = res.statusText
-        if (text) {
-          try {
-            const j = JSON.parse(text)
-            msg = (j as any)?.detail || (j as any)?.error || msg
-          } catch {
-            msg = text || msg
-          }
-        }
-        throw new Error(msg)
+        throw new Error(await readApiErrorMessage(res))
       }
       return await res.json()
     },
@@ -148,6 +161,7 @@ export function useUploadsApi() {
       mapping?: Record<string, string | null>,
       importKind?: ImportKind,
     ) => {
+      await wakeBackend().catch(() => {})
       const fd = new FormData()
       fd.append('file', file)
       if (mapping) fd.append('mapping', JSON.stringify(mapping))
@@ -155,17 +169,7 @@ export function useUploadsApi() {
       // Note: avoid authFetch to let browser set multipart headers
       const res = await fetch(`${apiBase}/uploads`, { method: 'POST', body: fd, credentials: 'include' })
       if (!res.ok) {
-        const text = await res.text().catch(() => "")
-        let msg = res.statusText
-        if (text) {
-          try {
-            const j = JSON.parse(text)
-            msg = (j as any)?.detail || (j as any)?.error || msg
-          } catch {
-            msg = text || msg
-          }
-        }
-        throw new Error(msg)
+        throw new Error(await readApiErrorMessage(res))
       }
       await mutate()
       sync.emit('uploads:changed')
@@ -197,6 +201,7 @@ export function useUploadsApi() {
 
 export function useJobsApi() {
   const { data, isLoading, error, mutate } = useSWR('/jobs', async (url) => {
+    await wakeBackend().catch(() => {})
     const res = await authFetch(url)
     try { return await res.json() } catch { return undefined }
   }, {

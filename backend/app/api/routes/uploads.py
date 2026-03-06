@@ -1585,7 +1585,8 @@ async def ai_analyze_upload(
 
     headers_req = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        # Keep this comfortably below Vercel/Proxy timeouts to avoid request-level timeouts.
+        async with httpx.AsyncClient(timeout=25.0) as client:
             r = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers_req)
             if r.status_code == 400:
                 # Some models may not support response_format. Retry once without it.

@@ -10,6 +10,7 @@ import CommandPalette from "@/components/command-palette"
 import MobileNav from "@/components/layout/mobile-nav"
 import OnboardingTour from "@/components/onboarding/onboarding-tour"
 import MobileMenuSheet from "@/components/layout/mobile-menu-sheet"
+import { wakeBackend } from "@/lib/wake-backend"
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -108,6 +109,52 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
     return () => { if (id) clearInterval(id) }
   }, [flags.autoRefresh])
+
+  // Render free tier can cold-start; wake backend from the browser to avoid Vercel function timeouts.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        await wakeBackend({ force: true, maxWaitMs: 25_000 })
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) {
+          try {
+            sync.refreshAll()
+          } catch {}
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Keep backend warm while the app tab is active (best-effort).
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const tick = () => {
+      try {
+        if (document.visibilityState !== "visible") return
+      } catch {}
+      wakeBackend().catch(() => {})
+    }
+
+    let id: any
+    try {
+      id = setInterval(tick, 4 * 60_000)
+      document.addEventListener("visibilitychange", tick)
+    } catch {}
+    return () => {
+      try {
+        if (id) clearInterval(id)
+      } catch {}
+      try {
+        document.removeEventListener("visibilitychange", tick)
+      } catch {}
+    }
+  }, [])
 
   // Prevent background scroll when mobile drawer is open
   useEffect(() => {

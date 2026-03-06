@@ -7,14 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Mail, Lock, Eye, EyeOff, UserPlus, Sparkles, CheckCircle2, XCircle, Info } from "lucide-react"
 
 export const dynamic = "force-dynamic"
