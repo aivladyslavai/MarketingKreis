@@ -100,6 +100,21 @@ const priorityConfig = {
   URGENT: { label: 'Dringend', color: 'border-rose-400/25 bg-rose-500/10 text-rose-100' }
 }
 
+const priorityAccent: Record<TaskPriority, string> = {
+  LOW: 'bg-emerald-400',
+  MEDIUM: 'bg-amber-400',
+  HIGH: 'bg-orange-400',
+  URGENT: 'bg-rose-500',
+}
+
+const deadlineBadge = (d: Date) => {
+  if (isPast(d) && !isToday(d))
+    return { bg: 'bg-rose-500/15 border-rose-400/25', text: 'text-rose-300', icon: 'text-rose-400' }
+  if (isToday(d))
+    return { bg: 'bg-amber-500/15 border-amber-400/25', text: 'text-amber-300', icon: 'text-amber-400' }
+  return { bg: 'bg-white/5 border-white/10', text: 'text-slate-300', icon: 'text-slate-400' }
+}
+
 function TaskCard({ task, onTaskClick, onDragStart }: {
   task: ContentTask
   onTaskClick?: (task: ContentTask) => void
@@ -107,19 +122,18 @@ function TaskCard({ task, onTaskClick, onDragStart }: {
 }) {
   const [isDragging, setIsDragging] = React.useState(false)
 
-  const getDeadlineColor = () => {
-    if (!task.deadline) return 'text-gray-500'
-    if (isPast(task.deadline)) return 'text-red-500'
-    if (isToday(task.deadline)) return 'text-orange-500'
-    return 'text-gray-500'
-  }
+  const ownerInitials = task.owner
+    ? task.owner.name.split(/[\s.@]+/).filter(Boolean).slice(0, 2).map(n => n[0]?.toUpperCase()).join('')
+    : null
 
   return (
-    <Card 
+    <Card
       className={cn(
-        "mb-3 cursor-pointer transition-all select-none overflow-hidden border border-white/10 bg-slate-950/30 backdrop-blur-xl",
-        "hover:bg-slate-950/40 hover:ring-1 hover:ring-white/10 hover:shadow-[0_12px_30px_rgba(0,0,0,0.35)]",
-        isDragging && "opacity-60 rotate-1 shadow-[0_18px_44px_rgba(0,0,0,0.55)] scale-[1.01]"
+        "group/card relative mb-3 cursor-pointer select-none overflow-hidden rounded-xl border border-white/[0.07]",
+        "bg-gradient-to-br from-slate-900/80 via-slate-900/60 to-slate-950/80 backdrop-blur-xl",
+        "transition-all duration-200 ease-out",
+        "hover:border-white/15 hover:shadow-[0_8px_32px_rgba(0,0,0,0.45)] hover:-translate-y-0.5",
+        isDragging && "opacity-50 rotate-1 scale-[1.02] shadow-[0_20px_50px_rgba(0,0,0,0.6)]"
       )}
       data-task-id={task.id}
       data-status={task.status}
@@ -139,84 +153,93 @@ function TaskCard({ task, onTaskClick, onDragStart }: {
         setIsDragging(true)
         onDragStart?.(task)
       }}
-      onDragEnd={() => {
-        setIsDragging(false)
-      }}
+      onDragEnd={() => setIsDragging(false)}
       onClick={() => onTaskClick?.(task)}
     >
-      <CardContent className="p-4">
-        <div className="space-y-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <h4 className="font-semibold text-sm leading-tight line-clamp-2 break-words text-slate-100" title={task.title}>
-                {task.title}
-              </h4>
-            </div>
-            <Badge 
-              variant="secondary" 
-              className={cn(
-                "text-[10px] whitespace-nowrap flex-shrink-0 rounded-full border px-2 py-0.5 font-semibold",
-                priorityConfig[task.priority].color
-              )}
-            >
-              {priorityConfig[task.priority].label}
-            </Badge>
-          </div>
+      {/* Priority accent stripe */}
+      <div className={cn("absolute inset-y-0 left-0 w-[3px] rounded-l-xl", priorityAccent[task.priority])} />
 
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs min-w-0">
-              <span
-                className="inline-flex max-w-full items-center px-2 py-1 rounded-full border border-white/10 bg-white/5 text-slate-200/90 text-[11px] truncate"
-                title={task.channel}
-              >
-                {task.channel}
-              </span>
-              {task.format && (
-                <span
-                  className="inline-flex max-w-full items-center px-2 py-1 rounded-full border border-white/10 bg-white/5 text-slate-200/80 text-[11px] truncate"
-                  title={task.format}
-                >
-                  {task.format}
-                </span>
-              )}
-            </div>
+      {/* Subtle top-edge shine */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity" />
 
-            {task.deadline && (
-              <div className={cn("flex items-center gap-1 text-xs min-w-0", getDeadlineColor())}>
-                <Calendar className="h-3 w-3 flex-shrink-0" />
-                <span className="min-w-0 truncate">
-                  {formatDistanceToNow(task.deadline, { 
-                    addSuffix: true, 
-                    locale: de 
-                  })}
-                </span>
-              </div>
+      <CardContent className="p-3.5 pl-4">
+        {/* Row 1: Title + Priority badge */}
+        <div className="flex items-start gap-2 mb-2.5">
+          <h4
+            className="flex-1 min-w-0 text-[13px] font-semibold leading-snug text-slate-100 line-clamp-2 break-words"
+            title={task.title}
+          >
+            {task.title}
+          </h4>
+          <Badge
+            variant="secondary"
+            className={cn(
+              "mt-0.5 shrink-0 rounded-md border px-1.5 py-px text-[10px] font-bold uppercase tracking-wide",
+              priorityConfig[task.priority].color
             )}
+          >
+            {priorityConfig[task.priority].label}
+          </Badge>
+        </div>
 
-            {task.owner && (
-              <div className="flex items-center gap-2 min-w-0">
-                <Avatar className="h-6 w-6 flex-shrink-0">
+        {/* Row 2: Channel / format pills */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+          <span
+            className="inline-flex max-w-full items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10.5px] font-medium text-slate-300 truncate"
+            title={task.channel}
+          >
+            {task.channel}
+          </span>
+          {task.format && task.format !== task.channel && (
+            <span
+              className="inline-flex max-w-full items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[10.5px] font-medium text-slate-400 truncate"
+              title={task.format}
+            >
+              {task.format}
+            </span>
+          )}
+        </div>
+
+        {/* Row 3: Deadline */}
+        {task.deadline && (() => {
+          const db = deadlineBadge(task.deadline)
+          return (
+            <div className={cn("inline-flex items-center gap-1.5 rounded-md border px-2 py-1 mb-2.5", db.bg)}>
+              <Calendar className={cn("h-3 w-3 shrink-0", db.icon)} />
+              <span className={cn("text-[11px] font-medium", db.text)}>
+                {formatDistanceToNow(task.deadline, { addSuffix: true, locale: de })}
+              </span>
+            </div>
+          )
+        })()}
+
+        {/* Row 4: Footer — owner + activity link */}
+        {(task.owner || task.activity) && (
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/[0.06]">
+            {task.owner ? (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Avatar className="h-5 w-5 shrink-0 ring-1 ring-white/10">
                   <AvatarImage src={task.owner.avatar} />
-                  <AvatarFallback className="text-xs">
-                    {task.owner.name.split(' ').map(n => n[0]).join('')}
+                  <AvatarFallback className="text-[9px] font-bold bg-gradient-to-br from-violet-500/30 to-fuchsia-500/30 text-white/80">
+                    {ownerInitials}
                   </AvatarFallback>
                 </Avatar>
-                <span className="text-xs text-slate-300 min-w-0 truncate" title={task.owner.name}>
+                <span className="text-[11px] text-slate-400 truncate" title={task.owner.name}>
                   {task.owner.name}
                 </span>
               </div>
-            )}
+            ) : <span />}
 
             {task.activity && (
-              <div className="flex items-center gap-1 text-xs text-slate-400 min-w-0">
-                <AlertCircle className="h-3 w-3 flex-shrink-0" />
-                <span className="min-w-0 truncate" title={task.activity.title}>
+              <div className="flex items-center gap-1 min-w-0 ml-auto">
+                <AlertCircle className="h-3 w-3 shrink-0 text-slate-500" />
+                <span className="text-[10px] text-slate-500 truncate max-w-[120px]" title={task.activity.title}>
                   {task.activity.title}
                 </span>
               </div>
             )}
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -280,24 +303,29 @@ function KanbanColumn({
   }
 
   return (
-    <div 
+    <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950/25 backdrop-blur-xl p-3 sm:p-4 transition-all",
-        isDragOver && cn("ring-2", config.ring)
+        "relative overflow-hidden rounded-2xl border border-white/[0.08] bg-slate-950/30 backdrop-blur-xl p-3 sm:p-4 transition-all duration-200",
+        isDragOver && cn("ring-2 border-white/15", config.ring)
       )}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className={cn("pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r", config.accent)} />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.06),transparent_55%)]" />
+      {/* Top accent gradient bar */}
+      <div className={cn("pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r", config.accent)} />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.04),transparent_60%)]" />
+
+      {/* Column header */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="h-7 w-7 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center flex-shrink-0">
-            <Icon className="h-4 w-4 text-slate-100" />
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="h-7 w-7 rounded-lg border border-white/[0.08] bg-white/[0.04] flex items-center justify-center shrink-0">
+            <Icon className="h-3.5 w-3.5 text-slate-300" />
           </div>
-          <h3 className="font-semibold text-sm min-w-0 truncate text-slate-100">{config.title}</h3>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-200/80 flex-shrink-0 whitespace-nowrap">
+          <h3 className="font-bold text-[13px] tracking-tight min-w-0 truncate text-slate-100">
+            {config.title}
+          </h3>
+          <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.08] text-slate-300/80 shrink-0">
             {tasks.length}
           </span>
         </div>
@@ -305,13 +333,14 @@ function KanbanColumn({
           variant="outline"
           size="sm"
           onClick={() => onCreateTask?.(status)}
-          className="h-8 w-8 p-0 border-white/15 text-slate-200 hover:bg-white/10"
+          className="h-7 w-7 p-0 border-white/[0.08] text-slate-400 hover:text-slate-200 hover:bg-white/[0.08] hover:border-white/15 transition-colors"
           title="Neue Aufgabe"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
 
+      {/* Task list */}
       <div className="space-y-2 min-h-[180px] sm:min-h-[200px]" ref={listRef}>
         {tasks.map((task) => (
           <TaskCard
@@ -321,16 +350,19 @@ function KanbanColumn({
             onDragStart={onDragStart}
           />
         ))}
-        
+
         {tasks.length === 0 && (
-          <div className="text-center py-8 text-slate-400">
-            <Icon className="h-8 w-8 mx-auto mb-2 opacity-60" />
-            <p className="text-sm">Keine Aufgaben</p>
-            <p className="mt-1 text-[11px] text-slate-500">Ziehe eine Karte hierher oder erstelle eine neue.</p>
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="h-10 w-10 rounded-xl border border-dashed border-white/10 flex items-center justify-center mb-3">
+              <Icon className="h-5 w-5 text-slate-600" />
+            </div>
+            <p className="text-[13px] font-medium text-slate-500">Keine Aufgaben</p>
+            <p className="mt-1 text-[11px] text-slate-600">Karte hierher ziehen oder neue erstellen</p>
           </div>
         )}
+
         {isDragOver && (
-          <div className="h-10 border-2 border-dashed border-white/20 rounded-xl" />
+          <div className="h-12 border-2 border-dashed border-white/15 rounded-xl bg-white/[0.02] transition-colors" />
         )}
       </div>
     </div>
