@@ -192,9 +192,12 @@ def simulate_scenario(
         kpi_conversion = find_kpi("conversion")
         kpi_deals = find_kpi("deals")
 
-        base_revenue = float(kpi_revenue.target_value) if kpi_revenue else (base_budget_total * 1.3 if base_budget_total else 100000.0)
-        base_conversion = float(kpi_conversion.target_value) if kpi_conversion else 20.0
-        base_deals = float(kpi_deals.target_value) if kpi_deals else 20.0
+        # IMPORTANT: Do not invent numbers when there are no targets.
+        # If no budget/KPI targets exist for the selected period, keep everything at 0
+        # so the UI doesn't show confusing defaults (e.g. 116'000 CHF).
+        base_revenue = float(kpi_revenue.target_value) if kpi_revenue else (base_budget_total * 1.3 if base_budget_total else 0.0)
+        base_conversion = float(kpi_conversion.target_value) if kpi_conversion else 0.0
+        base_deals = float(kpi_deals.target_value) if kpi_deals else 0.0
 
         # Scenario scaling
         scale = 1.0 + (change_percent / 100.0)

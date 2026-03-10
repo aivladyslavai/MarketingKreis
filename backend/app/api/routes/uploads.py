@@ -2263,11 +2263,33 @@ def smart_import_upload(
     # and reuse them for activity.category_name (circle).
     ring_category_color: Dict[str, str] = {}
     ring_category_names: List[str] = []
+    sap_company_id: Optional[int] = None
     try:
         # Pick the first SAP table to compute buckets.
         sap_tables = [t for t in tables if _is_sap_mediaplan_table(list(t.get("headers") or []))]
         if sap_tables:
             sap_rows = list((sap_tables[0].get("rows") or []))
+            # Create a minimal default CRM company for new orgs so Dashboard/CRM isn't empty.
+            # Only do this when the org has no companies yet (safe, avoids polluting existing CRMs).
+            try:
+                has_any_company = db.query(Company).filter(Company.organization_id == org).first()
+                if not has_any_company:
+                    c = Company(
+                        organization_id=org,
+                        name="SAP",
+                        industry=None,
+                        website=None,
+                        email=None,
+                        phone=None,
+                        status="active",
+                        lead_source="sap_mediaplan_import",
+                        notes="Auto-created from SAP Mediaplan import.",
+                    )
+                    db.add(c)
+                    db.flush()
+                    sap_company_id = int(getattr(c, "id", 0) or 0) or None
+            except Exception:
+                sap_company_id = None
             # Candidate buckets in a stable order
             preferred = ["Online Ads", "Print", "Paid Social", "Organic Social", "SAP intern"]
             present = []
@@ -2667,6 +2689,7 @@ def smart_import_upload(
                                     category=category,
                                     priority="medium",
                                     color=color,
+                                    company_id=(sap_company_id if (is_sap and sap_company_id) else None),
                                     activity=act,
                                     owner_id=current_user.id,
                                     organization_id=org,

@@ -210,6 +210,42 @@ export default function SimpleCalendarView({
   const openDayDate = openDayIso ? isoToDate(openDayIso) : null
   const openDayActivities = openDayDate ? getActivitiesForDate(openDayDate) : []
 
+  const bounds = React.useMemo(() => {
+    let min: Date | null = null
+    let max: Date | null = null
+    const years = new Set<number>()
+    for (const a of activities || []) {
+      const raw = (a as any)?.start
+      if (!raw) continue
+      const dt = raw instanceof Date ? raw : new Date(raw as any)
+      if (!Number.isFinite(dt.getTime())) continue
+      years.add(dt.getFullYear())
+      if (!min || dt.getTime() < min.getTime()) min = dt
+      if (!max || dt.getTime() > max.getTime()) max = dt
+    }
+    return { min, max, years: Array.from(years).sort((a, b) => a - b) }
+  }, [activities])
+
+  const jumpToImportDate = React.useMemo(() => {
+    if (!bounds.min) return null
+    return new Date(bounds.min.getFullYear(), bounds.min.getMonth(), 1)
+  }, [bounds.min?.getTime?.()])
+
+  const didAutoJumpRef = React.useRef(false)
+  React.useEffect(() => {
+    if (didAutoJumpRef.current) return
+    if (!jumpToImportDate) return
+    const now = new Date()
+    const nowYear = now.getFullYear()
+    const hasNowYear = bounds.years.includes(nowYear)
+    // Only auto-jump if user is currently viewing "today year" and there are no events in that year.
+    if (!hasNowYear && currentDate.getFullYear() === nowYear) {
+      setCurrentDate(jumpToImportDate)
+    }
+    // One-shot: never auto-jump again after first evaluation.
+    didAutoJumpRef.current = true
+  }, [bounds.years, currentDate, jumpToImportDate])
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -241,6 +277,29 @@ export default function SimpleCalendarView({
         </div>
         
         <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full xs:w-auto text-xs sm:text-sm glass-card"
+            onClick={() => setCurrentDate(new Date())}
+          >
+            <CalendarIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden xs:inline">Heute</span>
+            <span className="xs:hidden">Heute</span>
+          </Button>
+          {jumpToImportDate && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full xs:w-auto text-xs sm:text-sm glass-card"
+              onClick={() => setCurrentDate(jumpToImportDate)}
+              title={`Zum Import springen (${jumpToImportDate.getFullYear()})`}
+            >
+              <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden xs:inline">Zum Import</span>
+              <span className="xs:hidden">{jumpToImportDate.getFullYear()}</span>
+            </Button>
+          )}
           <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1 w-full xs:w-auto">
             <button
               type="button"
@@ -265,16 +324,6 @@ export default function SimpleCalendarView({
               Monat
             </button>
           </div>
-          {view === "agenda" && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full xs:w-auto text-xs sm:text-sm glass-card"
-              onClick={() => setCurrentDate(new Date())}
-            >
-              Heute
-            </Button>
-          )}
           <Button 
             variant="outline" 
             size="sm" 
