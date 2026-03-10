@@ -8,6 +8,7 @@ import hashlib
 import json
 import httpx
 import re
+import calendar
 
 from app.db.session import get_db_session
 from app.core.rate_limit import enforce_rate_limit
@@ -651,6 +652,36 @@ def _parse_float(v: Any) -> Optional[float]:
         return float(s)
     except Exception:
         return None
+
+
+def _parse_percent(v: Any) -> Optional[float]:
+    """
+    Parse percent-ish values and return a percentage number (0..100+).
+    Accepts: 0.12, 12, '12%', '12,5 %', "0,12", etc.
+    """
+    if _is_blankish(v):
+        return None
+    try:
+        s = str(v).strip()
+        if not s:
+            return None
+        s = s.replace("%", "").replace("'", "").replace(" ", "")
+        if "," in s and "." not in s:
+            s = s.replace(",", ".")
+        val = float(s)
+        # Heuristic: 0..1 likely means fraction
+        if 0 <= val <= 1:
+            val = val * 100.0
+        return val
+    except Exception:
+        # Fallback: reuse float parser (will handle 1'234.50 patterns)
+        try:
+            f = _parse_float(str(v).replace("%", ""))
+            if f is None:
+                return None
+            return f * 100.0 if 0 <= f <= 1 else f
+        except Exception:
+            return None
 
 
 def _parse_int(v: Any) -> Optional[int]:
@@ -2083,6 +2114,12 @@ def smart_import_upload(
     }
 
     default_period = _current_period()
+    # Accumulate SAP Mediaplan KPI targets by quarter (period -> sums).
+    # We upsert them once after all tables are processed.
+    sap_kpi_acc: Dict[str, Dict[str, float]] = {}
+    # Accumulate SAP Mediaplan budget targets by quarter (period+category -> amount).
+    # We upsert them once after all tables are processed (overwrite for plan-correctness).
+    sap_budget_acc: Dict[tuple[str, str], float] = {}
 
     def _is_sap_mediaplan_table(headers: List[str]) -> bool:
         hs = {str(h or "").strip().lower() for h in (headers or [])}
@@ -2142,6 +2179,85 @@ def smart_import_upload(
         except Exception:
             pass
         return default_period
+
+    def _overlap_days(a_start, a_end, b_start, b_end) -> int:
+        try:
+            s = max(a_start, b_start)
+            e = min(a_end, b_end)
+            if e < s:
+                return 0
+            return int((e - s).days) + 1
+        except Exception:
+            return 0
+
+    def _quarter_bounds(y: int, q: int):
+        m1 = (q - 1) * 3 + 1
+        m2 = q * 3
+        last = calendar.monthrange(int(y), int(m2))[1]
+        from datetime import date
+
+        return date(int(y), int(m1), 1), date(int(y), int(m2), int(last))
+
+    def _period_fracs_for_range(start_dt, end_dt) -> List[tuple[str, float]]:
+        """
+        Return overlapping quarters with fractional weights for the given range (inclusive, by days).
+        """
+        try:
+            from datetime import date
+
+            s = start_dt.date() if hasattr(start_dt, "date") else start_dt
+            e = end_dt.date() if hasattr(end_dt, "date") else end_dt
+            if not isinstance(s, date) or not isinstance(e, date):
+                return []
+            if e < s:
+                s, e = e, s
+            total = int((e - s).days) + 1
+            if total <= 0:
+                return []
+            out: List[tuple[str, float]] = []
+            for y in range(int(s.year), int(e.year) + 1):
+                for q in (1, 2, 3, 4):
+                    qs, qe = _quarter_bounds(y, q)
+                    od = _overlap_days(s, e, qs, qe)
+                    if od > 0:
+                        out.append((f"{y}-Q{q}", float(od) / float(total)))
+            return out
+        except Exception:
+            return []
+
+    def _alloc_year_budget(year: int, amount: float, start_dt, end_dt) -> List[tuple[str, float]]:
+        """
+        Allocate a year-specific budget across the quarters of that year that overlap the schedule range.
+        """
+        try:
+            from datetime import date
+
+            amt = float(amount or 0)
+            if amt <= 0:
+                return []
+            s = start_dt.date() if hasattr(start_dt, "date") else start_dt
+            e = end_dt.date() if hasattr(end_dt, "date") else end_dt
+            if not isinstance(s, date) or not isinstance(e, date):
+                return []
+            if e < s:
+                s, e = e, s
+            y = int(year)
+            ys = max(s, date(y, 1, 1))
+            ye = min(e, date(y, 12, 31))
+            if ye < ys:
+                return []
+            total = int((ye - ys).days) + 1
+            if total <= 0:
+                return []
+            out: List[tuple[str, float]] = []
+            for q in (1, 2, 3, 4):
+                qs, qe = _quarter_bounds(y, q)
+                od = _overlap_days(ys, ye, qs, qe)
+                if od > 0:
+                    out.append((f"{y}-Q{q}", (amt * float(od)) / float(total)))
+            return out
+        except Exception:
+            return []
 
     # If the upload looks like a SAP Mediaplan, auto-create a small, harmonious set of ring categories
     # and reuse them for activity.category_name (circle).
@@ -2563,19 +2679,73 @@ def smart_import_upload(
                         # Budget targets (aggregate planned spend into Budget module by quarter + high-level category).
                         try:
                             if budget is not None and start:
-                                period = _period_from_dt(start)
                                 bcat = _budget_category_for_type(a_type)
-                                existing_b = (
-                                    db.query(BudgetTarget)
-                                    .filter(BudgetTarget.organization_id == org, BudgetTarget.period == period, BudgetTarget.category == bcat)
-                                    .first()
-                                )
-                                if existing_b:
-                                    existing_b.amount_chf = float(existing_b.amount_chf or 0) + float(budget)
-                                    db.add(existing_b)
+                                if is_sap:
+                                    # SAP Mediaplan: budgets are usually split per year (e.g. CHF_2022 / CHF_2023).
+                                    # Allocate each year's budget across overlapping quarters of that year, then upsert once (overwrite).
+                                    end_dt = end or start
+                                    ybuds: Dict[int, float] = {}
+                                    for ykey in ("2022", "2023"):
+                                        v = _parse_float(row.get(f"chf_{ykey}"))
+                                        if v is not None and float(v) > 0:
+                                            ybuds[int(ykey)] = float(v)
+                                    # Fallback: if year columns are absent, treat the combined budget as belonging to the start year.
+                                    if not ybuds:
+                                        try:
+                                            y0 = int(getattr(start.date() if hasattr(start, "date") else start, "year", 0) or 0)
+                                        except Exception:
+                                            y0 = 0
+                                        if y0 and float(budget) > 0:
+                                            ybuds[y0] = float(budget)
+
+                                    for y, yamt in ybuds.items():
+                                        for per, amt in _alloc_year_budget(int(y), float(yamt), start, end_dt):
+                                            key = (per, bcat)
+                                            sap_budget_acc[key] = float(sap_budget_acc.get(key, 0.0) or 0.0) + float(amt or 0)
+                                            totals["budget_rows_applied"] += 1
                                 else:
-                                    db.add(BudgetTarget(organization_id=org, period=period, category=bcat, amount_chf=float(budget)))
-                                totals["budget_rows_applied"] += 1
+                                    period = _period_from_dt(start)
+                                    existing_b = (
+                                        db.query(BudgetTarget)
+                                        .filter(BudgetTarget.organization_id == org, BudgetTarget.period == period, BudgetTarget.category == bcat)
+                                        .first()
+                                    )
+                                    if existing_b:
+                                        existing_b.amount_chf = float(existing_b.amount_chf or 0) + float(budget)
+                                        db.add(existing_b)
+                                    else:
+                                        db.add(BudgetTarget(organization_id=org, period=period, category=bcat, amount_chf=float(budget)))
+                                    totals["budget_rows_applied"] += 1
+                        except Exception:
+                            pass
+
+                        # KPI targets from SAP Mediaplan (impressions/clicks/views/CTR), aggregated per quarter.
+                        try:
+                            if is_sap and start:
+                                imp = _parse_float(row.get("impressions"))
+                                clk = _parse_float(row.get("clicks"))
+                                vw = _parse_float(row.get("views_adobe"))
+                                ctrp = _parse_percent(row.get("ctr"))
+                                end_dt = end or start
+                                fracs = _period_fracs_for_range(start, end_dt)
+                                for period_kpi, frac in fracs:
+                                    acc = sap_kpi_acc.setdefault(
+                                        period_kpi,
+                                        {"impressions": 0.0, "clicks": 0.0, "views": 0.0, "ctr_wsum": 0.0, "ctr_w": 0.0},
+                                    )
+                                    f = float(frac or 0.0)
+                                    if f <= 0:
+                                        continue
+                                    if imp is not None:
+                                        acc["impressions"] += float(imp) * f
+                                    if clk is not None:
+                                        acc["clicks"] += float(clk) * f
+                                    if vw is not None:
+                                        acc["views"] += float(vw) * f
+                                    if ctrp is not None:
+                                        w = float(imp or clk or 1.0) * f
+                                        acc["ctr_wsum"] += float(ctrp) * w
+                                        acc["ctr_w"] += w
                         except Exception:
                             pass
 
@@ -2586,6 +2756,73 @@ def smart_import_upload(
                 totals["activities_skipped"] += 1
 
         db.commit()
+
+    # Upsert derived KPI targets from SAP Mediaplan tables (best-effort).
+    # This makes KPI targets visible on Budget/Performance pages even for historic plans.
+    try:
+        # Upsert SAP-derived budget targets (overwrite per period/category for plan-correctness).
+        for (period, category), amount in (sap_budget_acc or {}).items():
+            try:
+                p = str(period or "").strip()
+                c = str(category or "").strip().upper()
+                amt = float(amount or 0)
+                if not p or not c or amt <= 0:
+                    continue
+                existing_b = (
+                    db.query(BudgetTarget)
+                    .filter(BudgetTarget.organization_id == org, BudgetTarget.period == p, BudgetTarget.category == c)
+                    .first()
+                )
+                if existing_b:
+                    existing_b.amount_chf = float(amt)
+                    db.add(existing_b)
+                else:
+                    db.add(BudgetTarget(organization_id=org, period=p, category=c, amount_chf=float(amt)))
+            except Exception:
+                continue
+
+        for period, acc in (sap_kpi_acc or {}).items():
+            if not period:
+                continue
+
+            def _upsert(metric: str, value: float, unit: Optional[str]) -> None:
+                existing_k = (
+                    db.query(KpiTarget)
+                    .filter(KpiTarget.organization_id == org, KpiTarget.period == period, KpiTarget.metric == metric)
+                    .first()
+                )
+                if existing_k:
+                    existing_k.target_value = float(value or 0)
+                    if unit:
+                        existing_k.unit = unit
+                    db.add(existing_k)
+                else:
+                    db.add(
+                        KpiTarget(
+                            organization_id=org,
+                            period=period,
+                            metric=metric,
+                            target_value=float(value or 0),
+                            unit=unit,
+                        )
+                    )
+
+            imps = float(acc.get("impressions") or 0)
+            clicks = float(acc.get("clicks") or 0)
+            views = float(acc.get("views") or 0)
+            ctr_w = float(acc.get("ctr_w") or 0)
+            ctr_wsum = float(acc.get("ctr_wsum") or 0)
+
+            if imps > 0:
+                _upsert("Impressions", imps, "Impr.")
+            if clicks > 0:
+                _upsert("Clicks", clicks, "Clicks")
+            if views > 0:
+                _upsert("Views", views, "Views")
+            if ctr_w > 0:
+                _upsert("CTR", ctr_wsum / ctr_w, "%")
+    except Exception:
+        pass
 
     # Record a job for visibility
     job = Job(

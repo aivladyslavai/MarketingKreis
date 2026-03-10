@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from math import isfinite
+import re
 
 from app.db.session import get_db_session
 from app.models.budget import BudgetTarget, KpiTarget
@@ -10,6 +11,66 @@ from app.api.deps import get_current_user, get_org_id, require_role
 
 
 router = APIRouter(prefix="/budget", tags=["budget"])
+
+def _period_key(p: str) -> tuple[int, int, str]:
+    """
+    Sort helper for periods like '2025-Q2' (desc).
+    Unknown formats fall back to (0, 0, raw).
+    """
+    try:
+        s = str(p or "").strip()
+        if not s:
+            return (0, 0, "")
+        up = s.upper()
+        if "-Q" in up:
+            y_s, q_s = up.split("-Q", 1)
+            y = int(y_s)
+            q = int(re.sub(r"[^0-9].*", "", q_s) or q_s)
+            return (y, q, up)
+        # Year-only fallback
+        y = int(re.sub(r"[^0-9].*", "", up) or up)
+        return (y, 0, up)
+    except Exception:
+        return (0, 0, str(p or ""))
+
+
+@router.get("/periods")
+def list_periods(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Return known budget/KPI periods for the current organization.
+    Used by the frontend to offer a period selector (e.g. after importing historic XLSX plans).
+    """
+    org = get_org_id(current_user)
+    periods: set[str] = set()
+    try:
+        for (p,) in (
+            db.query(BudgetTarget.period)
+            .filter(BudgetTarget.organization_id == org)
+            .distinct()
+            .all()
+        ):
+            if p:
+                periods.add(str(p).strip())
+    except Exception:
+        pass
+    try:
+        for (p,) in (
+            db.query(KpiTarget.period)
+            .filter(KpiTarget.organization_id == org)
+            .distinct()
+            .all()
+        ):
+            if p:
+                periods.add(str(p).strip())
+    except Exception:
+        pass
+
+    out = [p for p in periods if p]
+    out.sort(key=_period_key, reverse=True)
+    return {"periods": out}
 
 
 @router.get("/targets/{period}")

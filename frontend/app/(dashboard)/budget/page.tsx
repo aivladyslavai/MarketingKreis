@@ -3,26 +3,23 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { GlassSelect } from "@/components/ui/glass-select"
 import { useBudgetData } from "@/hooks/use-budget-data"
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from "recharts"
 import { AlertTriangle, DollarSign, Handshake, Target, RefreshCw, Wallet } from "lucide-react"
 import { motion } from "framer-motion"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 
 export default function BudgetPage() {
-  const { budgetData, loading, error, refetch } = useBudgetData()
+  const { budgetData, loading, error, refetch, period, periodOptions, setPeriod } = useBudgetData()
   const [pct, setPct] = useState(20)
   const [elasticity, setElasticity] = useState(0.8)
   const [scenario, setScenario] = useState<any | null>(null)
   const [scenarioLoading, setScenarioLoading] = useState(false)
   const [scenarioOpen, setScenarioOpen] = useState(true)
 
-  const period = useMemo(() => {
-    const now = new Date()
-    return `${now.getFullYear()}-Q${Math.floor(now.getMonth() / 3) + 1}`
-  }, [])
-
   async function runScenario(p: number, e: number) {
+    if (!period) return
     setScenarioLoading(true)
     try {
       const res = await fetch('/api/budget/scenario', {
@@ -46,9 +43,10 @@ export default function BudgetPage() {
   }
 
   useEffect(() => {
+    if (!period) return
     runScenario(pct, elasticity)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [period])
 
   if (loading || !budgetData) {
     return (
@@ -130,6 +128,17 @@ export default function BudgetPage() {
             </div>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+            <div className="w-full sm:w-[180px]">
+              <GlassSelect
+                value={period}
+                onChange={(v) => setPeriod?.(v)}
+                placeholder="Periode"
+                size="sm"
+                options={(periodOptions?.length ? periodOptions : (period ? [period] : [])).map((p) => ({ value: p, label: p }))}
+                allowEmptyOption={false}
+                disabled={!period}
+              />
+            </div>
             <Button variant="outline" className="glass-card w-full sm:w-auto" onClick={refetch}>
               <RefreshCw className="h-4 w-4 mr-2" /> Aktualisieren
             </Button>
@@ -448,7 +457,7 @@ export default function BudgetPage() {
       {/* Achievement bars */}
       <Card className="glass-card">
         <CardHeader>
-          <CardTitle className="text-white">Planerfüllung</CardTitle>
+          <CardTitle className="text-white">Budget Anteil (Plan)</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-72">

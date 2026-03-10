@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import { GlassSelect } from "@/components/ui/glass-select"
 import { DollarSign, TrendingUp, Handshake, Target, RefreshCw, BarChart3 } from "lucide-react"
 import { crmAPI, authFetch } from "@/lib/api"
 import { sync } from "@/lib/sync"
@@ -20,6 +21,10 @@ export default function PerformancePage() {
   const { categories } = useUserCategories()
   const [isSmall, setIsSmall] = useState(false)
   const [chartsOpen, setChartsOpen] = useState(false)
+  const [budgetPeriod, setBudgetPeriod] = useState<string>("")
+  const [budgetPeriods, setBudgetPeriods] = useState<string[]>([])
+  const [targetsLoading, setTargetsLoading] = useState(false)
+  const [targets, setTargets] = useState<{ budgetTargets?: any[]; kpiTargets?: any[] } | null>(null)
 
   // Mobile UX: collapse heavy charts by default on phones.
   useEffect(() => {
@@ -69,6 +74,11 @@ export default function PerformancePage() {
     )
   }
 
+  const currentPeriod = () => {
+    const now = new Date()
+    return `${now.getFullYear()}-Q${Math.floor(now.getMonth() / 3) + 1}`
+  }
+
   const load = async () => {
     try {
       setLoading(true)
@@ -86,6 +96,44 @@ export default function PerformancePage() {
     }
   }
 
+  const loadBudgetTargets = async (p?: string) => {
+    const per = String(p || budgetPeriod || "").trim()
+    if (!per) return
+    try {
+      setTargetsLoading(true)
+      const res = await authFetch(`/budget/targets/${encodeURIComponent(per)}`)
+      const j = await res.json().catch(() => null)
+      setTargets(j || null)
+    } catch {
+      setTargets(null)
+    } finally {
+      setTargetsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    const init = async () => {
+      const fallback = currentPeriod()
+      try {
+        const res = await authFetch("/budget/periods")
+        const j = await res.json().catch(() => null)
+        const list = Array.isArray(j?.periods) ? (j.periods as any[]).map((x) => String(x || "").trim()).filter(Boolean) : []
+        if (cancelled) return
+        setBudgetPeriods(list)
+        setBudgetPeriod((prev) => prev || list[0] || fallback)
+      } catch {
+        if (cancelled) return
+        setBudgetPeriod((prev) => prev || fallback)
+      }
+    }
+    init()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     const run = async () => {
       try {
@@ -102,9 +150,16 @@ export default function PerformancePage() {
       sync.on('activities:changed', load),
       sync.on('calendar:changed', load),
       sync.on('crm:companies:changed', load),
+      sync.on('budget:changed', () => loadBudgetTargets()),
     ]
     return () => { unsub.forEach(fn => fn && (fn as any)()) }
   }, [])
+
+  useEffect(() => {
+    if (!budgetPeriod) return
+    loadBudgetTargets(budgetPeriod)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budgetPeriod])
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -236,6 +291,86 @@ export default function PerformancePage() {
             </motion.div>
           ))}
         </div>
+      </motion.div>
+
+      {/* Budget & KPI Targets (from imports / Budget module) */}
+      <motion.div variants={itemVariants}>
+        <Card className="glass-card overflow-hidden">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-slate-900 dark:text-slate-100">Budget & KPI Targets</CardTitle>
+            <div className="flex items-center gap-2">
+              <div className="w-[170px]">
+                <GlassSelect
+                  value={budgetPeriod}
+                  onChange={(v) => setBudgetPeriod(v)}
+                  placeholder="Periode"
+                  size="sm"
+                  options={(budgetPeriods?.length ? budgetPeriods : (budgetPeriod ? [budgetPeriod] : [])).map((p) => ({ value: p, label: p }))}
+                  allowEmptyOption={false}
+                  disabled={!budgetPeriod}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="glass-card h-11 sm:h-9 text-xs"
+                onClick={() => loadBudgetTargets(budgetPeriod)}
+                disabled={!budgetPeriod || targetsLoading}
+              >
+                <RefreshCw className={targetsLoading ? "h-4 w-4 mr-2 animate-spin" : "h-4 w-4 mr-2"} />
+                Aktualisieren
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {targetsLoading ? (
+              <div className="text-sm text-slate-600 dark:text-slate-400">Laden…</div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="rounded-xl border border-white/10 bg-white/40 dark:bg-neutral-900/30 p-4">
+                  <div className="text-xs text-slate-600 dark:text-slate-400">Planned Budget</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
+                    {chf((targets?.budgetTargets || []).reduce((s: number, b: any) => s + (Number(b?.amount) || 0), 0))}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    {(targets?.budgetTargets || []).slice(0, 8).map((b: any) => (
+                      <span key={String(b?.id ?? `${b?.category}`)} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/50 dark:bg-white/5 px-2.5 py-1 text-slate-700 dark:text-slate-200">
+                        <span className="font-semibold">{String(b?.category || "").replace(/_/g, " ")}</span>
+                        <span className="text-slate-500 dark:text-slate-400">{chf(Number(b?.amount) || 0)}</span>
+                      </span>
+                    ))}
+                    {Array.isArray(targets?.budgetTargets) && targets!.budgetTargets!.length > 8 ? (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">+{targets!.budgetTargets!.length - 8} mehr…</span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="lg:col-span-2 rounded-xl border border-white/10 bg-white/40 dark:bg-neutral-900/30 p-4">
+                  <div className="text-xs text-slate-600 dark:text-slate-400">KPI Targets (Plan)</div>
+                  {Array.isArray(targets?.kpiTargets) && targets!.kpiTargets!.length ? (
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {targets!.kpiTargets!.slice(0, 6).map((k: any) => (
+                        <div key={String(k?.id ?? k?.metric)} className="rounded-lg border border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2">
+                          <div className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate" title={String(k?.metric || "")}>
+                            {String(k?.metric || "KPI")}
+                          </div>
+                          <div className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+                            <span className="font-semibold">{Number(k?.target || 0).toLocaleString()}</span>
+                            <span className="ml-1 text-slate-500 dark:text-slate-400">{String(k?.unit || "")}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                      Keine KPI Targets für diese Periode.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </motion.div>
 
       {(!isSmall || chartsOpen) && (
