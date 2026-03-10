@@ -209,6 +209,7 @@ export function useUploadsApi() {
         sync.emit("content:changed")
         sync.emit("crm:companies:changed")
         sync.emit("budget:changed")
+        sync.emit("jobs:changed")
       } catch {}
       return json
     },

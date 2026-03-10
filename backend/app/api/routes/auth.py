@@ -946,12 +946,12 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     else:
         if create_new_org:
             # First user of a new org must be admin to manage their workspace.
-            role = UserRole.admin
-        else:
-            try:
-                role = UserRole(invited_role)
-            except Exception:
-                role = UserRole.user
+        role = UserRole.admin
+    else:
+        try:
+            role = UserRole(invited_role)
+        except Exception:
+            role = UserRole.user
 
     # Organization assignment
     org_id: Optional[int] = None
@@ -989,8 +989,8 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     )
     db.add(user)
     try:
-        db.commit()
-        db.refresh(user)
+    db.commit()
+    db.refresh(user)
     except IntegrityError:
         db.rollback()
         # Protect against race conditions and case variants
@@ -1027,7 +1027,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     )
     try:
         if delivery_enabled:
-            sent = send_email(user.email, subject, text, html)
+        sent = send_email(user.email, subject, text, html)
     except Exception:
         sent = False
     role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
@@ -1225,7 +1225,7 @@ def request_reset(body: ResetRequest, request: Request):
     # For non‑production environments it can optionally be returned to
     # simplify manual testing.
     if settings.environment != "production" and settings.debug:
-        return {"token": token, "sent": sent}
+    return {"token": token, "sent": sent}
     return {"sent": sent}
 
 @router.post("/reset")

@@ -1577,11 +1577,11 @@ export default function UploadsPage() {
                                 <div className="font-semibold text-slate-900 dark:text-slate-100">{name}</div>
                                 <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                                   ID: {u.id} · {labelFor(kind, name)} · {formatBytes(Number(u.file_size || 0))}
-                                </div>
+                  </div>
                                 <div className="mt-3 text-xs text-amber-200/90 bg-amber-500/10 border border-amber-400/20 rounded-lg p-3">
                                   Hinweis: Das ist eine irreversible Aktion.
-                                </div>
-                              </div>
+                </div>
+            </div>
                             ),
                             onConfirm: async () => {
                               try {
@@ -1599,12 +1599,12 @@ export default function UploadsPage() {
                                           <div key={k} className="rounded-lg border border-white/10 bg-white/5 p-2 flex items-center justify-between">
                                             <span className="text-slate-600 dark:text-slate-300">{k}</span>
                                             <span className="font-semibold text-slate-900 dark:text-slate-100">{Number(v)}</span>
-                                          </div>
+            </div>
                                         ))
                                       ) : (
                                         <div className="text-slate-600 dark:text-slate-400">Keine importierten Daten gefunden.</div>
                                       )}
-                                    </div>
+                    </div>
                                   ),
                                 })
                               } catch (e: any) {
@@ -1645,8 +1645,8 @@ export default function UploadsPage() {
                 <Badge className="bg-red-500/15 text-red-200 border border-red-500/30 text-[10px]">
                   failed {jobsByStatus.failed}
                 </Badge>
-            </div>
-                  </div>
+      </div>
+    </div>
             <div className="text-xs text-slate-600 dark:text-slate-400">
               Imports laufen im Hintergrund. Hier siehst du den Status der letzten Jobs.
                     </div>
