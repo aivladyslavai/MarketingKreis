@@ -9,6 +9,8 @@ class BudgetTarget(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Import provenance: when created/updated from an Upload, we store its id here.
+    source_upload_id = Column(Integer, nullable=True, index=True)
     period = Column(String(20), nullable=False, index=True)  # e.g. 2025-Q2
     category = Column(String(50), nullable=False, index=True)  # VERKAUFSFOERDERUNG, IMAGE, EMPLOYER_BRANDING, KUNDENPFLEGE
     amount_chf = Column(Numeric(14, 2), nullable=False, default=0)
@@ -21,6 +23,8 @@ class KpiTarget(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Import provenance: when created/updated from an Upload, we store its id here.
+    source_upload_id = Column(Integer, nullable=True, index=True)
     period = Column(String(20), nullable=False, index=True)  # e.g. 2025-Q2
     metric = Column(String(100), nullable=False, index=True)  # e.g. Umsatz, Conversion Rate
     target_value = Column(Numeric(14, 2), nullable=False, default=0)

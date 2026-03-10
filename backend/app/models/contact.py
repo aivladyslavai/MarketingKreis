@@ -10,6 +10,8 @@ class Contact(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), index=True, nullable=True)
+    # Import provenance: when created from an Upload, we store its id here.
+    source_upload_id = Column(Integer, nullable=True, index=True)
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True)
     name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=True)

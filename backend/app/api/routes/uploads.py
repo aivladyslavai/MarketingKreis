@@ -30,6 +30,73 @@ from app.core.config import get_settings
 router = APIRouter(prefix="/uploads", tags=["uploads"]) 
 
 
+@router.delete("/{upload_id}")
+def delete_upload(
+    upload_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+) -> Dict[str, Any]:
+    """
+    Delete an upload AND everything imported from it (within the same organization).
+    This is critical for "try import -> delete -> platform clean" workflows.
+    """
+    org = get_org_id(current_user)
+    can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
+
+    upload = db.query(Upload).filter(Upload.id == int(upload_id), Upload.organization_id == org).first()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    if not can_manage_all and int(getattr(upload, "owner_id", 0) or 0) != int(current_user.id):
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    deleted: Dict[str, int] = {}
+
+    def _del(model, name: str):
+        try:
+            q = db.query(model).filter(model.organization_id == org, model.source_upload_id == int(upload_id))  # type: ignore[attr-defined]
+            n = q.delete(synchronize_session=False)
+            if n:
+                deleted[name] = int(n)
+        except Exception:
+            pass
+
+    # Domain objects created by imports / smart-import.
+    _del(CalendarEntry, "calendar_entries")
+    _del(Activity, "activities")
+    _del(ContentTask, "content_tasks")
+    _del(ContentItem, "content_items")
+    _del(BudgetTarget, "budget_targets")
+    _del(KpiTarget, "kpi_targets")
+    _del(Deal, "deals")
+    _del(Contact, "contacts")
+    _del(Company, "companies")
+    _del(UserCategory, "user_categories")
+
+    # Jobs linked to this upload (best-effort: rq_id contains upload id).
+    try:
+        rq1 = f"local-{int(upload_id)}"
+        rq2 = f"local-smart-{int(upload_id)}"
+        n = (
+            db.query(Job)
+            .filter(Job.organization_id == org, Job.rq_id.in_([rq1, rq2]))
+            .delete(synchronize_session=False)
+        )
+        if n:
+            deleted["jobs"] = int(n)
+    except Exception:
+        pass
+
+    # Finally delete upload record itself.
+    try:
+        db.delete(upload)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"ok": True, "deleted": deleted, "upload_id": int(upload_id)}
+
+
 _CATEGORY_COLOR_PALETTE = [
     "#ef4444",  # red
     "#f97316",  # orange
@@ -979,6 +1046,7 @@ def upload_file(
                         company = Company(
                             organization_id=org,
                             name=company_name,
+                            source_upload_id=int(upload.id),
                         )
                         db.add(company)
                         db.flush()
@@ -1017,6 +1085,7 @@ def upload_file(
                             contact = Contact(organization_id=org, company_id=company.id, name=cn or ce or "Contact")
                             if ce:
                                 contact.email = ce
+                            contact.source_upload_id = int(upload.id)
                             db.add(contact)
                             db.flush()
                             created_count += 1
@@ -1049,6 +1118,7 @@ def upload_file(
                                     company_id=company.id,
                                     title=dt,
                                     owner=str(gm(row, "deal_owner", "owner", "verantwortlich") or (current_user.email or "owner")),
+                                    source_upload_id=int(upload.id),
                                 )
                                 db.add(deal)
                                 db.flush()
@@ -1104,9 +1174,10 @@ def upload_file(
                         )
                         if existing:
                             existing.amount_chf = float(amount)
+                            existing.source_upload_id = int(upload.id)
                             db.add(existing)
                         else:
-                            db.add(BudgetTarget(organization_id=org, period=period, category=category, amount_chf=float(amount)))
+                            db.add(BudgetTarget(organization_id=org, period=period, category=category, amount_chf=float(amount), source_upload_id=int(upload.id)))
                             created_count += 1
 
                     # KPI target row
@@ -1124,6 +1195,7 @@ def upload_file(
                             if existing_k:
                                 existing_k.target_value = float(target_val)
                                 existing_k.unit = str(unit).strip()[:20] if unit not in (None, "") else existing_k.unit
+                                existing_k.source_upload_id = int(upload.id)
                                 db.add(existing_k)
                             else:
                                 db.add(
@@ -1133,6 +1205,7 @@ def upload_file(
                                         metric=m,
                                         target_value=float(target_val),
                                         unit=(str(unit).strip()[:20] if unit not in (None, "") else None),
+                                        source_upload_id=int(upload.id),
                                     )
                                 )
                                 created_count += 1
@@ -1210,6 +1283,7 @@ def upload_file(
                     item = ContentItem(
                         organization_id=org,
                         owner_id=desired_owner_id,
+                        source_upload_id=int(upload.id),
                         title=title[:255],
                         channel=channel or "Website",
                         format=fmt_s,
@@ -1281,6 +1355,7 @@ def upload_file(
                         type=_map_category_to_activity_type(str(category)),
                         category_name=str(category),
                         status=str(status).upper(),
+                        source_upload_id=int(upload.id),
                         budget=budget,
                         weight=weight,
                         expected_output=str(notes) if notes not in (None, "") else None,
@@ -2284,6 +2359,7 @@ def smart_import_upload(
                         status="active",
                         lead_source="sap_mediaplan_import",
                         notes="Auto-created from SAP Mediaplan import.",
+                        source_upload_id=int(upload.id),
                     )
                     db.add(c)
                     db.flush()
@@ -2336,6 +2412,7 @@ def smart_import_upload(
                     name=name,
                     color=color,
                     position=max_pos + 1 + idx,
+                    source_upload_id=int(upload.id),
                 )
                 db.add(item)
                 ring_category_color[name] = color
@@ -2390,9 +2467,10 @@ def smart_import_upload(
                     )
                     if existing:
                         existing.amount_chf = float(amount)
+                        existing.source_upload_id = int(upload.id)
                         db.add(existing)
                     else:
-                        db.add(BudgetTarget(organization_id=org, period=period, category=category, amount_chf=float(amount)))
+                        db.add(BudgetTarget(organization_id=org, period=period, category=category, amount_chf=float(amount), source_upload_id=int(upload.id)))
                     did_budget = True
 
                 target_val = _parse_float(target_raw)
@@ -2409,9 +2487,10 @@ def smart_import_upload(
                             existing_k.target_value = float(target_val)
                             if unit:
                                 existing_k.unit = unit
+                            existing_k.source_upload_id = int(upload.id)
                             db.add(existing_k)
                         else:
-                            db.add(KpiTarget(organization_id=org, period=period, metric=m, target_value=float(target_val), unit=unit))
+                            db.add(KpiTarget(organization_id=org, period=period, metric=m, target_value=float(target_val), unit=unit, source_upload_id=int(upload.id)))
                         did_budget = True
 
                 if did_budget:
@@ -2488,6 +2567,7 @@ def smart_import_upload(
                     item = ContentItem(
                         organization_id=org,
                         owner_id=owner_id,
+                        source_upload_id=int(upload.id),
                         title=title[:255],
                         channel=channel,
                         format=fmt_s,
@@ -2574,6 +2654,7 @@ def smart_import_upload(
                                 ContentTask(
                                     organization_id=org,
                                     owner_id=owner_id,
+                                    source_upload_id=int(upload.id),
                                     title=str(t_title).strip()[:255],
                                     channel=channel,
                                     format=fmt_s,
@@ -2606,6 +2687,7 @@ def smart_import_upload(
                                 priority="medium",
                                 color="#a78bfa",
                                 content_item_id=item.id,
+                                source_upload_id=int(upload.id),
                                 owner_id=owner_id,
                                 organization_id=org,
                             )
@@ -2657,6 +2739,7 @@ def smart_import_upload(
                             type=a_type,
                             category_name=category,
                             status=status_raw.upper(),
+                            source_upload_id=int(upload.id),
                             budget=budget,
                             weight=weight,
                             expected_output=str(notes).strip() if not _is_blankish(notes) else None,
@@ -2690,6 +2773,7 @@ def smart_import_upload(
                                     priority="medium",
                                     color=color,
                                     company_id=(sap_company_id if (is_sap and sap_company_id) else None),
+                                    source_upload_id=int(upload.id),
                                     activity=act,
                                     owner_id=current_user.id,
                                     organization_id=org,
@@ -2798,9 +2882,10 @@ def smart_import_upload(
                 )
                 if existing_b:
                     existing_b.amount_chf = float(amt)
+                    existing_b.source_upload_id = int(upload.id)
                     db.add(existing_b)
                 else:
-                    db.add(BudgetTarget(organization_id=org, period=p, category=c, amount_chf=float(amt)))
+                    db.add(BudgetTarget(organization_id=org, period=p, category=c, amount_chf=float(amt), source_upload_id=int(upload.id)))
             except Exception:
                 continue
 
@@ -2818,6 +2903,7 @@ def smart_import_upload(
                     existing_k.target_value = float(value or 0)
                     if unit:
                         existing_k.unit = unit
+                    existing_k.source_upload_id = int(upload.id)
                     db.add(existing_k)
                 else:
                     db.add(
@@ -2827,6 +2913,7 @@ def smart_import_upload(
                             metric=metric,
                             target_value=float(value or 0),
                             unit=unit,
+                            source_upload_id=int(upload.id),
                         )
                     )
 

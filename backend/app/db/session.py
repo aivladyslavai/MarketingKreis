@@ -62,16 +62,24 @@ def _ensure_production_schema() -> None:
         if _schema_checked:
             return
 
-        # Quick check: users.organization_id exists?
+        # Quick check: critical columns exist?
+        # We must ensure both multi-tenant scoping AND import-provenance columns exist,
+        # otherwise newer code (smart import / delete cascade) will fail at runtime.
         try:
             with engine.connect() as conn:
-                has = conn.execute(
+                has_org = conn.execute(
                     text(
                         "select 1 from information_schema.columns "
                         "where table_name='users' and column_name='organization_id' limit 1"
                     )
                 ).first()
-                if has:
+                has_src = conn.execute(
+                    text(
+                        "select 1 from information_schema.columns "
+                        "where table_name='activities' and column_name='source_upload_id' limit 1"
+                    )
+                ).first()
+                if has_org and has_src:
                     _schema_checked = True
                     return
         except Exception:
@@ -123,6 +131,21 @@ def _ensure_production_schema() -> None:
                 ]:
                     conn.execute(text(f"alter table if exists {t} add column if not exists organization_id integer;"))
 
+                # Import provenance (best-effort). Keep in sync with ORM models.
+                for t in [
+                    "activities",
+                    "calendar_entries",
+                    "companies",
+                    "contacts",
+                    "deals",
+                    "user_categories",
+                    "budget_targets",
+                    "kpi_targets",
+                    "content_items",
+                    "content_tasks",
+                ]:
+                    conn.execute(text(f"alter table if exists {t} add column if not exists source_upload_id integer;"))
+
                 # Upload ownership (new hardening)
                 conn.execute(text("alter table if exists uploads add column if not exists owner_id integer;"))
                 # Admin 2FA step-up tracking on sessions
@@ -133,16 +156,22 @@ def _ensure_production_schema() -> None:
             # Do not prevent the service from starting; next deploy should run migrations properly.
             pass
 
-        # Mark as checked only if the critical column is now present.
+        # Mark as checked only if the critical columns are now present.
         try:
             with engine.connect() as conn:
-                has = conn.execute(
+                has_org = conn.execute(
                     text(
                         "select 1 from information_schema.columns "
                         "where table_name='users' and column_name='organization_id' limit 1"
                     )
                 ).first()
-                _schema_checked = bool(has)
+                has_src = conn.execute(
+                    text(
+                        "select 1 from information_schema.columns "
+                        "where table_name='activities' and column_name='source_upload_id' limit 1"
+                    )
+                ).first()
+                _schema_checked = bool(has_org and has_src)
         except Exception:
             _schema_checked = False
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

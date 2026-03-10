@@ -10,6 +10,8 @@ class Deal(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Import provenance: when created from an Upload, we store its id here.
+    source_upload_id = Column(Integer, nullable=True, index=True)
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
     contact_id = Column(Integer, ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True)
     title = Column(String(255), nullable=False)

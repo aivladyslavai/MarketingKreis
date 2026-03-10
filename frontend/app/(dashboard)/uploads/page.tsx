@@ -209,7 +209,7 @@ export default function UploadsPage() {
   const [isSmall, setIsSmall] = React.useState(false)
   const [showAllPreviewCols, setShowAllPreviewCols] = React.useState(false)
 
-  const { uploads, isLoading, refresh, uploadFile, previewFile, aiAnalyzeFile, smartImportFile } = useUploadsApi()
+  const { uploads, isLoading, refresh, uploadFile, previewFile, aiAnalyzeFile, smartImportFile, deleteUpload } = useUploadsApi()
   const { jobs, isLoading: jobsLoading, refresh: refreshJobs } = useJobsApi()
   const { categories: userCategories } = useUserCategories()
 
@@ -1564,7 +1564,60 @@ export default function UploadsPage() {
                         size="sm"
                         variant="outline"
                         className="border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
-                        onClick={() => notAvailable("Löschen")}
+                        onClick={() =>
+                          openModal({
+                            type: "confirm",
+                            title: "Upload löschen?",
+                            description:
+                              "Dieser Upload wird entfernt und alle daraus importierten Daten werden in der ganzen Plattform gelöscht (Activities, Kalender, CRM, Content, Budget/KPI).",
+                            confirmText: "Löschen",
+                            cancelText: "Abbrechen",
+                            content: (
+                              <div className="text-sm text-slate-700 dark:text-slate-300">
+                                <div className="font-semibold text-slate-900 dark:text-slate-100">{name}</div>
+                                <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                                  ID: {u.id} · {labelFor(kind, name)} · {formatBytes(Number(u.file_size || 0))}
+                                </div>
+                                <div className="mt-3 text-xs text-amber-200/90 bg-amber-500/10 border border-amber-400/20 rounded-lg p-3">
+                                  Hinweis: Das ist eine irreversible Aktion.
+                                </div>
+                              </div>
+                            ),
+                            onConfirm: async () => {
+                              try {
+                                const res = await deleteUpload(String(u.id))
+                                const del = (res as any)?.deleted || {}
+                                openModal({
+                                  type: "info",
+                                  title: "Gelöscht",
+                                  description: "Die Daten wurden entfernt.",
+                                  okText: "OK",
+                                  content: (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                      {Object.keys(del).length ? (
+                                        Object.entries(del).map(([k, v]) => (
+                                          <div key={k} className="rounded-lg border border-white/10 bg-white/5 p-2 flex items-center justify-between">
+                                            <span className="text-slate-600 dark:text-slate-300">{k}</span>
+                                            <span className="font-semibold text-slate-900 dark:text-slate-100">{Number(v)}</span>
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <div className="text-slate-600 dark:text-slate-400">Keine importierten Daten gefunden.</div>
+                                      )}
+                                    </div>
+                                  ),
+                                })
+                              } catch (e: any) {
+                                openModal({
+                                  type: "info",
+                                  title: "Fehler",
+                                  description: e?.message || "Löschen fehlgeschlagen",
+                                  okText: "OK",
+                                })
+                              }
+                            },
+                          })
+                        }
                       >
                         <Trash2 className="h-4 w-4" />
                     </Button>

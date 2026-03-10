@@ -195,6 +195,23 @@ export function useUploadsApi() {
         }
       } catch {}
     },
+    deleteUpload: async (uploadId: string): Promise<{ ok: boolean; deleted?: Record<string, number> }> => {
+      await wakeBackend().catch(() => {})
+      const res = await authFetch(`/uploads/${encodeURIComponent(String(uploadId))}`, { method: "DELETE" })
+      if (!res.ok) throw new Error(await readApiErrorMessage(res))
+      const json = await res.json().catch(() => ({ ok: true }))
+      await mutate()
+      sync.emit("uploads:changed")
+      // Best-effort: notify other pages to refetch
+      try {
+        sync.emit("activities:changed")
+        sync.emit("calendar:changed")
+        sync.emit("content:changed")
+        sync.emit("crm:companies:changed")
+        sync.emit("budget:changed")
+      } catch {}
+      return json
+    },
     refresh: async () => { await mutate(); sync.emit('uploads:changed') },
   }
 }

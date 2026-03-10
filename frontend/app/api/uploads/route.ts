@@ -118,6 +118,43 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  try {
+    const backendUrl = getBackendUrl()
+    const cookie = request.headers.get("cookie") || ""
+    const csrfHeader = request.headers.get("x-csrf-token") || ""
+    const csrfCookie = cookie && canDeriveCsrfFromCookie(request) ? getCookieFromHeader(cookie, "csrf_token") : ""
+    const csrf = csrfHeader || csrfCookie
+
+    const id = request.nextUrl.searchParams.get("id") || ""
+    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 })
+
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), 20_000)
+    const res = await fetch(`${backendUrl}/uploads/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        ...(csrf ? { "x-csrf-token": csrf } : {}),
+      },
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+    clearTimeout(t)
+
+    const text = await res.text()
+    const next = new NextResponse(text, { status: res.status })
+    appendSetCookies(res, next)
+    next.headers.set("Content-Type", res.headers.get("content-type") || "application/json")
+    return next
+  } catch (e: any) {
+    const msg = e?.name === "AbortError" ? "Backend request timed out" : e?.message || "Proxy error"
+    const status = e?.name === "AbortError" ? 504 : 500
+    return NextResponse.json({ error: msg }, { status })
+  }
+}
+
 
 
 
