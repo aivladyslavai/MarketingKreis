@@ -51,12 +51,16 @@ def delete_upload(
 
     deleted: Dict[str, int] = {}
 
+    def _add_deleted(name: str, n: int):
+        if not n:
+            return
+        deleted[name] = int(deleted.get(name, 0) or 0) + int(n)
+
     def _del(model, name: str):
         try:
             q = db.query(model).filter(model.organization_id == org, model.source_upload_id == int(upload_id))  # type: ignore[attr-defined]
             n = q.delete(synchronize_session=False)
-            if n:
-                deleted[name] = int(n)
+            _add_deleted(name, int(n or 0))
         except Exception:
             pass
 
@@ -71,6 +75,212 @@ def delete_upload(
     _del(Contact, "contacts")
     _del(Company, "companies")
     _del(UserCategory, "user_categories")
+
+    # --- Legacy cleanup (for imports done before provenance tagging existed) ---
+    # If a previous deployment created records without source_upload_id, deleting the upload would
+    # otherwise remove only the upload row, leaving imported objects behind.
+    try:
+        from datetime import timedelta, date as _date
+
+        name_lower = str(getattr(upload, "original_name", "") or "").lower()
+        is_tabular = name_lower.endswith(".csv") or name_lower.endswith(".xlsx") or name_lower.endswith(".xls")
+        owner_id = int(getattr(upload, "owner_id", 0) or 0)
+        t0 = getattr(upload, "created_at", None)
+
+        # Only attempt legacy cleanup for tabular uploads; keep it conservative for non-import files.
+        if is_tabular and t0 and owner_id > 0:
+            window_start = t0 - timedelta(hours=4)
+            window_end = t0 + timedelta(hours=4)
+
+            # 1) Try high-confidence cleanup: match activities by signatures derived from the file content.
+            sig3: set[tuple[str, Optional[_date], Optional[_date]]] = set()
+            sig4: set[tuple[str, Optional[_date], Optional[_date], str]] = set()
+            min_d: Optional[_date] = None
+            max_d: Optional[_date] = None
+
+            try:
+                content_bytes = bytes(getattr(upload, "content", None) or b"")
+                headers: List[str] = []
+                rows: List[Dict[str, Any]] = []
+
+                if content_bytes:
+                    if name_lower.endswith(".csv"):
+                        text = content_bytes.decode("utf-8", errors="ignore")
+                        reader = csv.DictReader(io.StringIO(text))
+                        headers = list(reader.fieldnames or [])
+                        for i, row in enumerate(reader):
+                            rows.append(row)
+                            if i >= 4999:
+                                break
+                    else:
+                        tables = _extract_xlsx_tables(content_bytes)
+                        picked = None
+                        for t in tables:
+                            if str(t.get("sheet") or "").strip().lower() == "mediaplan":
+                                picked = t
+                                break
+                        if not picked and tables:
+                            picked = max(tables, key=lambda t: len(t.get("rows") or []))
+                        headers = list((picked or {}).get("headers") or [])
+                        rows = list((picked or {}).get("rows") or [])
+
+                if headers and rows:
+                    m = _suggest_mapping_activities(headers)
+                    h_title = m.get("title") or ("title" if "title" in {str(h or "").strip().lower() for h in headers} else None)
+                    h_start = m.get("start") or ("start" if "start" in {str(h or "").strip().lower() for h in headers} else None)
+                    h_end = m.get("end") or ("end" if "end" in {str(h or "").strip().lower() for h in headers} else None)
+                    h_cat = m.get("category") or ("category" if "category" in {str(h or "").strip().lower() for h in headers} else None)
+
+                    def _bucket_for_mediaplan_row(row: Dict[str, Any]) -> Optional[str]:
+                        try:
+                            section = str(row.get("section") or "").strip()
+                            medium = str(row.get("medium") or "").strip()
+                            form = str(row.get("form") or "").strip()
+                            if not (section or medium or form):
+                                return None
+                            blob = f"{section} {medium} {form}".lower()
+                            if "sap intern" in section.lower():
+                                return "SAP intern"
+                            if "paid social" in blob:
+                                return "Paid Social"
+                            if "organic" in blob:
+                                return "Organic Social"
+                            if " print" in blob or blob.endswith("print") or "magazin gedruckte" in blob:
+                                return "Print"
+                            return "Online Ads"
+                        except Exception:
+                            return None
+
+                    for r in rows[:5000]:
+                        try:
+                            raw_title = r.get(h_title) if h_title else r.get("title")
+                            title = str(raw_title or "").strip()
+                            if not title:
+                                continue
+
+                            bucket = _bucket_for_mediaplan_row(r)
+                            raw_cat = r.get(h_cat) if h_cat else r.get("category")
+                            cat = str(raw_cat or "").strip()
+                            cat_eff = bucket or cat
+
+                            sd_raw = r.get(h_start) if h_start else r.get("start")
+                            ed_raw = r.get(h_end) if h_end else r.get("end")
+                            sd_dt = _parse_datetime_loose(sd_raw)
+                            ed_dt = _parse_datetime_loose(ed_raw)
+                            sd = sd_dt.date() if sd_dt else None
+                            ed = ed_dt.date() if ed_dt else None
+
+                            tl = title.lower()
+                            sig3.add((tl, sd, ed))
+                            if cat_eff:
+                                sig4.add((tl, sd, ed, str(cat_eff).strip().lower()))
+
+                            for d in (sd, ed):
+                                if not d:
+                                    continue
+                                min_d = d if min_d is None else min(min_d, d)
+                                max_d = d if max_d is None else max(max_d, d)
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
+            legacy_activity_ids: List[int] = []
+            try:
+                if sig3:
+                    q = (
+                        db.query(Activity)
+                        .filter(
+                            Activity.organization_id == org,
+                            Activity.owner_id == owner_id,
+                            Activity.source_upload_id.is_(None),
+                        )
+                    )
+                    # Narrow down candidates by date range when possible.
+                    if min_d and max_d:
+                        pad = timedelta(days=2)
+                        q = q.filter(
+                            Activity.start_date.isnot(None),
+                            Activity.start_date >= (min_d - pad),
+                            Activity.start_date <= (max_d + pad),
+                        )
+                    candidates = q.all()
+                    for a in candidates:
+                        try:
+                            tl = str(a.title or "").strip().lower()
+                            sd = getattr(a, "start_date", None)
+                            ed = getattr(a, "end_date", None)
+                            key3 = (tl, sd, ed)
+                            if key3 in sig3:
+                                legacy_activity_ids.append(int(a.id))
+                                continue
+                            cat_l = str(getattr(a, "category_name", "") or "").strip().lower()
+                            if cat_l and (tl, sd, ed, cat_l) in sig4:
+                                legacy_activity_ids.append(int(a.id))
+                        except Exception:
+                            continue
+            except Exception:
+                legacy_activity_ids = []
+
+            if legacy_activity_ids:
+                # Calendar entries linked to these activities
+                try:
+                    n = (
+                        db.query(CalendarEntry)
+                        .filter(
+                            CalendarEntry.organization_id == org,
+                            CalendarEntry.activity_id.in_(legacy_activity_ids),
+                        )
+                        .delete(synchronize_session=False)
+                    )
+                    _add_deleted("calendar_entries", int(n or 0))
+                except Exception:
+                    pass
+                try:
+                    n = (
+                        db.query(Activity)
+                        .filter(Activity.organization_id == org, Activity.id.in_(legacy_activity_ids))
+                        .delete(synchronize_session=False)
+                    )
+                    _add_deleted("activities", int(n or 0))
+                except Exception:
+                    pass
+
+            # 2) Time-window cleanup for other legacy objects created by this import
+            # (only those still missing provenance).
+            def _del_legacy_time(model, name: str, *, time_field: str, extra_filters: Optional[List[Any]] = None):
+                try:
+                    col = getattr(model, time_field)
+                    q = db.query(model).filter(
+                        model.organization_id == org,  # type: ignore[attr-defined]
+                        model.source_upload_id.is_(None),  # type: ignore[attr-defined]
+                        col >= window_start,
+                        col <= window_end,
+                    )
+                    if extra_filters:
+                        for f in extra_filters:
+                            q = q.filter(f)
+                    n = q.delete(synchronize_session=False)
+                    _add_deleted(name, int(n or 0))
+                except Exception:
+                    pass
+
+            # Calendar entries created by imports (activity/content) for this owner in the same window
+            _del_legacy_time(CalendarEntry, "calendar_entries", time_field="created_at", extra_filters=[CalendarEntry.owner_id == owner_id])
+            # Content created by smart import
+            _del_legacy_time(ContentTask, "content_tasks", time_field="created_at", extra_filters=[ContentTask.owner_id == owner_id])
+            _del_legacy_time(ContentItem, "content_items", time_field="created_at", extra_filters=[ContentItem.owner_id == owner_id])
+            # Budget/KPI targets may be upserted; prefer updated_at for cleanup.
+            _del_legacy_time(BudgetTarget, "budget_targets", time_field="updated_at")
+            _del_legacy_time(KpiTarget, "kpi_targets", time_field="updated_at")
+            # CRM entities created via import (no owner_id field; use window + org + missing provenance)
+            _del_legacy_time(Deal, "deals", time_field="created_at")
+            _del_legacy_time(Contact, "contacts", time_field="created_at")
+            _del_legacy_time(Company, "companies", time_field="created_at")
+            # User categories are user-scoped; delete only for the owner.
+            _del_legacy_time(UserCategory, "user_categories", time_field="created_at", extra_filters=[UserCategory.user_id == owner_id])
+    except Exception:
+        pass
 
     # Jobs linked to this upload (best-effort: rq_id contains upload id).
     try:
@@ -2819,9 +3029,19 @@ def smart_import_upload(
                                     )
                                     if existing_b:
                                         existing_b.amount_chf = float(existing_b.amount_chf or 0) + float(budget)
+                                        # Tag updates too so deletion can fully revert an import.
+                                        existing_b.source_upload_id = int(upload.id)
                                         db.add(existing_b)
                                     else:
-                                        db.add(BudgetTarget(organization_id=org, period=period, category=bcat, amount_chf=float(budget)))
+                                        db.add(
+                                            BudgetTarget(
+                                                organization_id=org,
+                                                period=period,
+                                                category=bcat,
+                                                amount_chf=float(budget),
+                                                source_upload_id=int(upload.id),
+                                            )
+                                        )
                                     totals["budget_rows_applied"] += 1
                         except Exception:
                             pass
