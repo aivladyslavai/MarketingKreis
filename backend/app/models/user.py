@@ -44,5 +44,9 @@ class User(Base):
     # Activities owned by this user
     activities = relationship("Activity", back_populates="owner")
 
-    organization = relationship("Organization", back_populates="users")
-    invited_by = relationship("User", remote_side=[id])
+    organization = relationship(
+        "Organization",
+        back_populates="users",
+        foreign_keys=[organization_id],
+    )
+    invited_by = relationship("User", remote_side=[id], foreign_keys=[invited_by_user_id])

@@ -19,5 +19,9 @@ class Organization(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    users = relationship("User", back_populates="organization")
+    # There are two FK paths between organizations ↔ users:
+    # - users.organization_id -> organizations.id
+    # - organizations.owner_user_id -> users.id
+    # Explicitly choose the FK used for the "members of the org" relationship.
+    users = relationship("User", back_populates="organization", foreign_keys="User.organization_id")
 
