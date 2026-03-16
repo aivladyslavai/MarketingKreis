@@ -9,8 +9,12 @@ class Job(Base):
     id = Column(Integer, primary_key=True, index=True)
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     rq_id = Column(String(64), unique=True, index=True, nullable=False)
-    type = Column(String(50), nullable=False)  # import_activities, import_performance, export_pdf, export_csv, etc
-    status = Column(String(20), nullable=False, default="queued")  # queued, started, finished, failed
+    type = Column(String(50), nullable=False)  # import_activities, import_smart, export_pdf, etc
+    status = Column(String(20), nullable=False, default="queued")  # queued, processing, finished, failed, cancelled
     result = Column(Text, nullable=True)
+    phase = Column(String(50), nullable=True)  # parsing, analyzing, importing, upserting
+    progress = Column(Integer, nullable=True)  # 0-100
+    upload_id = Column(Integer, ForeignKey("uploads.id", ondelete="SET NULL"), nullable=True, index=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

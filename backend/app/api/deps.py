@@ -67,6 +67,15 @@ def require_role(*allowed_roles: UserRole) -> Callable:
     return role_checker
 
 
+def require_company_admin() -> Callable:
+    def checker(user: User = Depends(get_current_user)) -> User:
+        if user.role not in {UserRole.owner, UserRole.admin}:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return user
+
+    return checker
+
+
 def require_admin_step_up() -> Callable:
     """
     Require a recent 2FA step-up for sensitive admin operations.
@@ -123,6 +132,19 @@ def require_admin_step_up() -> Callable:
             raise HTTPException(status_code=428, detail="2FA step-up required")
 
         return user
+
+    return checker
+
+
+def require_company_admin_step_up() -> Callable:
+    def checker(
+        request: Request,
+        db: Session = Depends(get_db_session),
+        user: User = Depends(require_company_admin()),
+    ) -> User:
+        if user.role == UserRole.owner:
+            return user
+        return require_admin_step_up()(request=request, db=db, user=user)
 
     return checker
 

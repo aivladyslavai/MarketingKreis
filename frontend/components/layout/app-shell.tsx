@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { usePathname, useRouter } from "next/navigation"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { ModalProvider } from "@/components/ui/modal/ModalProvider"
@@ -11,8 +12,12 @@ import MobileNav from "@/components/layout/mobile-nav"
 import OnboardingTour from "@/components/onboarding/onboarding-tour"
 import MobileMenuSheet from "@/components/layout/mobile-menu-sheet"
 import { wakeBackend } from "@/lib/wake-backend"
+import { useAuth } from "@/hooks/use-auth"
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
+  const pathname = usePathname() || "/dashboard"
+  const { user, loading: authLoading } = useAuth()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [flags, setFlags] = useState<Record<string, boolean>>({})
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -130,6 +135,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!user) return
+    if (user.onboarding_required && pathname !== "/onboarding") {
+      router.replace("/onboarding")
+    }
+  }, [authLoading, user, pathname, router])
 
   // Keep backend warm while the app tab is active (best-effort).
   useEffect(() => {

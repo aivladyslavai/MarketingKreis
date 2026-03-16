@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 
 // Routes that require backend auth cookies (access_token / refresh_token)
 const PROTECTED_PATHS = [
+  '/onboarding',
   '/dashboard',
   '/activities',
   '/crm',
@@ -12,6 +13,7 @@ const PROTECTED_PATHS = [
   '/content',
   '/reports',
   '/uploads',
+  '/team',
   '/admin',
 ]
 
@@ -41,7 +43,7 @@ export async function middleware(request: NextRequest) {
     if (!access && !refresh) {
       const url = new URL('/signup', request.url)
       url.searchParams.set('mode', 'login')
-      url.searchParams.set('redirect', pathname || '/dashboard')
+      url.searchParams.set('next', pathname || '/dashboard')
       return NextResponse.redirect(url)
     }
   }
@@ -53,6 +55,7 @@ export const config = {
   matcher: [
     '/signin',
     '/signup',
+    '/onboarding',
     '/dashboard/:path*',
     '/activities/:path*',
     '/crm/:path*',
@@ -62,6 +65,7 @@ export const config = {
     '/content/:path*',
     '/reports/:path*',
     '/uploads/:path*',
+    '/team/:path*',
     '/admin/:path*',
   ],
 }

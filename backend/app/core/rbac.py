@@ -79,12 +79,12 @@ class SectionRBACMiddleware(BaseHTTPMiddleware):
 
             role = user.role
             if section == "admin":
-                if role != UserRole.admin:
+                if role not in {UserRole.admin, UserRole.owner}:
                     return Response("Forbidden", status_code=403)
                 return await call_next(request)
 
             # Admin bypass
-            if role == UserRole.admin:
+            if role in {UserRole.admin, UserRole.owner}:
                 return await call_next(request)
 
             perms = getattr(user, "section_permissions", None) or {}

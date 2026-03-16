@@ -10,7 +10,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Briefcase,
-  Search,
+  Search, 
   Eye,
   Download,
   Share2,
@@ -148,7 +148,7 @@ function parseDateLike(value: any): Date | undefined {
 }
 
 export default function UploadsPage() {
-  const { openModal } = useModal()
+  const { openModal, closeModal } = useModal()
   const fileRef = React.useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -210,7 +210,7 @@ export default function UploadsPage() {
   const [showAllPreviewCols, setShowAllPreviewCols] = React.useState(false)
 
   const { uploads, isLoading, refresh, uploadFile, previewFile, aiAnalyzeFile, smartImportFile, deleteUpload } = useUploadsApi()
-  const { jobs, isLoading: jobsLoading, refresh: refreshJobs } = useJobsApi()
+  const { jobs, isLoading: jobsLoading, refresh: refreshJobs, downloadJobErrorsCsv } = useJobsApi()
   const { categories: userCategories } = useUserCategories()
 
   // Responsive circle size (prevents overflow on mobile)
@@ -526,17 +526,19 @@ export default function UploadsPage() {
     }
   }
 
-  const doSmartImport = async () => {
-    if (!selectedFile) return
-    if (!selectedIsTabular) return
+  const doSmartImport = async (retryUploadId?: number) => {
+    const file = retryUploadId ? undefined : selectedFile
+    if (!file && !retryUploadId) return
+    if (!retryUploadId && !selectedIsTabular) return
     setError(null)
     setSmartLoading(true)
     try {
-      const res = await smartImportFile(selectedFile)
+      const res = await smartImportFile(file ?? undefined, retryUploadId ?? undefined)
       const imp = (res as any)?.import || {}
       const created =
         Number(imp?.activities_created || 0) + Number(imp?.content_created || 0) + Number(imp?.budget_rows_applied || 0)
       const tasksCreated = Number(imp?.tasks_created || 0)
+      const rowErrorsCount = Number((res as any)?.row_errors_count || 0)
 
       openModal({
         type: "info",
@@ -573,6 +575,32 @@ export default function UploadsPage() {
               </div>
             </div>
 
+            {rowErrorsCount > 0 ? (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs">
+                <div className="font-semibold text-amber-700 dark:text-amber-400">
+                  {rowErrorsCount} Zeilenfehler
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-amber-500/50"
+                    onClick={async () => {
+                      const jid = (res as any)?.job_id
+                      if (jid) {
+                        try {
+                          await downloadJobErrorsCsv(jid)
+                        } catch {}
+                      }
+                    }}
+                  >
+                    <Download className="h-3 w-4 mr-1" />
+                    Fehler als CSV
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             {Array.isArray((res as any)?.tables) && (res as any).tables.length ? (
               <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-slate-700 dark:text-slate-300">
                 <div className="font-semibold text-slate-900 dark:text-slate-100">Sheets</div>
@@ -584,6 +612,23 @@ export default function UploadsPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            ) : null}
+
+            {(res as any)?.upload_id ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="glass-card"
+                  onClick={async () => {
+                    closeModal()
+                    await doSmartImport((res as any).upload_id)
+                  }}
+                >
+                  <RefreshCw className="h-3 w-4 mr-1" />
+                  Erneut importieren
+                </Button>
               </div>
             ) : null}
 
@@ -1049,15 +1094,28 @@ export default function UploadsPage() {
                 </Button>
               )}
               {selectedIsTabular && (
-                <Button
-                  className="bg-gradient-to-r from-fuchsia-600 to-kaboom-red hover:from-fuchsia-500 hover:to-red-600 w-full sm:w-auto"
-                  onClick={doSmartImport}
-                  disabled={uploading || previewLoading || smartLoading || !selectedFile}
-                  title="Smart Import: verteilt gemischte Tabellen automatisch auf Aktivitäten, Content und Budget"
-                >
-                  {smartLoading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <ArrowUpRight className="h-4 w-4 mr-2" />}
-                  Smart Import
-                </Button>
+                <div className="w-full sm:w-auto space-y-1">
+                  <Button
+                    className="bg-gradient-to-r from-fuchsia-600 to-kaboom-red hover:from-fuchsia-500 hover:to-red-600 w-full sm:w-auto"
+                    onClick={() => doSmartImport()}
+                    disabled={uploading || previewLoading || smartLoading || !selectedFile}
+                    title="Smart Import: verteilt gemischte Tabellen automatisch auf Aktivitäten, Content und Budget"
+                  >
+                    {smartLoading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <ArrowUpRight className="h-4 w-4 mr-2" />}
+                    Smart Import
+                  </Button>
+                  {smartLoading && (
+                    <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
+                      <span>parsing</span>
+                      <span>→</span>
+                      <span>analyzing</span>
+                      <span>→</span>
+                      <span>importing</span>
+                      <span>→</span>
+                      <span>upserting</span>
+                    </div>
+                  )}
+                </div>
               )}
               <Button
                 variant="outline"
@@ -1560,6 +1618,18 @@ export default function UploadsPage() {
                       <Button size="sm" variant="outline" className="glass-card" onClick={() => notAvailable("Teilen")}>
                         <Share2 className="h-4 w-4" />
                       </Button>
+                      {isTabularFile(name) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="glass-card"
+                          onClick={() => doSmartImport(Number(u.id))}
+                          disabled={smartLoading}
+                          title="Erneut importieren"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -1699,7 +1769,20 @@ export default function UploadsPage() {
                         {j.created_at ? new Date(j.created_at).toLocaleString("de-DE") : "—"}
         </div>
       </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">#{j.id}</div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {j.type === "import_smart" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => downloadJobErrorsCsv(Number(j.id))}
+                          title="Fehler als CSV"
+                        >
+                          <Download className="h-3 w-3" />
+                        </Button>
+                      )}
+                      <span className="text-xs text-slate-500 dark:text-slate-400">#{j.id}</span>
+                    </div>
     </div>
                   )
                 })}

@@ -48,6 +48,8 @@ function SignupInner() {
   const [login2faCode, setLogin2faCode] = useState("")
   const [login2faError, setLogin2faError] = useState<string | null>(null)
   const [login2faLoading, setLogin2faLoading] = useState(false)
+  const [invitePreview, setInvitePreview] = useState<any | null>(null)
+  const [invitePreviewLoading, setInvitePreviewLoading] = useState(false)
 
   const token = params?.get("token") || ""
 
@@ -87,6 +89,41 @@ function SignupInner() {
   useEffect(() => {
     wakeBackend()
   }, [])
+
+  useEffect(() => {
+    if (!token) {
+      setInvitePreview(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      setInvitePreviewLoading(true)
+      try {
+        const res = await fetch(`/api/auth/invites/preview?token=${encodeURIComponent(token)}`, {
+          credentials: "include",
+          cache: "no-store",
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data?.detail || "Invite konnte nicht geladen werden")
+        if (cancelled) return
+        setInvitePreview(data)
+        const invitedEmail = String(data?.invite?.email || "").trim()
+        if (invitedEmail) {
+          setEmail(invitedEmail)
+          setLoginEmail(invitedEmail)
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setInvitePreview({ error: e?.message || "Invite konnte nicht geladen werden" })
+        }
+      } finally {
+        if (!cancelled) setInvitePreviewLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [token])
 
   const passwordStrength = useMemo(() => {
     if (!password) return { score: 0, label: "", color: "" }
@@ -445,6 +482,26 @@ function SignupInner() {
 
               {mode === "signup" ? (
                 <form onSubmit={onSubmit} className="space-y-4">
+                  {token ? (
+                    <div className="rounded-xl border border-violet-500/25 bg-violet-500/10 p-3 text-sm text-slate-200">
+                      {invitePreviewLoading ? (
+                        <div>Einladung wird geladen…</div>
+                      ) : invitePreview?.error ? (
+                        <div className="text-red-300">{String(invitePreview.error)}</div>
+                      ) : (
+                        <div className="space-y-1">
+                          <div className="font-medium text-white">
+                            Einladung zu {String(invitePreview?.organization?.name || invitePreview?.invite?.organization_name || "Ihrer Firma")}
+                          </div>
+                          <div className="text-xs text-slate-300">
+                            Rolle: <span className="font-semibold">{String(invitePreview?.invite?.role || "user")}</span>
+                            {invitePreview?.invite?.email ? <> · E-Mail: <span className="font-semibold">{String(invitePreview.invite.email)}</span></> : null}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+
                   {/* Email */}
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
@@ -459,7 +516,7 @@ function SignupInner() {
                         onChange={(e) => setEmail(e.target.value)}
                         className="h-11 border-slate-700/50 bg-slate-800/50 pl-10 text-slate-200 placeholder:text-slate-500 transition-colors focus:border-violet-500/50 focus:ring-violet-500/20"
                         required
-                        disabled={submitting}
+                        disabled={submitting || Boolean(token && invitePreview?.invite?.email)}
                       />
                     </div>
                   </div>

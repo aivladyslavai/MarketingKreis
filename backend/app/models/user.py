@@ -7,6 +7,7 @@ from app.db.base import Base
 
 
 class UserRole(str, enum.Enum):
+    owner = "owner"
     user = "user"
     editor = "editor"
     admin = "admin"
@@ -22,6 +23,9 @@ class User(Base):
     is_verified = Column(Boolean, nullable=False, server_default="0")
     # Multi-tenant workspace (organization) ownership. Enforced by API layer.
     organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    position_title = Column(String(255), nullable=True)
+    onboarding_completed_at = Column(DateTime(timezone=True), nullable=True)
+    invited_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -37,10 +41,8 @@ class User(Base):
     # Example: {"crm": true, "reports": false}
     section_permissions = Column(JSON, nullable=True)
 
-    # RBAC-lite: per-section access toggles (e.g. {"crm": true, "admin": false})
-    section_permissions = Column(JSON, nullable=True)
-
     # Activities owned by this user
     activities = relationship("Activity", back_populates="owner")
 
     organization = relationship("Organization", back_populates="users")
+    invited_by = relationship("User", remote_side=[id])

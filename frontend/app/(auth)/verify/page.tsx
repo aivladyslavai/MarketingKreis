@@ -12,6 +12,7 @@ function VerifyInner() {
   const [status, setStatus] = useState<"pending" | "ok" | "error">("pending")
   const [msg, setMsg] = useState<string>("")
   const [countdown, setCountdown] = useState(3)
+  const [redirectTo, setRedirectTo] = useState("/signup?mode=login")
 
   useEffect(() => {
     if (!token) {
@@ -32,6 +33,7 @@ function VerifyInner() {
         }
         setStatus("ok")
         setMsg("Ihre E‑Mail wurde erfolgreich bestätigt.")
+        setRedirectTo(String(data?.redirect_to || res.headers.get("X-Redirect-To") || "/onboarding"))
       } catch (e: any) {
         setStatus("error")
         setMsg(e?.message || "Ein unerwarteter Fehler ist aufgetreten.")
@@ -43,12 +45,12 @@ function VerifyInner() {
   useEffect(() => {
     if (status !== "ok") return
     if (countdown <= 0) {
-      router.push("/signup?mode=login")
+      router.push(redirectTo)
       return
     }
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000)
     return () => clearTimeout(t)
-  }, [status, countdown, router])
+  }, [status, countdown, router, redirectTo])
 
   return (
     <div className="relative min-h-[100dvh] w-full overflow-hidden bg-[#060b1a] flex items-center justify-center px-4">
@@ -125,7 +127,7 @@ function VerifyInner() {
               {/* Countdown + progress bar */}
               <div className="w-full rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-400">Weiterleitung zum Login…</span>
+                  <span className="text-sm text-slate-400">Weiterleitung…</span>
                   <span className="text-sm font-semibold tabular-nums text-violet-300">{countdown}s</span>
                 </div>
                 <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
@@ -137,7 +139,7 @@ function VerifyInner() {
               </div>
 
               <button
-                onClick={() => router.push("/signup?mode=login")}
+                onClick={() => router.push(redirectTo)}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:from-violet-500 hover:to-fuchsia-500 hover:shadow-violet-500/40 active:scale-[0.98]"
               >
                 Jetzt einloggen

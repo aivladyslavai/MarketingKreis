@@ -142,6 +142,11 @@ class Settings(BaseSettings):
     upload_store_in_db: bool = Field(default=True, env="UPLOAD_STORE_IN_DB")
     upload_max_bytes: int = Field(default=10 * 1024 * 1024, env="UPLOAD_MAX_BYTES")  # 10MB
 
+    # Upload retention & audit
+    upload_retention_days: int = Field(default=90, env="UPLOAD_RETENTION_DAYS")  # Auto-archive/delete after N days; 0=disabled
+    upload_audit_enabled: bool = Field(default=True, env="UPLOAD_AUDIT_ENABLED")
+    upload_retention_cron_token: Optional[str] = Field(default=None, env="UPLOAD_RETENTION_CRON_TOKEN")
+
     @validator("csrf_secret_key")
     def validate_csrf_secret(cls, v: str, values: dict) -> str:
         """Ensure CSRF secret is strong in production-like envs."""

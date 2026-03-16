@@ -2671,7 +2671,7 @@ function ContentPageInner() {
                     >
                       <Plus className="h-4 w-4 mr-2" /> Task
                     </Button>
-                  </div>
+          </div>
         </CardHeader>
 
         <CardContent className="px-2 sm:px-4 py-4">
@@ -2704,7 +2704,7 @@ function ContentPageInner() {
                           />
                         ),
                       })
-                    }}
+            }}
             onCreateTask={(status: KanbanStatus) => {
               openModal({
                 type: "custom",

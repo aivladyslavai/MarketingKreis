@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LineChart,
   Shield,
+  Users,
   UploadCloud,
   Wallet,
   X,
@@ -39,6 +40,7 @@ const secondary: Item[] = [
   { href: "/content", label: "Content Hub", Icon: ImageIcon },
   { href: "/reports", label: "Reports", Icon: FileBarChart },
   { href: "/uploads", label: "Uploads", Icon: UploadCloud },
+  { href: "/team", label: "Team", Icon: Users },
   { href: "/admin", label: "Admin", Icon: Shield, requiresAdmin: true },
 ]
 
@@ -52,6 +54,7 @@ export default function MobileMenuSheet({
   const pathname = usePathname() || "/"
   const { user } = useAuth()
   const isAdmin = user?.role === "admin"
+  const isCompanyAdmin = user?.role === "admin" || user?.role === "owner"
   const perms = (user as any)?.section_permissions || {}
   const allow = (section: string) => !(perms && typeof perms === "object" && perms[section] === false)
   const sectionForHref = (href: string) => {
@@ -63,6 +66,7 @@ export default function MobileMenuSheet({
     if (href.startsWith("/content")) return "content"
     if (href.startsWith("/reports")) return "reports"
     if (href.startsWith("/uploads")) return "uploads"
+    if (href.startsWith("/team")) return "team"
     if (href.startsWith("/admin")) return "admin"
     return "dashboard"
   }
@@ -70,7 +74,7 @@ export default function MobileMenuSheet({
   const visiblePrimary = primary.filter((i) => allow(sectionForHref(i.href)))
   const visibleSecondary = secondary
     .filter((i) => (i.requiresAdmin ? isAdmin : true))
-    .filter((i) => (i.href === "/admin" ? isAdmin : allow(sectionForHref(i.href))))
+    .filter((i) => (i.href === "/team" ? isCompanyAdmin : i.href === "/admin" ? isAdmin : allow(sectionForHref(i.href))))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

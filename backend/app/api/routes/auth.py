@@ -10,9 +10,17 @@ from datetime import timedelta, datetime, timezone
 import uuid
 import secrets
 from jose import jwt
-from typing import Optional
-from app.api.deps import get_current_user, get_org_id, require_admin_step_up, require_role
+from typing import Optional, Dict, Any, Tuple, Union
+from app.api.deps import (
+    get_current_user,
+    get_org_id,
+    require_admin_step_up,
+    require_company_admin,
+    require_company_admin_step_up,
+    require_role,
+)
 from app.models.organization import Organization
+from app.models.organization_invite import OrganizationInvite
 from app.models.user import User, UserRole
 from app.models.auth_session import AuthSession, AuthRefreshToken
 import bcrypt
@@ -256,9 +264,6 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
         if not getattr(settings, "skip_email_verify", False) and user.role != UserRole.admin:
             raise HTTPException(status_code=403, detail="Email not verified")
 
-    # Create a server-side session and issue access+refresh tokens (rotation supported)
-    now = _utcnow()
-
     # Admin 2FA (TOTP) step-up: if enabled, require OTP before issuing cookies.
     if user.role == UserRole.admin and bool(getattr(user, "totp_enabled", False)):
         if not getattr(user, "totp_secret_enc", None):
@@ -270,42 +275,12 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
         response.headers["X-2FA-Required"] = "1"
         return {"message": "2fa_required", "challenge_token": challenge}
 
-    session_id = str(uuid.uuid4())
-    refresh_jti = str(uuid.uuid4())
-
-    sess = AuthSession(
-        id=session_id,
-        user_id=int(user.id),
-        ip=get_client_ip(request),
-        user_agent=request.headers.get("user-agent"),
-        last_seen_at=now,
-    )
-    rt = AuthRefreshToken(
-        session_id=session_id,
-        token_jti=refresh_jti,
-        issued_at=now,
-        expires_at=now + timedelta(minutes=settings.refresh_token_expire_minutes),
-    )
-    db.add(sess)
-    db.add(rt)
-    db.commit()
-
-    access_token = create_access_jwt(
-        user_id=str(user.id),
-        session_id=session_id,
-        minutes=settings.access_token_expire_minutes,
-    )
-    refresh_token = create_refresh_jwt(
-        user_id=str(user.id),
-        session_id=session_id,
-        jti=refresh_jti,
-        minutes=settings.refresh_token_expire_minutes,
-    )
-    _set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token, settings=settings)
+    _create_auth_session(user, request, response, db)
 
     # Redirect hint for frontend
-    response.headers["X-Redirect-To"] = "/dashboard"
-    role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
+    org = db.query(Organization).filter(Organization.id == get_org_id(user)).first()
+    response.headers["X-Redirect-To"] = _redirect_target_for_user(user, org)
+    role_value = _role_value(user.role)
     return {
         "message": "ok",
         "user": {
@@ -432,7 +407,8 @@ def login_2fa(body: Login2FARequest, request: Request, response: Response, db: S
         minutes=settings.refresh_token_expire_minutes,
     )
     _set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token, settings=settings)
-    response.headers["X-Redirect-To"] = "/dashboard"
+    org = db.query(Organization).filter(Organization.id == get_org_id(user)).first()
+    response.headers["X-Redirect-To"] = _redirect_target_for_user(user, org)
     return {"message": "ok"}
 
 
@@ -769,6 +745,23 @@ class RegisterRequest(BaseModel):
 class ResendVerifyRequest(BaseModel):
     email: str
 
+
+class OnboardingCompanyRequest(BaseModel):
+    company_name: str = Field(min_length=2, max_length=255)
+    industry: Optional[str] = Field(default=None, max_length=255)
+    team_size: Optional[str] = Field(default=None, max_length=100)
+    country: Optional[str] = Field(default=None, max_length=120)
+    language: Optional[str] = Field(default=None, max_length=20)
+    position_title: str = Field(min_length=2, max_length=255)
+
+
+class InviteRequest(BaseModel):
+    email: str
+    role: Optional[str] = None
+    expires_minutes: int = 60 * 24 * 7  # 7 days
+    section_permissions: Optional[Dict[str, bool]] = None
+    notes: Optional[str] = None
+
 def _hash_password(pw: str) -> str:
     return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
@@ -860,6 +853,112 @@ def _decode_special(token: str) -> dict:
     settings = get_settings()
     return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
 
+
+def _role_value(role: Union[UserRole, str]) -> str:
+    return role.value if hasattr(role, "value") else str(role)
+
+
+def _is_company_admin(user: User) -> bool:
+    return user.role in {UserRole.owner, UserRole.admin}
+
+
+def _onboarding_required(user: User, org: Optional[Organization]) -> bool:
+    if not bool(getattr(user, "is_verified", False)):
+        return False
+    return not bool(getattr(user, "onboarding_completed_at", None)) or not bool(
+        getattr(org, "onboarding_completed_at", None)
+    )
+
+
+def _redirect_target_for_user(user: User, org: Optional[Organization]) -> str:
+    return "/onboarding" if _onboarding_required(user, org) else "/dashboard"
+
+
+def _create_auth_session(user: User, request: Request, response: Response, db: Session) -> None:
+    settings = get_settings()
+    now = _utcnow()
+    session_id = str(uuid.uuid4())
+    refresh_jti = str(uuid.uuid4())
+
+    sess = AuthSession(
+        id=session_id,
+        user_id=int(user.id),
+        ip=get_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        last_seen_at=now,
+    )
+    rt = AuthRefreshToken(
+        session_id=session_id,
+        token_jti=refresh_jti,
+        issued_at=now,
+        expires_at=now + timedelta(minutes=settings.refresh_token_expire_minutes),
+    )
+    db.add(sess)
+    db.add(rt)
+    db.commit()
+
+    access_token = create_access_jwt(
+        user_id=str(user.id),
+        session_id=session_id,
+        minutes=settings.access_token_expire_minutes,
+    )
+    refresh_token = create_refresh_jwt(
+        user_id=str(user.id),
+        session_id=session_id,
+        jti=refresh_jti,
+        minutes=settings.refresh_token_expire_minutes,
+    )
+    _set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token, settings=settings)
+
+
+def _build_org_snapshot(org: Optional[Organization]) -> Optional[Dict[str, Any]]:
+    if not org:
+        return None
+    return {
+        "id": int(org.id),
+        "name": org.name,
+        "industry": getattr(org, "industry", None),
+        "team_size": getattr(org, "team_size", None),
+        "country": getattr(org, "country", None),
+        "language": getattr(org, "language", None),
+        "owner_user_id": getattr(org, "owner_user_id", None),
+        "onboarding_completed_at": getattr(org, "onboarding_completed_at", None),
+    }
+
+
+def _issue_invite_token() -> Tuple[str, str]:
+    raw = secrets.token_urlsafe(32)
+    return raw, hmac_sha256_hex(raw)
+
+
+def _get_invite_by_token(db: Session, token: str) -> Optional[OrganizationInvite]:
+    token_hash = hmac_sha256_hex(str(token or "").strip())
+    if not token_hash:
+        return None
+    return db.query(OrganizationInvite).filter(OrganizationInvite.token_hash == token_hash).first()
+
+
+def _build_invite_link(token: str) -> str:
+    return f"/signup?token={token}"
+
+
+def _invite_status(invite: OrganizationInvite) -> str:
+    now = _utcnow()
+    if getattr(invite, "revoked_at", None):
+        return "revoked"
+    if getattr(invite, "accepted_at", None):
+        return "accepted"
+    expires_at = getattr(invite, "expires_at", None)
+    if expires_at:
+        try:
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+        except Exception:
+            pass
+        if expires_at < now:
+            return "expired"
+    return "active"
+
 @router.post("/register")
 def register(body: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db_session)):
     settings = get_settings()
@@ -880,30 +979,27 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
         discriminator=body.email,
     )
 
-    # Mode enforcement / invited role
     invited_role = settings.default_role
     invited_org_id: Optional[int] = None
+    invited_by_user_id: Optional[int] = None
+    invited_section_permissions: Optional[Dict[str, bool]] = None
+    invite_record: Optional[OrganizationInvite] = None
     create_new_org = False
-    if settings.signup_mode == "invite_only":
-        if not body.token:
-            raise HTTPException(status_code=400, detail="Invite token required")
-        try:
-            data = _decode_special(body.token)
-            if data.get("typ") != "invite":
-                raise HTTPException(status_code=400, detail="Invalid invite token")
-            invited_email = data.get("email")
-            invited_role = data.get("role") or settings.default_role
-            invited_org_id = int(data.get("org_id") or 0) or None
-            if invited_email and invited_email.lower() != body.email.lower():
+
+    if body.token:
+        invite_record = _get_invite_by_token(db, body.token)
+        if invite_record:
+            status = _invite_status(invite_record)
+            if status != "active":
+                raise HTTPException(status_code=400, detail=f"Invite is {status}")
+            if str(invite_record.email).strip().lower() != body.email.lower():
                 raise HTTPException(status_code=400, detail="Invite email mismatch")
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid or expired invite token")
-    else:
-        # signup_mode=open
-        if body.token:
-            # Optional: allow joining an existing org via invite token even in open mode
+            invited_role = invite_record.role or settings.default_role
+            invited_org_id = int(invite_record.organization_id)
+            invited_by_user_id = getattr(invite_record, "created_by_user_id", None)
+            invited_section_permissions = getattr(invite_record, "section_permissions", None)
+        else:
+            # Backward-compatible fallback for old JWT invites.
             try:
                 data = _decode_special(body.token)
                 if data.get("typ") == "invite":
@@ -915,37 +1011,23 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
             except HTTPException:
                 raise
             except Exception:
-                # Ignore malformed token in open mode; treat as self-serve signup
-                invited_org_id = None
-        if not invited_org_id:
-            # Single-tenant convenience: if DEFAULT_ORG_ID is set, attach open signups to that org.
-            # Otherwise, create a new workspace per signup (multi-tenant default behavior).
-            if getattr(settings, "default_org_id", None):
-                try:
-                    invited_org_id = int(getattr(settings, "default_org_id") or 0) or None
-                except Exception:
-                    invited_org_id = None
-            if not invited_org_id:
-                create_new_org = True
+                if settings.signup_mode == "invite_only":
+                    raise HTTPException(status_code=400, detail="Invalid or expired invite token")
+
+    if settings.signup_mode == "invite_only" and not invited_org_id:
+        raise HTTPException(status_code=400, detail="Invite token required")
+
+    if not invited_org_id:
+        create_new_org = True
 
     # Case-insensitive check (Postgres UNIQUE is case-sensitive by default)
     existing = db.query(User).filter(func.lower(User.email) == body.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
 
-    # Determine role:
-    # - If this is the VERY FIRST user in the system → always admin (bootstrap)
-    # - Otherwise follow invited/default role
-    try:
-        total_users = db.query(User).count()
-    except Exception:
-        total_users = 0
-
-    if total_users == 0:
-        role = UserRole.admin
-    elif create_new_org:
-        # First user of a new org must be admin to manage their workspace.
-        role = UserRole.admin
+    # Determine role.
+    if create_new_org:
+        role = UserRole.owner
     else:
         try:
             role = UserRole(invited_role)
@@ -954,18 +1036,9 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
 
     # Organization assignment
     org_id: Optional[int] = None
-    if total_users == 0:
-        # Bootstrap default org (created by migration/bootstrap); create if missing.
-        org = db.query(Organization).filter(Organization.id == 1).first()
-        if not org:
-            org = Organization(id=1, name="Default")
-            db.add(org)
-            db.commit()
-            db.refresh(org)
-        org_id = int(org.id)
-    elif create_new_org:
+    if create_new_org:
         domain = (body.email.split("@", 1)[1] if "@" in body.email else "").strip().lower()
-        name = domain or "Workspace"
+        name = body.name or domain or "New Company"
         org = Organization(name=name)
         db.add(org)
         db.commit()
@@ -985,6 +1058,8 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
         hashed_password=_hash_password(body.password),
         role=role,
         organization_id=org_id,
+        invited_by_user_id=invited_by_user_id,
+        section_permissions=invited_section_permissions,
     )
     db.add(user)
     try:
@@ -995,6 +1070,30 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
         # Protect against race conditions and case variants
         raise HTTPException(status_code=400, detail="User already exists")
 
+    org = db.query(Organization).filter(Organization.id == int(org_id or 0)).first()
+    if invited_org_id and org and getattr(org, "onboarding_completed_at", None):
+        user.onboarding_completed_at = _utcnow()
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    if create_new_org:
+        try:
+            if org:
+                org.owner_user_id = int(user.id)
+                db.add(org)
+                db.commit()
+                db.refresh(org)
+        except Exception:
+            db.rollback()
+
+    if invite_record:
+        invite_record.accepted_at = _utcnow()
+        invite_record.accepted_by_user_id = int(user.id)
+        db.add(invite_record)
+        db.commit()
+        db.refresh(user)
+
     # Optional: skip email verification completely (for demos)
     try:
         if getattr(settings, "skip_email_verify", False):
@@ -1002,12 +1101,14 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
             db.add(user)
             db.commit()
             db.refresh(user)
-            role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
+            org = db.query(Organization).filter(Organization.id == get_org_id(user)).first()
+            role_value = _role_value(user.role)
             return {
                 "id": user.id,
                 "email": user.email,
                 "role": role_value,
                 "organization_id": get_org_id(user),
+                "onboarding_required": _onboarding_required(user, org),
             }
     except Exception:
         # fall through to normal verify flow if anything goes wrong
@@ -1029,7 +1130,8 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
             sent = send_email(user.email, subject, text, html)
     except Exception:
         sent = False
-    role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
+    org = db.query(Organization).filter(Organization.id == get_org_id(user)).first()
+    role_value = _role_value(user.role)
     verify_payload: dict = {"sent": sent, "delivery": {"enabled": delivery_enabled}}
     # Do NOT leak verification tokens in production responses.
     if settings.environment != "production" and settings.debug:
@@ -1039,6 +1141,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
         "email": user.email,
         "role": role_value,
         "organization_id": get_org_id(user),
+        "onboarding_required": _onboarding_required(user, org),
         "verify": verify_payload,
     }
 
@@ -1047,14 +1150,68 @@ def profile(request: Request, db: Session = Depends(get_db_session)):
     # import lazily to avoid circular
     from app.api.deps import get_current_user
     user = get_current_user(request, db)
-    role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
+    role_value = _role_value(user.role)
     perms = getattr(user, "section_permissions", None)
+    org = db.query(Organization).filter(Organization.id == get_org_id(user)).first()
     return {
         "id": user.id,
         "email": user.email,
         "role": role_value,
         "organization_id": get_org_id(user),
+        "position_title": getattr(user, "position_title", None),
+        "onboarding_completed_at": getattr(user, "onboarding_completed_at", None),
+        "onboarding_required": _onboarding_required(user, org),
+        "organization": _build_org_snapshot(org),
         "section_permissions": perms,
+    }
+
+
+@router.patch("/onboarding/company")
+def complete_company_onboarding(
+    body: OnboardingCompanyRequest,
+    request: Request,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    org = db.query(Organization).filter(Organization.id == get_org_id(current_user)).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    if not bool(getattr(current_user, "is_verified", False)):
+        raise HTTPException(status_code=403, detail="Email not verified")
+    if not _is_company_admin(current_user):
+        raise HTTPException(status_code=403, detail="Only owner/admin can complete company onboarding")
+
+    now = _utcnow()
+    org.name = body.company_name.strip()
+    org.industry = (body.industry or "").strip() or None
+    org.team_size = (body.team_size or "").strip() or None
+    org.country = (body.country or "").strip() or None
+    org.language = (body.language or "").strip() or None
+    org.owner_user_id = int(getattr(org, "owner_user_id", None) or current_user.id)
+    org.onboarding_completed_at = now
+    current_user.position_title = body.position_title.strip()
+    current_user.onboarding_completed_at = now
+    if current_user.role != UserRole.owner:
+        current_user.role = UserRole.owner
+    db.add(org)
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    db.refresh(org)
+
+    return {
+        "ok": True,
+        "user": {
+            "id": current_user.id,
+            "email": current_user.email,
+            "role": _role_value(current_user.role),
+            "organization_id": get_org_id(current_user),
+            "position_title": current_user.position_title,
+            "onboarding_completed_at": current_user.onboarding_completed_at,
+            "onboarding_required": _onboarding_required(current_user, org),
+            "organization": _build_org_snapshot(org),
+            "section_permissions": getattr(current_user, "section_permissions", None),
+        },
     }
 
 @router.post("/logout")
@@ -1168,24 +1325,212 @@ def revoke_all_sessions(
         _clear_auth_cookies(response, settings)
     return {"ok": True, "revoked": len(rows), "keep_current": keep_current}
 
-class InviteRequest(BaseModel):
-    email: str
-    role: Optional[str] = None
-    expires_minutes: int = 60 * 24 * 7  # 7 days
 
-@router.post("/invite")
+def _serialize_invite(invite: OrganizationInvite, org: Optional[Organization]) -> Dict[str, Any]:
+    return {
+        "id": int(invite.id),
+        "email": invite.email,
+        "role": invite.role,
+        "section_permissions": getattr(invite, "section_permissions", None),
+        "organization_id": int(invite.organization_id),
+        "organization_name": getattr(org, "name", None) if org else None,
+        "expires_at": getattr(invite, "expires_at", None),
+        "accepted_at": getattr(invite, "accepted_at", None),
+        "accepted_by_user_id": getattr(invite, "accepted_by_user_id", None),
+        "revoked_at": getattr(invite, "revoked_at", None),
+        "last_sent_at": getattr(invite, "last_sent_at", None),
+        "notes": getattr(invite, "notes", None),
+        "status": _invite_status(invite),
+        "created_by_user_id": getattr(invite, "created_by_user_id", None),
+        "created_at": getattr(invite, "created_at", None),
+    }
+
+
+def _send_invite_email(email: str, invite_url: str, role: str, org_name: str) -> bool:
+    subject = f"Einladung zu {org_name} – Marketing Kreis"
+    text = (
+        f"Sie wurden zu {org_name} eingeladen.\n\n"
+        f"Rolle: {role}\n"
+        f"Registrierung: {invite_url}\n"
+    )
+    html = (
+        f"<p>Sie wurden zu <strong>{org_name}</strong> eingeladen.</p>"
+        f"<p>Rolle: <strong>{role}</strong></p>"
+        f"<p><a href=\"{invite_url}\">Jetzt registrieren</a></p>"
+    )
+    try:
+        return bool(send_email(email, subject, text, html))
+    except Exception:
+        return False
+
+
+@router.get("/invites")
+def list_invites(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_company_admin()),
+):
+    org_id = get_org_id(current_user)
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    rows = (
+        db.query(OrganizationInvite)
+        .filter(OrganizationInvite.organization_id == org_id)
+        .order_by(OrganizationInvite.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    return {"items": [_serialize_invite(inv, org) for inv in rows]}
+
+
+@router.get("/invites/preview")
+def preview_invite(token: str, db: Session = Depends(get_db_session)):
+    invite = _get_invite_by_token(db, token)
+    if invite:
+        org = db.query(Organization).filter(Organization.id == int(invite.organization_id)).first()
+        return {
+            "ok": True,
+            "invite": _serialize_invite(invite, org),
+            "organization": _build_org_snapshot(org),
+        }
+    # Backward-compatible preview for old JWT invite links.
+    try:
+        data = _decode_special(token)
+        if data.get("typ") != "invite":
+            raise HTTPException(status_code=400, detail="Invalid invite token")
+        org_id = int(data.get("org_id") or 0) or None
+        org = db.query(Organization).filter(Organization.id == int(org_id or 0)).first() if org_id else None
+        return {
+            "ok": True,
+            "invite": {
+                "email": data.get("email"),
+                "role": data.get("role") or get_settings().default_role,
+                "organization_id": org_id,
+                "organization_name": getattr(org, "name", None) if org else None,
+                "status": "active",
+            },
+            "organization": _build_org_snapshot(org),
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid or expired invite token")
+
+
+@router.post("/invites")
 def create_invite(
     body: InviteRequest,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_admin_step_up()),
+    current_user: User = Depends(require_company_admin_step_up()),
 ):
     settings = get_settings()
-    role = body.role or settings.default_role
-    token = _encode_special(
-        {"typ": "invite", "email": body.email, "role": role, "org_id": get_org_id(current_user)},
-        minutes=body.expires_minutes,
+    org_id = get_org_id(current_user)
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    email = (body.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email required")
+    role = (body.role or settings.default_role or "user").strip().lower()
+    if role not in {r.value for r in UserRole}:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    if current_user.role != UserRole.owner and role in {UserRole.owner.value, UserRole.admin.value}:
+        raise HTTPException(status_code=403, detail="Only owner can invite owner/admin users")
+
+    raw_token, token_hash = _issue_invite_token()
+    invite = OrganizationInvite(
+        organization_id=org_id,
+        email=email,
+        role=role,
+        section_permissions=body.section_permissions,
+        token_hash=token_hash,
+        expires_at=_utcnow() + timedelta(minutes=max(15, min(int(body.expires_minutes or 0), 60 * 24 * 30))),
+        created_by_user_id=current_user.id,
+        notes=(body.notes or "").strip() or None,
+        last_sent_at=_utcnow(),
     )
-    return {"token": token, "link": f"/signup?token={token}"}
+    db.add(invite)
+    db.commit()
+    db.refresh(invite)
+
+    invite_link = _build_invite_link(raw_token)
+    frontend_base = (settings.frontend_url or "").rstrip("/")
+    invite_url = f"{frontend_base}{invite_link}" if frontend_base else invite_link
+    sent = _send_invite_email(email, invite_url, role, org.name)
+    return {
+        "ok": True,
+        "invite": _serialize_invite(invite, org),
+        "token": raw_token,
+        "link": invite_link,
+        "invite_url": invite_url,
+        "sent": sent,
+    }
+
+
+@router.post("/invite")
+def create_invite_legacy_alias(
+    body: InviteRequest,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_company_admin_step_up()),
+):
+    return create_invite(body=body, db=db, current_user=current_user)
+
+
+@router.post("/invites/{invite_id}/resend")
+def resend_invite(
+    invite_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_company_admin_step_up()),
+):
+    org_id = get_org_id(current_user)
+    invite = (
+        db.query(OrganizationInvite)
+        .filter(OrganizationInvite.id == invite_id, OrganizationInvite.organization_id == org_id)
+        .first()
+    )
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    if _invite_status(invite) not in {"active", "expired"}:
+        raise HTTPException(status_code=400, detail="Invite cannot be resent")
+
+    raw_token, token_hash = _issue_invite_token()
+    invite.token_hash = token_hash
+    invite.revoked_at = None
+    invite.accepted_at = None
+    invite.accepted_by_user_id = None
+    invite.expires_at = _utcnow() + timedelta(days=7)
+    invite.last_sent_at = _utcnow()
+    db.add(invite)
+    db.commit()
+    db.refresh(invite)
+
+    settings = get_settings()
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    invite_link = _build_invite_link(raw_token)
+    frontend_base = (settings.frontend_url or "").rstrip("/")
+    invite_url = f"{frontend_base}{invite_link}" if frontend_base else invite_link
+    sent = _send_invite_email(invite.email, invite_url, invite.role, getattr(org, "name", "Marketing Kreis"))
+    return {"ok": True, "invite": _serialize_invite(invite, org), "token": raw_token, "link": invite_link, "invite_url": invite_url, "sent": sent}
+
+
+@router.delete("/invites/{invite_id}")
+def revoke_invite(
+    invite_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_company_admin_step_up()),
+):
+    org_id = get_org_id(current_user)
+    invite = (
+        db.query(OrganizationInvite)
+        .filter(OrganizationInvite.id == invite_id, OrganizationInvite.organization_id == org_id)
+        .first()
+    )
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    invite.revoked_at = _utcnow()
+    db.add(invite)
+    db.commit()
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    return {"ok": True, "invite": _serialize_invite(invite, org)}
 
 class ResetRequest(BaseModel):
     email: str
@@ -1269,7 +1614,7 @@ def reset_password(body: ResetConfirmRequest, request: Request, db: Session = De
     return {"message": "password_updated"}
 
 @router.get("/verify")
-def verify_email(token: str, request: Request, db: Session = Depends(get_db_session)):
+def verify_email(token: str, request: Request, response: Response, db: Session = Depends(get_db_session)):
     settings = get_settings()
     enforce_rate_limit(
         request,
@@ -1292,7 +1637,15 @@ def verify_email(token: str, request: Request, db: Session = Depends(get_db_sess
     user.is_verified = True
     db.add(user)
     db.commit()
-    return {"message": "verified"}
+    db.refresh(user)
+    org = db.query(Organization).filter(Organization.id == get_org_id(user)).first()
+    _create_auth_session(user, request, response, db)
+    response.headers["X-Redirect-To"] = _redirect_target_for_user(user, org)
+    return {
+        "message": "verified",
+        "onboarding_required": _onboarding_required(user, org),
+        "redirect_to": _redirect_target_for_user(user, org),
+    }
 
 
 @router.post("/verify/resend")

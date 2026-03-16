@@ -1,4 +1,6 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form, Request
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form, Request, Query
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
@@ -24,6 +26,7 @@ from app.models.content_task import ContentTask, ContentTaskStatus, ContentTaskP
 from app.models.calendar import CalendarEntry
 from app.models.user import User, UserRole
 from app.models.user_category import UserCategory
+from app.models.upload_audit_log import UploadAuditLog
 from app.api.deps import get_current_user, get_org_id, is_demo_user, require_writable_user
 from app.core.config import get_settings
 
@@ -293,6 +296,21 @@ def delete_upload(
         )
         if n:
             deleted["jobs"] = int(n)
+    except Exception:
+        pass
+
+    # Audit log: who deleted
+    try:
+        if get_settings().upload_audit_enabled:
+            db.add(
+                UploadAuditLog(
+                    organization_id=org,
+                    upload_id=int(upload_id),
+                    actor_id=current_user.id,
+                    action="deleted",
+                    details=json.dumps({"deleted": deleted}),
+                )
+            )
     except Exception:
         pass
 
@@ -1579,7 +1597,7 @@ def upload_file(
                 except Exception:
                     skipped_count += 1
 
-            db.commit()
+        db.commit()
 
         # Record a completed job
         rq_id = f"local-{upload.id}"
@@ -2099,11 +2117,13 @@ async def ai_analyze_upload(
         # reuse preview's local heuristic
         def _s(headers_in: List[str]) -> Dict[str, Optional[str]]:
             headers_l = [h.lower().replace(" ", "_") for h in headers_in]
+
             def suggest(*names: str) -> Optional[str]:
                 for n in names:
                     if n in headers_l:
                         return headers_in[headers_l.index(n)]
                 return None
+
             return {
                 "title": suggest("title", "name", "massnahme", "maßnahme", "aktion", "initiative", "kampagne", "projekt"),
                 "category": suggest("category", "type", "kategorie", "bereich", "thema", "channel", "kanal"),
@@ -2114,6 +2134,7 @@ async def ai_analyze_upload(
                 "end": suggest("end", "end_date", "ende", "bis", "enddatum"),
                 "weight": suggest("weight", "gewicht", "prio", "priority"),
             }
+
         base_mapping = _s(headers)
 
     # Full-table statistics + grouping (local, private)
@@ -2332,42 +2353,64 @@ async def ai_analyze_upload(
 @router.post("/smart-import")
 def smart_import_upload(
     request: Request,
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    retry_upload_id: Optional[int] = Form(None),
     db: Session = Depends(get_db_session),
     current_user: User = Depends(require_writable_user),
 ):
     """
-    Smart import for mixed tables:
-    - parses CSV/XLSX (supports multiple sheets, best-effort 1 table per sheet)
-    - creates Activities, ContentItems, and Budget/KPI targets when matching columns exist
-    - does NOT require manual mapping
+    Smart import for mixed tables.
+    Use retry_upload_id to re-run import with same file (e.g. after fixing mapping).
     """
     enforce_rate_limit(request, scope="uploads_smart_import", limit=8, window_seconds=60)
     settings = get_settings()
     org = get_org_id(current_user)
+    can_manage_all = current_user.role in {UserRole.admin, UserRole.editor}
 
-    content = file.file.read() or b""
-    if len(content) > settings.upload_max_bytes:
-        raise HTTPException(status_code=413, detail=f"File too large for current plan (max {settings.upload_max_bytes} bytes).")
-
-    # Store upload bytes (same behavior as /uploads)
-    upload = Upload(
-        original_name=file.filename or "file",
-        file_type=file.content_type or "",
-        file_size=len(content),
-        organization_id=org,
-        owner_id=current_user.id,
-        sha256=hashlib.sha256(content).hexdigest(),
-        stored_in_db=bool(settings.upload_store_in_db),
-    )
-    if settings.upload_store_in_db:
-        upload.content = content
-    db.add(upload)
-    db.commit()
-    db.refresh(upload)
-
-    ctype = (file.content_type or "").lower()
-    name_lower = (file.filename or "").lower()
+    if retry_upload_id:
+        upload = db.query(Upload).filter(Upload.id == retry_upload_id, Upload.organization_id == org).first()
+        if not upload:
+            raise HTTPException(status_code=404, detail="Upload not found")
+        if not can_manage_all and int(getattr(upload, "owner_id", 0) or 0) != int(current_user.id):
+            raise HTTPException(status_code=403, detail="Not allowed")
+        content = bytes(getattr(upload, "content", None) or b"")
+        if not content:
+            raise HTTPException(status_code=400, detail="Upload content not stored; cannot retry")
+        ctype = (getattr(upload, "file_type", "") or "").lower()
+        name_lower = (getattr(upload, "original_name", "") or "").lower()
+        # Cascade delete existing imported data before retry
+        for model in [CalendarEntry, Activity, ContentTask, ContentItem, BudgetTarget, KpiTarget, Deal, Contact, Company, UserCategory]:
+            try:
+                db.query(model).filter(
+                    model.organization_id == org,  # type: ignore[attr-defined]
+                    model.source_upload_id == int(retry_upload_id),  # type: ignore[attr-defined]
+                ).delete(synchronize_session=False)
+            except Exception:
+                pass
+        db.commit()
+        db.refresh(upload)
+    else:
+        if not file:
+            raise HTTPException(status_code=400, detail="File or retry_upload_id required")
+        content = file.file.read() or b""
+        if len(content) > settings.upload_max_bytes:
+            raise HTTPException(status_code=413, detail=f"File too large for current plan (max {settings.upload_max_bytes} bytes).")
+        upload = Upload(
+            original_name=file.filename or "file",
+            file_type=file.content_type or "",
+            file_size=len(content),
+            organization_id=org,
+            owner_id=current_user.id,
+            sha256=hashlib.sha256(content).hexdigest(),
+            stored_in_db=bool(settings.upload_store_in_db),
+        )
+        if settings.upload_store_in_db:
+            upload.content = content
+        db.add(upload)
+        db.commit()
+        db.refresh(upload)
+        ctype = (file.content_type or "").lower()
+        name_lower = (file.filename or "").lower()
 
     tables: List[Dict[str, Any]] = []
     if ctype in {"text/csv", "application/csv", "text/plain"} or name_lower.endswith(".csv"):
@@ -2397,6 +2440,21 @@ def smart_import_upload(
         "budget_rows_applied": 0,
         "budget_rows_skipped": 0,
     }
+    row_errors: List[Dict[str, Any]] = []
+
+    # Create job early for progress visibility (phase: parsing -> analyzing -> importing -> upserting)
+    total_rows = max(1, sum(len(t.get("rows") or []) for t in tables))
+    job = Job(
+        rq_id=f"local-smart-{upload.id}",
+        type="import_smart",
+        status="processing",
+        phase="analyzing",
+        progress=10,
+        organization_id=org,
+        upload_id=int(upload.id),
+    )
+    db.add(job)
+    db.flush()
 
     default_period = _current_period()
     # Accumulate SAP Mediaplan KPI targets by quarter (period -> sums).
@@ -2631,11 +2689,15 @@ def smart_import_upload(
         ring_category_color = {}
         ring_category_names = []
 
+    table_row_offsets: List[int] = [0]
     for t in tables:
+        table_row_offsets.append(table_row_offsets[-1] + len(t.get("rows") or []))
+    for t_idx, t in enumerate(tables):
         headers = list(t.get("headers") or [])
         rows = list(t.get("rows") or [])
         if not headers or not rows:
             continue
+        table_start = table_row_offsets[t_idx]
 
         map_act = _suggest_mapping_activities(headers)
         map_content = _suggest_mapping_content(headers)
@@ -2653,7 +2715,14 @@ def smart_import_upload(
                 return None
             return row.get(header)
 
-        for row in rows:
+        def _add_row_err(r_idx: int, msg: str, src: str, r: Dict[str, Any]) -> None:
+            raw_preview = {str(k)[:50]: str(v)[:100] for k, v in list(r.items())[:8]}
+            row_errors.append({"row": r_idx + 1, "message": str(msg)[:500], "source": src, "raw": raw_preview})
+
+        job.phase = "importing"
+        job.progress = 15
+        db.flush()
+        for row_idx, row in enumerate(rows):
             # --- Budget rows ---
             try:
                 per_raw = cell(row, map_budget.get("period")) or default_period
@@ -2707,8 +2776,9 @@ def smart_import_upload(
                     totals["budget_rows_applied"] += 1
                 else:
                     totals["budget_rows_skipped"] += 1
-            except Exception:
+            except Exception as e:
                 totals["budget_rows_skipped"] += 1
+                _add_row_err(row_idx, str(e), "budget", row)
 
             # --- Content rows ---
             try:
@@ -2878,8 +2948,9 @@ def smart_import_upload(
                             totals["tasks_created"] += 1
                         else:
                             totals["tasks_skipped"] += 1
-                    except Exception:
+                    except Exception as e2:
                         totals["tasks_skipped"] += 1
+                        _add_row_err(row_idx, str(e2), "task", row)
 
                     # --- Calendar sync: mirror scheduled_at into CalendarEntry (global calendar) ---
                     try:
@@ -2907,8 +2978,9 @@ def smart_import_upload(
                         pass
                 else:
                     totals["content_skipped"] += 1
-            except Exception:
+            except Exception as e:
                 totals["content_skipped"] += 1
+                _add_row_err(row_idx, str(e), "content", row)
 
             # --- Activities rows ---
             try:
@@ -3079,11 +3151,22 @@ def smart_import_upload(
                         totals["activities_created"] += 1
                     else:
                         totals["activities_skipped"] += 1
-            except Exception:
+            except Exception as e:
                 totals["activities_skipped"] += 1
+                _add_row_err(row_idx, str(e), "activities", row)
+
+            # Chunked commit: every 500 rows to avoid timeouts on large XLSX
+            if (row_idx + 1) % 500 == 0:
+                db.commit()
+                rows_done = table_start + row_idx + 1
+                job.progress = min(85, 15 + 70 * rows_done // total_rows)
+                db.flush()
 
         db.commit()
 
+    job.phase = "upserting"
+    job.progress = 90
+    db.flush()
     # Upsert derived KPI targets from SAP Mediaplan tables (best-effort).
     # This makes KPI targets visible on Budget/Performance pages even for historic plans.
     try:
@@ -3154,23 +3237,83 @@ def smart_import_upload(
     except Exception:
         pass
 
-    # Record a job for visibility
-    job = Job(
-        rq_id=f"local-smart-{upload.id}",
-        type="import_smart",
-        status="finished",
-        result=json.dumps(totals),
-        organization_id=org,
-    )
-    db.add(job)
+    # Update job with final result (job was created at start)
+    job_result = {**totals}
+    if row_errors:
+        job_result["row_errors"] = row_errors
+    job.status = "finished"
+    job.result = json.dumps(job_result)
+    job.phase = "finished"
+    job.progress = 100
+    db.flush()
+    # Audit log: who imported
+    try:
+        if settings.upload_audit_enabled:
+            db.add(
+                UploadAuditLog(
+                    organization_id=org,
+                    upload_id=int(upload.id),
+                    actor_id=current_user.id,
+                    action="imported",
+                    details=json.dumps({"job_id": int(job.id), "totals": totals}),
+                )
+            )
+    except Exception:
+        pass
     db.commit()
 
     return {
         "ok": True,
         "upload_id": int(upload.id),
+        "job_id": int(job.id),
         "import": totals,
+        "row_errors_count": len(row_errors),
         "tables": [{"sheet": t.get("sheet"), "rows": len(t.get("rows") or []), "cols": len(t.get("headers") or [])} for t in tables],
     }
+
+
+@router.post("/cron/retention")
+def cron_retention(
+    token: Optional[str] = Query(None, alias="token"),
+    db: Session = Depends(get_db_session),
+) -> Dict[str, Any]:
+    """
+    Auto-delete uploads older than UPLOAD_RETENTION_DAYS.
+    Call via cron (e.g. Render Cron Job) with UPLOAD_RETENTION_CRON_TOKEN.
+    """
+    settings = get_settings()
+    if settings.upload_retention_days <= 0:
+        return {"ok": True, "deleted": 0, "reason": "retention disabled"}
+    if not settings.upload_retention_cron_token or token != settings.upload_retention_cron_token:
+        raise HTTPException(status_code=403, detail="Invalid or missing token")
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.upload_retention_days)
+    uploads = db.query(Upload).filter(Upload.created_at < cutoff).limit(500).all()
+    deleted_count = 0
+    for u in uploads:
+        try:
+            org = getattr(u, "organization_id", None)
+            if org:
+                for model in [
+                    CalendarEntry, Activity, ContentTask, ContentItem,
+                    BudgetTarget, KpiTarget, Deal, Contact, Company, UserCategory,
+                ]:
+                    try:
+                        db.query(model).filter(
+                            model.organization_id == org,  # type: ignore[attr-defined]
+                            model.source_upload_id == int(u.id),  # type: ignore[attr-defined]
+                        ).delete(synchronize_session=False)
+                    except Exception:
+                        pass
+            db.delete(u)
+            deleted_count += 1
+        except Exception:
+            db.rollback()
+            continue
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+    return {"ok": True, "deleted": deleted_count, "cutoff": cutoff.isoformat()}
 
 
 @router.get("/template.csv")

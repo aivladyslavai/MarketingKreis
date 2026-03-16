@@ -14,6 +14,7 @@ import {
   FileBarChart,
   UploadCloud,
   Shield,
+  Users,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -35,6 +36,7 @@ const navItems = [
   { href: "/content", label: "Content Hub", icon: ImageIcon },
   { href: "/reports", label: "Reports", icon: FileBarChart },
   { href: "/uploads", label: "Uploads", icon: UploadCloud },
+  { href: "/team", label: "Team", icon: Users },
   { href: "/admin", label: "Admin", icon: Shield },
 ]
 
@@ -48,6 +50,7 @@ export function Sidebar({ isCollapsed, onToggle, variant = "fixed" }: SidebarPro
   const pathname = usePathname()
   const { user } = useAuth()
   const isAdmin = user?.role === "admin"
+  const isCompanyAdmin = user?.role === "admin" || user?.role === "owner"
   const perms = (user as any)?.section_permissions || {}
   const allow = (section: string) => !(perms && typeof perms === "object" && perms[section] === false)
   const sectionForHref = (href: string) => {
@@ -59,12 +62,14 @@ export function Sidebar({ isCollapsed, onToggle, variant = "fixed" }: SidebarPro
     if (href.startsWith("/content")) return "content"
     if (href.startsWith("/reports")) return "reports"
     if (href.startsWith("/uploads")) return "uploads"
+    if (href.startsWith("/team")) return "team"
     if (href.startsWith("/admin")) return "admin"
     return "dashboard"
   }
-  const visibleNavItems = (isAdmin ? navItems : navItems.filter((i) => i.href !== "/admin")).filter((i) => {
+  const visibleNavItems = navItems.filter((i) => {
     const sec = sectionForHref(i.href)
     if (sec === "admin") return isAdmin
+    if (sec === "team") return isCompanyAdmin
     return allow(sec)
   })
   const isDrawer = variant === "drawer"

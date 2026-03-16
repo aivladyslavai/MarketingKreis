@@ -88,6 +88,10 @@ def _ensure_production_schema() -> None:
 
         try:
             with engine.begin() as conn:
+                try:
+                    conn.execute(text("alter type userrole add value if not exists 'owner';"))
+                except Exception:
+                    pass
                 # organizations + default org
                 conn.execute(
                     text(
@@ -109,6 +113,15 @@ def _ensure_production_schema() -> None:
                 # Minimal required for auth + multi-tenant scoping
                 conn.execute(text("alter table users add column if not exists organization_id integer;"))
                 conn.execute(text("update users set organization_id = 1 where organization_id is null;"))
+                conn.execute(text("alter table users add column if not exists position_title varchar(255);"))
+                conn.execute(text("alter table users add column if not exists onboarding_completed_at timestamptz;"))
+                conn.execute(text("alter table users add column if not exists invited_by_user_id integer;"))
+                conn.execute(text("alter table organizations add column if not exists industry varchar(255);"))
+                conn.execute(text("alter table organizations add column if not exists team_size varchar(100);"))
+                conn.execute(text("alter table organizations add column if not exists country varchar(120);"))
+                conn.execute(text("alter table organizations add column if not exists language varchar(20);"))
+                conn.execute(text("alter table organizations add column if not exists owner_user_id integer;"))
+                conn.execute(text("alter table organizations add column if not exists onboarding_completed_at timestamptz;"))
 
                 # Other tables used by org-scoped queries (best-effort, safe if table exists)
                 for t in [
@@ -148,6 +161,46 @@ def _ensure_production_schema() -> None:
 
                 # Upload ownership (new hardening)
                 conn.execute(text("alter table if exists uploads add column if not exists owner_id integer;"))
+                # Job progress/cancel/retry
+                conn.execute(text("alter table if exists jobs add column if not exists phase varchar(50);"))
+                conn.execute(text("alter table if exists jobs add column if not exists progress integer;"))
+                conn.execute(text("alter table if exists jobs add column if not exists upload_id integer;"))
+                conn.execute(text("alter table if exists jobs add column if not exists cancelled_at timestamptz;"))
+                # Upload audit log (who imported/deleted)
+                conn.execute(
+                    text(
+                        "create table if not exists upload_audit_log ("
+                        "id serial primary key, "
+                        "organization_id integer, "
+                        "upload_id integer, "
+                        "actor_id integer, "
+                        "action varchar(50) not null, "
+                        "details text, "
+                        "created_at timestamptz not null default now()"
+                        ")"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "create table if not exists organization_invites ("
+                        "id serial primary key, "
+                        "organization_id integer not null, "
+                        "email varchar(255) not null, "
+                        "role varchar(50) not null, "
+                        "section_permissions jsonb null, "
+                        "token_hash varchar(128) not null unique, "
+                        "expires_at timestamptz not null, "
+                        "created_by_user_id integer null, "
+                        "accepted_at timestamptz null, "
+                        "accepted_by_user_id integer null, "
+                        "revoked_at timestamptz null, "
+                        "last_sent_at timestamptz null, "
+                        "notes text null, "
+                        "created_at timestamptz not null default now(), "
+                        "updated_at timestamptz not null default now()"
+                        ")"
+                    )
+                )
                 # Admin 2FA step-up tracking on sessions
                 conn.execute(text("alter table auth_sessions add column if not exists mfa_verified_at timestamptz;"))
                 # Indexes are intentionally not created here to keep this path fast.

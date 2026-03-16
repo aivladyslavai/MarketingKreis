@@ -139,16 +139,20 @@ export function useUploadsApi() {
       return await res.json()
     },
     smartImportFile: async (
-      file: File,
+      file?: File | null,
+      retryUploadId?: number | null,
     ): Promise<{
       ok: boolean
       upload_id: number
+      job_id?: number
       import: Record<string, number>
+      row_errors_count?: number
       tables: Array<{ sheet: string; rows: number; cols: number }>
     }> => {
       await wakeBackend().catch(() => {})
       const fd = new FormData()
-      fd.append('file', file)
+      if (file) fd.append('file', file)
+      if (retryUploadId) fd.append('retry_upload_id', String(retryUploadId))
       const res = await fetch(`${apiBase}/uploads/smart-import`, { method: 'POST', body: fd, credentials: 'include' })
       if (!res.ok) {
         throw new Error(await readApiErrorMessage(res))
@@ -237,6 +241,31 @@ export function useJobsApi() {
     isLoading,
     error,
     refresh: async () => { await mutate(); sync.emit('jobs:changed') },
+    getJob: async (jobId: number) => {
+      await wakeBackend().catch(() => {})
+      const res = await authFetch(`/jobs/${jobId}`)
+      if (!res.ok) throw new Error(await readApiErrorMessage(res))
+      return await res.json()
+    },
+    downloadJobErrorsCsv: async (jobId: number) => {
+      await wakeBackend().catch(() => {})
+      const res = await authFetch(`/jobs/${jobId}/errors.csv`)
+      if (!res.ok) throw new Error(await readApiErrorMessage(res))
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `import-errors-${jobId}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    },
+    cancelJob: async (jobId: number) => {
+      await wakeBackend().catch(() => {})
+      const res = await authFetch(`/jobs/${jobId}/cancel`, { method: 'POST' })
+      if (!res.ok) throw new Error(await readApiErrorMessage(res))
+      await mutate()
+      sync.emit('jobs:changed')
+    },
   }
 }
 

@@ -8,6 +8,19 @@ type User = {
   email: string
   role: string
   organization_id?: number
+  position_title?: string | null
+  onboarding_completed_at?: string | null
+  onboarding_required?: boolean
+  organization?: {
+    id: number
+    name: string
+    industry?: string | null
+    team_size?: string | null
+    country?: string | null
+    language?: string | null
+    owner_user_id?: number | null
+    onboarding_completed_at?: string | null
+  } | null
   section_permissions?: Record<string, boolean> | null
 }
 
