@@ -215,6 +215,7 @@ export default function TeamPage() {
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [successMsg, setSuccessMsg] = React.useState<string | null>(null)
+  const [lastInviteUrl, setLastInviteUrl] = React.useState<string | null>(null)
 
   // form
   const [email, setEmail] = React.useState("")
@@ -270,9 +271,11 @@ export default function TeamPage() {
       setSectionPermissions({})
       await loadInvites()
       if (data?.invite_url) {
+        setLastInviteUrl(String(data.invite_url))
         try { await navigator.clipboard.writeText(String(data.invite_url)) } catch {}
         flash("Einladung erstellt – Link in Zwischenablage kopiert ✓")
       } else {
+        setLastInviteUrl(null)
         flash("Einladung erfolgreich erstellt ✓")
       }
     } catch (e: any) {
@@ -473,6 +476,36 @@ export default function TeamPage() {
               </div>
             )}
 
+            {lastInviteUrl && (
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-emerald-300">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Einladungslink zum manuellen Versenden
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    readOnly
+                    value={lastInviteUrl}
+                    className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-200 outline-none"
+                  />
+                  <div className="flex items-center gap-2">
+                    <CopyButton text={lastInviteUrl} />
+                    <a
+                      href={lastInviteUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-300 transition-all hover:border-white/20 hover:text-white"
+                    >
+                      Öffnen
+                    </a>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Den Link kannst du direkt selbst per Mail, Slack oder WhatsApp verschicken.
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-end">
               <button
                 type="submit"
@@ -584,6 +617,27 @@ function InviteRow({
             </span>
           )}
         </div>
+
+        {item.invite_url && isActive && (
+          <div className="flex flex-col gap-2 pt-1">
+            <div className="text-[11px] uppercase tracking-wider text-slate-600">Einladungslink</div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                readOnly
+                value={item.invite_url}
+                className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 outline-none"
+              />
+              <a
+                href={item.invite_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 transition-all hover:border-white/20 hover:text-white"
+              >
+                Link öffnen
+              </a>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* right */}
