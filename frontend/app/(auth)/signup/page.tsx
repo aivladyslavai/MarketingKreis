@@ -30,6 +30,7 @@ function SignupInner() {
   const [postSignupSent, setPostSignupSent] = useState<boolean | null>(null)
   const [postSignupDeliveryEnabled, setPostSignupDeliveryEnabled] = useState<boolean | null>(null)
   const [postSignupResendStatus, setPostSignupResendStatus] = useState<string | null>(null)
+  const [postSignupAutoVerified, setPostSignupAutoVerified] = useState(false)
 
   // Login state
   const [mode, setMode] = useState<"signup" | "login">(() => {
@@ -189,12 +190,16 @@ function SignupInner() {
       setSuccess(true)
       const sent = (data as any)?.verify?.sent
       const deliveryEnabled = (data as any)?.verify?.delivery?.enabled
+      const autoVerified = Boolean((data as any)?.auto_verified)
       setPostSignupSent(typeof sent === "boolean" ? sent : null)
       setPostSignupDeliveryEnabled(typeof deliveryEnabled === "boolean" ? deliveryEnabled : null)
+      setPostSignupAutoVerified(autoVerified)
       setPostSignupResendStatus(null)
       setPostSignupOpen(true)
 
-      if (sent === false) {
+      if (autoVerified) {
+        setMessage("Konto erfolgreich erstellt! Für Tests ist die E-Mail-Verifizierung deaktiviert. Du kannst dich direkt einloggen.")
+      } else if (sent === false) {
         if (deliveryEnabled === false) {
           setMessage(
             "Konto erfolgreich erstellt – aber Verifikations‑E‑Mail konnte nicht gesendet werden (SMTP nicht konfiguriert). Bitte Admin kontaktieren.",
@@ -1009,7 +1014,20 @@ function SignupInner() {
                   </div>
                 </div>
               )}
-              {postSignupSent === null && (
+              {postSignupAutoVerified && (
+                <div className="flex items-start gap-2.5">
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-emerald-300">Direkter Login aktiviert</div>
+                    <div className="mt-0.5 text-xs text-slate-400">
+                      Für diese Einladung ist die E‑Mail‑Verifizierung temporär deaktiviert. Sie können sich sofort anmelden.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {postSignupSent === null && !postSignupAutoVerified && (
                 <div className="flex items-start gap-2.5">
                   <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-500/15">
                     <Mail className="h-3.5 w-3.5 text-blue-400" />

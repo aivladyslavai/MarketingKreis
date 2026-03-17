@@ -102,6 +102,7 @@ class Settings(BaseSettings):
     admin_bootstrap_token: Optional[str] = Field(default=None, env="ADMIN_BOOTSTRAP_TOKEN")
     # Feature flags
     skip_email_verify: bool = Field(default=False, env="SKIP_EMAIL_VERIFY")
+    invite_auto_verify: bool = Field(default=False, env="INVITE_AUTO_VERIFY")
     section_access_enabled: bool = Field(default=True, env="SECTION_ACCESS_ENABLED")
 
     # Content reminders (cron-safe)

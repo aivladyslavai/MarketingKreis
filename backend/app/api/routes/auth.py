@@ -985,6 +985,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     invited_section_permissions: Optional[Dict[str, bool]] = None
     invite_record: Optional[OrganizationInvite] = None
     create_new_org = False
+    auto_verify_invited = False
 
     if body.token:
         invite_record = _get_invite_by_token(db, body.token)
@@ -1019,6 +1020,8 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
 
     if not invited_org_id:
         create_new_org = True
+    else:
+        auto_verify_invited = bool(getattr(settings, "invite_auto_verify", False))
 
     # Case-insensitive check (Postgres UNIQUE is case-sensitive by default)
     existing = db.query(User).filter(func.lower(User.email) == body.email).first()
@@ -1057,6 +1060,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
         email=body.email,
         hashed_password=_hash_password(body.password),
         role=role,
+        is_verified=auto_verify_invited,
         organization_id=org_id,
         invited_by_user_id=invited_by_user_id,
         section_permissions=invited_section_permissions,
@@ -1093,6 +1097,18 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
         db.add(invite_record)
         db.commit()
         db.refresh(user)
+
+    if auto_verify_invited:
+        org = db.query(Organization).filter(Organization.id == get_org_id(user)).first()
+        role_value = _role_value(user.role)
+        return {
+            "id": user.id,
+            "email": user.email,
+            "role": role_value,
+            "organization_id": get_org_id(user),
+            "onboarding_required": _onboarding_required(user, org),
+            "auto_verified": True,
+        }
 
     # Optional: skip email verification completely (for demos)
     try:
