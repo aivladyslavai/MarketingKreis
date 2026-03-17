@@ -49,7 +49,7 @@ interface SidebarProps {
 export function Sidebar({ isCollapsed, onToggle, variant = "fixed" }: SidebarProps) {
   const pathname = usePathname()
   const { user } = useAuth()
-  const isAdmin = user?.role === "admin"
+  const isAdmin = user?.role === "admin" || user?.role === "owner"
   const isCompanyAdmin = user?.role === "admin" || user?.role === "owner"
   const perms = (user as any)?.section_permissions || {}
   const allow = (section: string) => !(perms && typeof perms === "object" && perms[section] === false)

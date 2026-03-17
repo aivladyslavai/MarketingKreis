@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation"
 import {
   Mail, RefreshCw, Trash2, Users, Shield, Crown,
   Pencil, UserRound, Copy, Check, Clock, XCircle,
-  CheckCircle2, AlertCircle, Send, Plus, ChevronDown,
+  CheckCircle2, AlertCircle, Send, Plus, ChevronDown, UserCog,
 } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { authFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { adminAPI, type AdminUser } from "@/lib/api"
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -212,10 +213,13 @@ export default function TeamPage() {
   const { user, loading } = useAuth()
 
   const [items, setItems] = React.useState<InviteItem[]>([])
+  const [members, setMembers] = React.useState<AdminUser[]>([])
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [successMsg, setSuccessMsg] = React.useState<string | null>(null)
   const [lastInviteUrl, setLastInviteUrl] = React.useState<string | null>(null)
+  const [membersLoading, setMembersLoading] = React.useState(false)
+  const [memberActionId, setMemberActionId] = React.useState<number | null>(null)
 
   // form
   const [email, setEmail] = React.useState("")
@@ -238,12 +242,25 @@ export default function TeamPage() {
     }
   }, [])
 
+  const loadMembers = React.useCallback(async () => {
+    try {
+      setMembersLoading(true)
+      const data = await adminAPI.getUsers({ limit: 200 })
+      setMembers(data?.items || [])
+    } catch (e: any) {
+      setError(e?.message || "Mitglieder konnten nicht geladen werden")
+    } finally {
+      setMembersLoading(false)
+    }
+  }, [])
+
   React.useEffect(() => {
     if (loading) return
     if (!user) { router.replace("/signup?mode=login&next=/team"); return }
     if (!isCompanyAdmin) { router.replace("/dashboard"); return }
     loadInvites()
-  }, [loading, user, isCompanyAdmin, router, loadInvites])
+    loadMembers()
+  }, [loading, user, isCompanyAdmin, router, loadInvites, loadMembers])
 
   function flash(msg: string) {
     setSuccessMsg(msg)
@@ -270,6 +287,7 @@ export default function TeamPage() {
       setRole("user")
       setSectionPermissions({})
       await loadInvites()
+      await loadMembers()
       if (data?.invite_url) {
         setLastInviteUrl(String(data.invite_url))
         try { await navigator.clipboard.writeText(String(data.invite_url)) } catch {}
@@ -293,6 +311,7 @@ export default function TeamPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.detail || "Widerruf fehlgeschlagen")
       await loadInvites()
+      await loadMembers()
       flash("Einladung widerrufen")
     } catch (e: any) {
       setError(e?.message)
@@ -314,10 +333,54 @@ export default function TeamPage() {
         flash("Einladung erneut gesendet ✓")
       }
       await loadInvites()
+      await loadMembers()
     } catch (e: any) {
       setError(e?.message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function updateMemberRole(member: AdminUser, nextRole: "user" | "editor" | "admin") {
+    if (member.role === nextRole || member.role === "owner") return
+    try {
+      setMemberActionId(member.id)
+      const updated = await adminAPI.updateUser(member.id, { role: nextRole })
+      setMembers((prev) => prev.map((m) => (m.id === member.id ? updated : m)))
+      flash("Mitglied aktualisiert")
+    } catch (e: any) {
+      setError(e?.message || "Rolle konnte nicht aktualisiert werden")
+    } finally {
+      setMemberActionId(null)
+    }
+  }
+
+  async function toggleMemberVerified(member: AdminUser) {
+    if (member.role === "owner") return
+    try {
+      setMemberActionId(member.id)
+      const updated = await adminAPI.updateUser(member.id, { is_verified: !member.isVerified })
+      setMembers((prev) => prev.map((m) => (m.id === member.id ? updated : m)))
+      flash(member.isVerified ? "Verifizierung entfernt" : "Benutzer verifiziert")
+    } catch (e: any) {
+      setError(e?.message || "Verifizierungsstatus konnte nicht geändert werden")
+    } finally {
+      setMemberActionId(null)
+    }
+  }
+
+  async function deleteMember(member: AdminUser) {
+    if (member.role === "owner") return
+    if (!confirm(`Benutzer ${member.email} wirklich löschen?`)) return
+    try {
+      setMemberActionId(member.id)
+      await adminAPI.deleteUser(member.id)
+      setMembers((prev) => prev.filter((m) => m.id !== member.id))
+      flash("Mitglied gelöscht")
+    } catch (e: any) {
+      setError(e?.message || "Benutzer konnte nicht gelöscht werden")
+    } finally {
+      setMemberActionId(null)
     }
   }
 
@@ -561,6 +624,142 @@ export default function TeamPage() {
             )}
           </>
         )}
+      </div>
+
+      {/* ── members ── */}
+      <div className="space-y-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-slate-500">
+          <span className="h-px flex-1 bg-white/10" />
+          Team-Mitglieder ({members.length})
+          <span className="h-px flex-1 bg-white/10" />
+        </h2>
+
+        <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-5 sm:p-6">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-500/15">
+                <UserCog className="h-5 w-5 text-violet-300" />
+              </div>
+              <div>
+                <div className="text-base font-semibold text-white">Mitglieder deiner Firma</div>
+                <div className="text-sm text-slate-400">
+                  Hier siehst du alle Mitarbeiter im Workspace und kannst Rollen oder Zugriff anpassen.
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadMembers()}
+              disabled={membersLoading}
+              className="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-slate-300 transition-all hover:border-white/20 hover:text-white disabled:opacity-50"
+            >
+              <RefreshCw className={cn("h-4 w-4", membersLoading && "animate-spin")} />
+              Neu laden
+            </button>
+          </div>
+
+          {membersLoading && members.length === 0 ? (
+            <div className="flex items-center justify-center py-12 text-slate-400">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            </div>
+          ) : members.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-white/5 py-10 text-center text-sm text-slate-400">
+              Keine Mitglieder gefunden.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {members.map((member) => {
+                const memberBusy = memberActionId === member.id
+                const isOwnerMember = member.role === "owner"
+                return (
+                  <div
+                    key={member.id}
+                    className="rounded-2xl border border-white/10 bg-white/5 p-4 transition-all hover:border-white/20 hover:bg-white/[0.06]"
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-600/30 to-fuchsia-600/30 text-sm font-semibold text-violet-300">
+                            {(member.email?.[0] ?? "?").toUpperCase()}
+                          </div>
+                          <span className="truncate text-sm font-medium text-slate-100">{member.email}</span>
+                          <RoleBadge role={member.role} />
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                              member.isVerified
+                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                                : "border-slate-500/30 bg-slate-500/10 text-slate-400"
+                            )}
+                          >
+                            <span className={cn("h-1.5 w-1.5 rounded-full", member.isVerified ? "bg-emerald-400" : "bg-slate-400")} />
+                            {member.isVerified ? "Verifiziert" : "Unbestätigt"}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-xs text-slate-500">
+                          User ID {member.id}
+                          {member.createdAt ? ` • seit ${new Date(member.createdAt).toLocaleDateString("de-DE")}` : ""}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-3 lg:w-[440px]">
+                        <div className="sm:col-span-2">
+                          <div className="mb-2 text-[11px] uppercase tracking-wider text-slate-500">Rolle</div>
+                          {isOwnerMember ? (
+                            <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2.5 text-sm font-medium text-amber-200">
+                              Owner
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {(["user", "editor", "admin"] as const).map((r) => (
+                                <button
+                                  key={r}
+                                  type="button"
+                                  disabled={memberBusy}
+                                  onClick={() => updateMemberRole(member, r)}
+                                  className={cn(
+                                    "rounded-xl border px-3 py-2 text-xs font-medium transition-all",
+                                    member.role === r
+                                      ? "border-violet-500 bg-violet-500/20 text-violet-200"
+                                      : "border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200"
+                                  )}
+                                >
+                                  {r}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <div className="mb-2 text-[11px] uppercase tracking-wider text-slate-500">Aktionen</div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              disabled={memberBusy || isOwnerMember}
+                              onClick={() => toggleMemberVerified(member)}
+                              className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 transition-all hover:border-white/20 hover:text-white disabled:opacity-40"
+                            >
+                              {member.isVerified ? "Unverify" : "Verify"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={memberBusy || isOwnerMember}
+                              onClick={() => deleteMember(member)}
+                              className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300 transition-all hover:bg-rose-500/15 disabled:opacity-40"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

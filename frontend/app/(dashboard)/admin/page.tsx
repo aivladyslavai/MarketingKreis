@@ -26,6 +26,7 @@ import { GlassSelect } from "@/components/ui/glass-select"
 export default function AdminPage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
+  const canAccessAdmin = user?.role === "admin" || user?.role === "owner"
   const { jobs, isLoading: jobsLoading, refresh: refreshJobs } = useJobsApi()
   const [activeTab, setActiveTab] = React.useState("overview")
   const [categoriesCount, setCategoriesCount] = React.useState<number>(0)
@@ -47,7 +48,7 @@ export default function AdminPage() {
   const [usersLoading, setUsersLoading] = React.useState(false)
   const [usersError, setUsersError] = React.useState<string | null>(null)
   const [userSearch, setUserSearch] = React.useState("")
-  const [userRoleFilter, setUserRoleFilter] = React.useState<"" | "user" | "editor" | "admin">("")
+  const [userRoleFilter, setUserRoleFilter] = React.useState<"" | "user" | "editor" | "admin" | "owner">("")
   const [updatingUserId, setUpdatingUserId] = React.useState<number | null>(null)
   const [deletingUserId, setDeletingUserId] = React.useState<number | null>(null)
   const [expandedPermsUserId, setExpandedPermsUserId] = React.useState<number | null>(null)
@@ -75,17 +76,17 @@ export default function AdminPage() {
   const prefersDark = typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : false
   const isMobile = viewport.w > 0 && viewport.w < 640
 
-  // Redirect non-admins away from this page
+  // Redirect non-company-admins away from this page
   React.useEffect(() => {
     if (authLoading) return
     if (!user) {
       router.replace("/signup?mode=login")
       return
     }
-    if (user.role !== "admin") {
+    if (!canAccessAdmin) {
       router.replace("/dashboard")
     }
-  }, [authLoading, user, router])
+  }, [authLoading, user, router, canAccessAdmin])
 
   // Tiny reusable micro charts for the overview cards
   function MicroBars({ data, dates, stroke, from, to }: { data: number[]; dates: string[]; stroke: string; from: string; to: string }) {
@@ -313,7 +314,7 @@ export default function AdminPage() {
     }
   }
 
-  const loadUsers = async (overrides?: { search?: string; role?: "" | "user" | "editor" | "admin" }) => {
+  const loadUsers = async (overrides?: { search?: string; role?: "" | "user" | "editor" | "admin" | "owner" }) => {
     const search = overrides?.search !== undefined ? overrides.search : userSearch
     const role = overrides?.role !== undefined ? overrides.role : userRoleFilter
     setUsersLoading(true)
@@ -335,13 +336,13 @@ export default function AdminPage() {
   }
 
   React.useEffect(() => {
-    if (!authLoading && user && user.role === "admin") {
+    if (!authLoading && user && canAccessAdmin) {
       loadSeedStatus()
     }
   }, [authLoading, user])
 
   React.useEffect(() => {
-    if (activeTab === "users" && !authLoading && user && user.role === "admin") {
+    if (activeTab === "users" && !authLoading && user && canAccessAdmin) {
       loadUsers()
     }
   }, [activeTab, authLoading, user])
@@ -361,7 +362,7 @@ export default function AdminPage() {
   }
 
   React.useEffect(() => {
-    if (activeTab === "sessions" && !authLoading && user && user.role === "admin") {
+    if (activeTab === "sessions" && !authLoading && user && canAccessAdmin) {
       loadAdminSessions()
     }
   }, [activeTab, authLoading, user, sessionsActiveOnly])
@@ -380,7 +381,7 @@ export default function AdminPage() {
   }
 
   React.useEffect(() => {
-    if (activeTab === "ops" && !authLoading && user && user.role === "admin") {
+    if (activeTab === "ops" && !authLoading && user && canAccessAdmin) {
       loadReady()
     }
   }, [activeTab, authLoading, user])
@@ -521,7 +522,7 @@ export default function AdminPage() {
     try { await navigator.clipboard.writeText(JSON.stringify(diag, null, 2)); alert("📋 Diagnostics kopiert") } catch { alert("❌ Kopieren fehlgeschlagen") }
   }
 
-  if (authLoading || !user || user.role !== "admin") {
+  if (authLoading || !user || !canAccessAdmin) {
     return (
       <div className="p-4 sm:p-10 md:p-12">
         <div className="glass-card rounded-xl sm:rounded-2xl border border-white/10 bg-white/5 px-4 sm:px-6 py-8 sm:py-10 text-center text-xs sm:text-sm text-slate-400">
@@ -953,12 +954,13 @@ export default function AdminPage() {
                     { key: "user", label: "User" },
                     { key: "editor", label: "Editor" },
                     { key: "admin", label: "Admin" },
+                    { key: "owner", label: "Owner" },
                   ].map((r) => (
                     <button
                       key={r.key || "all"}
                       type="button"
                       onClick={() => {
-                        const next = r.key as "" | "user" | "editor" | "admin"
+                        const next = r.key as "" | "user" | "editor" | "admin" | "owner"
                         setUserRoleFilter(next)
                         loadUsers({ role: next })
                       }}
@@ -1097,17 +1099,23 @@ export default function AdminPage() {
 
                             <div className="mt-3">
                               <div className="text-[10px] text-slate-400 mb-1">Rolle</div>
-                              <GlassSelect
-                                value={u.role}
-                                onChange={(v) => handleChangeRole(u, v as any)}
-                                options={[
-                                  { value: "user", label: "user" },
-                                  { value: "editor", label: "editor" },
-                                  { value: "admin", label: "admin" },
-                                ]}
-                                disabled={busy}
-                                className="w-full bg-transparent border-white/15"
-                              />
+                              {u.role === "owner" ? (
+                                <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200">
+                                  owner
+                                </div>
+                              ) : (
+                                <GlassSelect
+                                  value={u.role}
+                                  onChange={(v) => handleChangeRole(u, v as any)}
+                                  options={[
+                                    { value: "user", label: "user" },
+                                    { value: "editor", label: "editor" },
+                                    { value: "admin", label: "admin" },
+                                  ]}
+                                  disabled={busy}
+                                  className="w-full bg-transparent border-white/15"
+                                />
+                              )}
                             </div>
 
                             <div className="mt-3">
@@ -1220,18 +1228,24 @@ export default function AdminPage() {
                                 <div className="text-[10px] sm:text-sm text-slate-100 truncate max-w-[100px] sm:max-w-xs">{u.email}</div>
                               </td>
                               <td className="py-2 sm:py-3.5 px-2 sm:px-5">
-                                <GlassSelect
-                                  value={u.role}
-                                  onChange={(v) => handleChangeRole(u, v as any)}
-                                  options={[
-                                    { value: "user", label: "user" },
-                                    { value: "editor", label: "editor" },
-                                    { value: "admin", label: "admin" },
-                                  ]}
-                                  disabled={updatingUserId === u.id || deletingUserId === u.id}
-                                  size="sm"
-                                  className="bg-transparent border-white/15"
-                                />
+                                {u.role === "owner" ? (
+                                  <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200">
+                                    owner
+                                  </div>
+                                ) : (
+                                  <GlassSelect
+                                    value={u.role}
+                                    onChange={(v) => handleChangeRole(u, v as any)}
+                                    options={[
+                                      { value: "user", label: "user" },
+                                      { value: "editor", label: "editor" },
+                                      { value: "admin", label: "admin" },
+                                    ]}
+                                    disabled={updatingUserId === u.id || deletingUserId === u.id}
+                                    size="sm"
+                                    className="bg-transparent border-white/15"
+                                  />
+                                )}
                               </td>
                               <td className="py-2 sm:py-3.5 px-2 sm:px-5 hidden sm:table-cell">
                                 <button

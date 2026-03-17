@@ -6,7 +6,15 @@ from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.api.deps import get_db_session, get_current_user, get_org_id, require_admin_step_up, require_role
+from app.api.deps import (
+    get_db_session,
+    get_current_user,
+    get_org_id,
+    require_admin_step_up,
+    require_company_admin,
+    require_company_admin_step_up,
+    require_role,
+)
 from app.models.user import User, UserRole
 from app.models.company import Company
 from app.models.contact import Contact
@@ -30,7 +38,7 @@ class SmtpTestRequest(BaseModel):
 @router.post("/smtp/test")
 def smtp_test(
     body: SmtpTestRequest,
-    _: User = Depends(require_admin_step_up()),
+    _: User = Depends(require_company_admin_step_up()),
 ) -> Dict[str, Any]:
     """
     Admin-only SMTP delivery test.
@@ -52,14 +60,14 @@ def smtp_test(
 
 
 @router.get("/health")
-def admin_health(_: User = Depends(require_role(UserRole.admin))) -> Dict[str, str]:
+def admin_health(_: User = Depends(require_company_admin())) -> Dict[str, str]:
     return {"status": "ok"}
 
 
 @router.get("/stats")
 def admin_stats(
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_company_admin()),
 ) -> Dict[str, Any]:
     """Return basic platform metrics for the Admin Dashboard."""
     org = get_org_id(current_user)
@@ -200,7 +208,7 @@ def list_users_admin(
     search: Optional[str] = None,
     role: Optional[str] = None,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_company_admin()),
 ) -> PaginatedUsers:
     """
     Получить список пользователей для админки.
@@ -246,7 +254,7 @@ def list_users_admin(
 def get_user_admin(
     user_id: int,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_company_admin()),
 ) -> AdminUserOut:
     org = get_org_id(current_user)
     user = db.query(User).filter(User.id == user_id, User.organization_id == org).first()
@@ -268,7 +276,7 @@ def update_user_admin(
     user_id: int,
     payload: AdminUserUpdate,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_admin_step_up()),
+    current_user: User = Depends(require_company_admin_step_up()),
 ) -> AdminUserOut:
     org = get_org_id(current_user)
     user = db.query(User).filter(User.id == user_id, User.organization_id == org).first()
@@ -281,6 +289,11 @@ def update_user_admin(
         if exists and exists.id != user.id:
             raise HTTPException(status_code=409, detail="Email already in use")
         user.email = str(payload.email).lower()
+
+    # Owner is a special company-level role. Do not mutate it here without
+    # an explicit ownership-transfer flow, otherwise org.owner_user_id can drift.
+    if user.role == UserRole.owner and payload.role and payload.role != UserRole.owner.value:
+        raise HTTPException(status_code=400, detail="Owner role cannot be changed here")
 
     # Обновление роли
     if payload.role:
@@ -342,7 +355,7 @@ def list_sessions_admin(
     active_only: bool = False,
     limit: int = 200,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_company_admin()),
 ) -> List[AdminSessionOut]:
     org = get_org_id(current_user)
     q = db.query(AuthSession, User).join(User, User.id == AuthSession.user_id).filter(User.organization_id == org)
@@ -374,7 +387,7 @@ def list_sessions_admin(
 def revoke_session_admin(
     session_id: str,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_admin_step_up()),
+    current_user: User = Depends(require_company_admin_step_up()),
 ) -> Dict[str, Any]:
     org = get_org_id(current_user)
     sess = (
@@ -401,7 +414,7 @@ def revoke_session_admin(
 def revoke_all_sessions_for_user(
     user_id: int,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_admin_step_up()),
+    current_user: User = Depends(require_company_admin_step_up()),
 ) -> Dict[str, Any]:
     org = get_org_id(current_user)
     u = db.query(User).filter(User.id == int(user_id), User.organization_id == org).first()
@@ -469,12 +482,16 @@ def run_ops_alerts_system(request: Request, db: Session = Depends(get_db_session
 def delete_user_admin(
     user_id: int,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_admin_step_up()),
+    current_user: User = Depends(require_company_admin_step_up()),
 ) -> Dict[str, Any]:
     org = get_org_id(current_user)
     user = db.query(User).filter(User.id == user_id, User.organization_id == org).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if int(user.id) == int(current_user.id):
+        raise HTTPException(status_code=400, detail="You cannot delete your own account here")
+    if user.role == UserRole.owner:
+        raise HTTPException(status_code=400, detail="Owner account cannot be deleted here")
 
     db.delete(user)
     db.commit()
@@ -484,7 +501,7 @@ def delete_user_admin(
 @router.get("/seed-status")
 def seed_status_admin(
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_company_admin()),
 ) -> Dict[str, Any]:
     """
     Краткий статус "инициализации" демо-данных.
@@ -540,7 +557,7 @@ class SeedDemoPayload(BaseModel):
 def seed_demo_admin(
     payload: SeedDemoPayload,
     db: Session = Depends(get_db_session),
-    current_user: User = Depends(require_admin_step_up()),
+    current_user: User = Depends(require_company_admin_step_up()),
 ) -> Dict[str, Any]:
     """
     Create (or refresh) a full demo dataset and a demo account.
