@@ -10,7 +10,17 @@ import {
 import { useAuth } from "@/hooks/use-auth"
 import { authFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { adminAPI, type AdminUser } from "@/lib/api"
+
+type TeamMember = {
+  id: number
+  email: string
+  role: string
+  isVerified: boolean
+  createdAt?: string | null
+  updatedAt?: string | null
+  section_permissions?: Record<string, boolean> | null
+  position_title?: string | null
+}
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -213,7 +223,7 @@ export default function TeamPage() {
   const { user, loading } = useAuth()
 
   const [items, setItems] = React.useState<InviteItem[]>([])
-  const [members, setMembers] = React.useState<AdminUser[]>([])
+  const [members, setMembers] = React.useState<TeamMember[]>([])
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [successMsg, setSuccessMsg] = React.useState<string | null>(null)
@@ -245,8 +255,10 @@ export default function TeamPage() {
   const loadMembers = React.useCallback(async () => {
     try {
       setMembersLoading(true)
-      const data = await adminAPI.getUsers({ limit: 200 })
-      setMembers(data?.items || [])
+      const res = await authFetch("/auth/team/members", { method: "GET" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.detail || "Mitglieder konnten nicht geladen werden")
+      setMembers((data?.items || []) as TeamMember[])
     } catch (e: any) {
       setError(e?.message || "Mitglieder konnten nicht geladen werden")
     } finally {
@@ -341,12 +353,17 @@ export default function TeamPage() {
     }
   }
 
-  async function updateMemberRole(member: AdminUser, nextRole: "user" | "editor" | "admin") {
+  async function updateMemberRole(member: TeamMember, nextRole: "user" | "editor" | "admin") {
     if (member.role === nextRole || member.role === "owner") return
     try {
       setMemberActionId(member.id)
-      const updated = await adminAPI.updateUser(member.id, { role: nextRole })
-      setMembers((prev) => prev.map((m) => (m.id === member.id ? updated : m)))
+      const res = await authFetch(`/auth/team/members/${member.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role: nextRole }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.detail || "Rolle konnte nicht aktualisiert werden")
+      setMembers((prev) => prev.map((m) => (m.id === member.id ? ((data?.member || m) as TeamMember) : m)))
       flash("Mitglied aktualisiert")
     } catch (e: any) {
       setError(e?.message || "Rolle konnte nicht aktualisiert werden")
@@ -355,12 +372,17 @@ export default function TeamPage() {
     }
   }
 
-  async function toggleMemberVerified(member: AdminUser) {
+  async function toggleMemberVerified(member: TeamMember) {
     if (member.role === "owner") return
     try {
       setMemberActionId(member.id)
-      const updated = await adminAPI.updateUser(member.id, { is_verified: !member.isVerified })
-      setMembers((prev) => prev.map((m) => (m.id === member.id ? updated : m)))
+      const res = await authFetch(`/auth/team/members/${member.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_verified: !member.isVerified }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.detail || "Verifizierungsstatus konnte nicht geändert werden")
+      setMembers((prev) => prev.map((m) => (m.id === member.id ? ((data?.member || m) as TeamMember) : m)))
       flash(member.isVerified ? "Verifizierung entfernt" : "Benutzer verifiziert")
     } catch (e: any) {
       setError(e?.message || "Verifizierungsstatus konnte nicht geändert werden")
@@ -369,12 +391,33 @@ export default function TeamPage() {
     }
   }
 
-  async function deleteMember(member: AdminUser) {
+  async function updateMemberPermissions(member: TeamMember, nextPerms: Record<string, boolean>) {
+    if (member.role === "owner") return
+    try {
+      setMemberActionId(member.id)
+      const res = await authFetch(`/auth/team/members/${member.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ section_permissions: nextPerms }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.detail || "Zugriffe konnten nicht aktualisiert werden")
+      setMembers((prev) => prev.map((m) => (m.id === member.id ? ((data?.member || m) as TeamMember) : m)))
+      flash("Zugriffe aktualisiert")
+    } catch (e: any) {
+      setError(e?.message || "Zugriffe konnten nicht aktualisiert werden")
+    } finally {
+      setMemberActionId(null)
+    }
+  }
+
+  async function deleteMember(member: TeamMember) {
     if (member.role === "owner") return
     if (!confirm(`Benutzer ${member.email} wirklich löschen?`)) return
     try {
       setMemberActionId(member.id)
-      await adminAPI.deleteUser(member.id)
+      const res = await authFetch(`/auth/team/members/${member.id}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.detail || "Benutzer konnte nicht gelöscht werden")
       setMembers((prev) => prev.filter((m) => m.id !== member.id))
       flash("Mitglied gelöscht")
     } catch (e: any) {
@@ -699,6 +742,7 @@ export default function TeamPage() {
                         <div className="mt-2 text-xs text-slate-500">
                           User ID {member.id}
                           {member.createdAt ? ` • seit ${new Date(member.createdAt).toLocaleDateString("de-DE")}` : ""}
+                          {member.position_title ? ` • ${member.position_title}` : ""}
                         </div>
                       </div>
 
@@ -753,6 +797,34 @@ export default function TeamPage() {
                           </div>
                         </div>
                       </div>
+                    </div>
+
+                    <div className="mt-4 border-t border-white/10 pt-4">
+                      <div className="mb-2 text-[11px] uppercase tracking-wider text-slate-500">Zugriffe</div>
+                      {isOwnerMember ? (
+                        <div className="rounded-xl border border-amber-400/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                          Owner hat vollständigen Firmenzugriff.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                          {SECTION_KEYS.map((k) => {
+                            const allowed = member.section_permissions?.[k] !== false
+                            return (
+                              <SectionToggle
+                                key={`${member.id}-${k}`}
+                                sectionKey={k}
+                                checked={allowed}
+                                onChange={(v) =>
+                                  updateMemberPermissions(member, {
+                                    ...(member.section_permissions || {}),
+                                    [k]: v,
+                                  })
+                                }
+                              />
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )

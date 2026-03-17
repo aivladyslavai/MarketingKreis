@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Request
 import json
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from sqlalchemy.exc import IntegrityError
 from app.db.session import get_db_session
 from app.core.config import get_settings
@@ -762,6 +762,12 @@ class InviteRequest(BaseModel):
     section_permissions: Optional[Dict[str, bool]] = None
     notes: Optional[str] = None
 
+
+class TeamMemberUpdateRequest(BaseModel):
+    role: Optional[str] = None
+    is_verified: Optional[bool] = None
+    section_permissions: Optional[Dict[str, bool]] = None
+
 def _hash_password(pw: str) -> str:
     return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
@@ -1362,6 +1368,19 @@ def _serialize_invite(invite: OrganizationInvite, org: Optional[Organization]) -
     }
 
 
+def _serialize_team_member(user: User) -> Dict[str, Any]:
+    return {
+        "id": int(user.id),
+        "email": user.email,
+        "role": _role_value(user.role),
+        "isVerified": bool(getattr(user, "is_verified", False)),
+        "section_permissions": getattr(user, "section_permissions", None),
+        "createdAt": getattr(user, "created_at", None),
+        "updatedAt": getattr(user, "updated_at", None),
+        "position_title": getattr(user, "position_title", None),
+    }
+
+
 def _send_invite_email(email: str, invite_url: str, role: str, org_name: str) -> bool:
     subject = f"Einladung zu {org_name} – Marketing Kreis"
     text = (
@@ -1547,6 +1566,88 @@ def revoke_invite(
     db.commit()
     org = db.query(Organization).filter(Organization.id == org_id).first()
     return {"ok": True, "invite": _serialize_invite(invite, org)}
+
+
+@router.get("/team/members")
+def list_team_members(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_company_admin()),
+):
+    org_id = get_org_id(current_user)
+    rows = (
+        db.query(User)
+        .filter(User.organization_id == org_id)
+        .order_by(
+            case(
+                (User.role == UserRole.owner, 0),
+                (User.role == UserRole.admin, 1),
+                (User.role == UserRole.editor, 2),
+                else_=3,
+            ),
+            User.created_at.asc(),
+            User.id.asc(),
+        )
+        .limit(500)
+        .all()
+    )
+    return {"items": [_serialize_team_member(u) for u in rows], "total": len(rows)}
+
+
+@router.patch("/team/members/{user_id}")
+def update_team_member(
+    user_id: int,
+    body: TeamMemberUpdateRequest,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_company_admin_step_up()),
+):
+    org_id = get_org_id(current_user)
+    user = db.query(User).filter(User.id == int(user_id), User.organization_id == org_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.role == UserRole.owner:
+        raise HTTPException(status_code=400, detail="Owner account cannot be changed here")
+
+    if body.role is not None:
+        next_role = (body.role or "").strip().lower()
+        if next_role not in {UserRole.user.value, UserRole.editor.value, UserRole.admin.value}:
+            raise HTTPException(status_code=400, detail="Invalid role")
+        if current_user.role != UserRole.owner and next_role == UserRole.admin.value:
+            raise HTTPException(status_code=403, detail="Only owner can promote admins")
+        user.role = UserRole(next_role)
+
+    if body.is_verified is not None:
+        user.is_verified = bool(body.is_verified)
+
+    if body.section_permissions is not None:
+        user.section_permissions = body.section_permissions
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"ok": True, "member": _serialize_team_member(user)}
+
+
+@router.delete("/team/members/{user_id}")
+def delete_team_member(
+    user_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_company_admin_step_up()),
+):
+    org_id = get_org_id(current_user)
+    user = db.query(User).filter(User.id == int(user_id), User.organization_id == org_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if int(user.id) == int(current_user.id):
+        raise HTTPException(status_code=400, detail="You cannot delete your own account here")
+    if user.role == UserRole.owner:
+        raise HTTPException(status_code=400, detail="Owner account cannot be deleted here")
+    if current_user.role != UserRole.owner and user.role == UserRole.admin:
+        raise HTTPException(status_code=403, detail="Only owner can remove admins")
+
+    db.delete(user)
+    db.commit()
+    return {"ok": True, "id": int(user_id)}
 
 class ResetRequest(BaseModel):
     email: str
