@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Mail, Lock, Eye, EyeOff, UserPlus, Sparkles, CheckCircle2, XCircle, Info } from "lucide-react"
+import { wakeBackend } from "@/lib/wake-backend"
 
 export const dynamic = "force-dynamic"
 
@@ -54,26 +55,6 @@ function SignupInner() {
 
   const token = params?.get("token") || ""
 
-  const wakeBackend = () => {
-    const base = (process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/$/, "")
-    // If we don't know the backend URL in the client, at least touch the proxy.
-    if (!base) {
-      fetch("/api/health", { cache: "no-store" }).catch(() => {})
-      return
-    }
-
-    const url = `${base}/health?t=${Date.now()}`
-    try {
-      // Fire-and-forget request that doesn't require CORS.
-      const img = new Image()
-      ;(img as any).referrerPolicy = "no-referrer"
-      img.src = url
-    } catch {}
-
-    // Also try fetch in no-cors mode (still wakes the service).
-    fetch(url, { mode: "no-cors", cache: "no-store" }).catch(() => {})
-  }
-
   useEffect(() => {
     try {
       const saved = typeof window !== "undefined" ? localStorage.getItem("mk_remember_email") : null
@@ -88,7 +69,7 @@ function SignupInner() {
 
   // Warm up backend (Render free tier often sleeps; first request can be slow).
   useEffect(() => {
-    wakeBackend()
+    wakeBackend().catch(() => {})
   }, [])
 
   useEffect(() => {

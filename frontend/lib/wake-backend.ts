@@ -19,7 +19,18 @@ let inflight: Promise<void> | null = null
 
 function baseUrlFromEnv(): string {
   const raw = (process.env.NEXT_PUBLIC_BACKEND_URL || "").trim()
-  return raw.replace(/\/+$/, "")
+  const base = raw.replace(/\/+$/, "")
+  if (!base) return ""
+  try {
+    const url = new URL(base)
+    // Only allow direct wake-ups against the real backend host.
+    // This prevents stale frontend domains from leaking into client bundles.
+    if (url.protocol !== "https:") return ""
+    if (!url.hostname.endsWith(".onrender.com")) return ""
+    return url.toString().replace(/\/+$/, "")
+  } catch {
+    return ""
+  }
 }
 
 /**
@@ -37,10 +48,8 @@ export function wakeBackend(opts: WakeBackendOptions = {}): Promise<void> {
 
   const base = baseUrlFromEnv()
   if (!base) {
-    // Local/dev fallback: still poke the app health endpoint through same-origin.
-    try {
-      fetch("/api/health", { cache: "no-store" }).catch(() => {})
-    } catch {}
+    // No trusted direct backend URL is configured for the browser.
+    // In that case do nothing here and let the normal same-origin API calls proceed.
     return Promise.resolve()
   }
 
