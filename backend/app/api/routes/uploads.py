@@ -347,6 +347,20 @@ def _map_category_to_activity_type(category: str) -> ActivityType:
     return mapping.get((category or "").upper(), ActivityType.sales)
 
 
+_ACTIVITY_CATEGORY_HEADER_ALIASES = (
+    "category",
+    "type",
+    "kategorie",
+    "bereich",
+    "thema",
+    "channel",
+    "kanal",
+    "kostenart",
+    "cost_type",
+    "costtype",
+)
+
+
 def _parse_csv_to_activities(content: bytes) -> List[Dict[str, Any]]:
     text = content.decode("utf-8", errors="ignore")
     reader = csv.DictReader(io.StringIO(text))
@@ -439,7 +453,7 @@ def _extract_xlsx_table_from_ws(ws: Any) -> tuple[List[str], List[Dict[str, Any]
         "start", "beginn", "von", "ab", "startdatum", "start_date",
         "end", "ende", "bis", "enddatum", "end_date",
         # activity fields
-        "category", "kategorie", "type", "bereich", "kanal", "format",
+        "category", "kategorie", "type", "bereich", "kanal", "format", "kostenart",
         "status", "phase", "workflow",
         "budget", "budgetchf", "kosten", "chf", "betrag",
         "owner", "verantwortlich", "zuständig",
@@ -854,49 +868,6 @@ def _extract_xlsx_tables(content: bytes, *, max_sheets: int = 8) -> List[Dict[st
     return out
 
 
-def _merge_xlsx_tables(
-    tables: List[Dict[str, Any]],
-    *,
-    max_rows: int = 20000,
-) -> tuple[List[str], List[Dict[str, Any]]]:
-    """
-    Merge extracted workbook tables into one logical dataset.
-
-    - headers: union of all headers in workbook order
-    - rows: concatenated rows from all sheets, preserving per-sheet values
-    """
-    merged_headers: List[str] = []
-    seen_headers: set[str] = set()
-    merged_rows: List[Dict[str, Any]] = []
-
-    for table in tables or []:
-        for h in list(table.get("headers") or []):
-            hs = str(h or "").strip()
-            if not hs or hs in seen_headers:
-                continue
-            seen_headers.add(hs)
-            merged_headers.append(hs)
-
-    for table in tables or []:
-        sheet_name = str(table.get("sheet") or "").strip()
-        for row in list(table.get("rows") or []):
-            if len(merged_rows) >= max_rows:
-                break
-            if not isinstance(row, dict):
-                continue
-            out_row = {h: row.get(h) for h in merged_headers}
-            if sheet_name:
-                out_row["__sheet"] = sheet_name
-            merged_rows.append(out_row)
-        if len(merged_rows) >= max_rows:
-            break
-
-    if any("__sheet" in r for r in merged_rows) and "__sheet" not in seen_headers:
-        merged_headers.append("__sheet")
-
-    return merged_headers, merged_rows
-
-
 def _suggest_mapping_crm(headers_in: List[str]) -> Dict[str, Optional[str]]:
     return {
         # Company
@@ -963,41 +934,14 @@ def _suggest_mapping_budget(headers_in: List[str]) -> Dict[str, Optional[str]]:
 def _suggest_mapping_activities(headers_in: List[str]) -> Dict[str, Optional[str]]:
     return {
         "title": _suggest_header(headers_in, "title", "name", "massnahme", "massnahmen", "maßnahme", "maßnahmen", "aufgabe", "todo", "task", "aktion", "initiative", "kampagne", "projekt"),
-        "category": _suggest_header(headers_in, "category", "type", "kategorie", "bereich", "thema", "channel", "kanal", "kostenart", "kosten_art", "cost_type"),
+        "category": _suggest_header(headers_in, *_ACTIVITY_CATEGORY_HEADER_ALIASES),
         "status": _suggest_header(headers_in, "status", "phase", "workflow"),
         "budget": _suggest_header(headers_in, "budget", "budgetchf", "budget_chf", "kosten", "betrag", "chf", "summe", "preis"),
-        "notes": _suggest_header(headers_in, "notes", "expected_output", "beschreibung", "kommentar", "notiz", "bemerkung", "massnahme_im_detail", "massnahmen_im_detail"),
+        "notes": _suggest_header(headers_in, "notes", "expected_output", "beschreibung", "kommentar", "notiz", "bemerkung"),
         "start": _suggest_header(headers_in, "start", "start_date", "beginn", "von", "ab", "startdatum", "datum_start"),
         "end": _suggest_header(headers_in, "end", "end_date", "ende", "bis", "enddatum", "datum_ende"),
         "weight": _suggest_header(headers_in, "weight", "gewicht", "prio", "priority"),
     }
-
-
-def _resolve_preview_category_header(
-    headers: List[str],
-    suggested: Dict[str, Optional[str]],
-    kind: str,
-    category_column: Optional[str],
-) -> Optional[str]:
-    """Pick which header to scan for unique category values in /uploads/preview (activities only)."""
-    if kind != "activities":
-        return None
-    if category_column is not None:
-        cc = str(category_column).strip()
-        if cc and cc in headers:
-            return cc
-    return suggested.get("category")
-
-
-def _preview_category_cell_value(v: Any) -> Optional[str]:
-    """Normalize a cell for category-unique collection in /uploads/preview (activities)."""
-    if v in (None, ""):
-        return None
-    s = str(v).strip()
-    s_low = s.lower()
-    if not s or s_low in {"titel", "title", "_titel", "summe", "total", "subtotal", "zwischensumme"} or s_low.startswith("_titel"):
-        return None
-    return s
 
 
 def _parse_float(v: Any) -> Optional[float]:
@@ -1227,8 +1171,14 @@ def upload_file(
         elif name_lower.endswith(".xlsx") or ctype in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
             # Use multi-sheet extraction with format-specific normalizers (e.g., SAP Mediaplan timeline fills).
             tables = _extract_xlsx_tables(content)
-            _, rows_all = _merge_xlsx_tables(tables)
-            rows = rows_all
+            picked = None
+            for t in tables:
+                if str(t.get("sheet") or "").strip().lower() == "mediaplan":
+                    picked = t
+                    break
+            if not picked and tables:
+                picked = max(tables, key=lambda t: len(t.get("rows") or []))
+            rows = list((picked or {}).get("rows") or [])
         else:
             # Non-tabular file: keep as stored upload only (no import)
             return {
@@ -1598,20 +1548,10 @@ def upload_file(
             for row in rows:
                 try:
                     title = (
-                        gm(row, "title", "title", "name", "massnahme", "massnahmen", "maßnahme", "maßnahmen", "aktion", "initiative", "kampagne", "projekt")
+                        gm(row, "title", "title", "name", "massnahme", "maßnahme", "aktion", "initiative", "kampagne", "projekt")
                         or "Untitled"
                     )
-                    category = gm(
-                        row,
-                        "category",
-                        "category",
-                        "type",
-                        "kategorie",
-                        "bereich",
-                        "thema",
-                        "channel",
-                        "kanal",
-                    ) or "VERKAUFSFOERDERUNG"
+                    category = gm(row, "category", *_ACTIVITY_CATEGORY_HEADER_ALIASES) or "VERKAUFSFOERDERUNG"
                     category = remap_category_value(category) or "VERKAUFSFOERDERUNG"
                     raw_status = (gm(row, "status", "status", "phase", "workflow") or "ACTIVE")
                     s_norm = str(raw_status or "").strip().lower()
@@ -1638,18 +1578,7 @@ def upload_file(
 
                     budget = _parse_float(gm(row, "budget", "budget", "budgetCHF", "kosten", "betrag", "chf"))
                     weight = _parse_float(gm(row, "weight", "weight", "gewicht", "prio", "priority"))
-                    notes = gm(
-                        row,
-                        "notes",
-                        "notes",
-                        "expected_output",
-                        "beschreibung",
-                        "kommentar",
-                        "notiz",
-                        "bemerkung",
-                        "massnahme im detail",
-                        "massnahmen im detail",
-                    )
+                    notes = gm(row, "notes", "notes", "expected_output", "beschreibung", "kommentar", "notiz", "bemerkung")
                     start = parse_date(gm(row, "start", "start", "start_date", "beginn", "von", "ab", "startdatum"))
                     end = parse_date(gm(row, "end", "end", "end_date", "ende", "bis", "enddatum"))
 
@@ -1710,7 +1639,6 @@ def upload_file(
 def preview_upload(
     file: UploadFile = File(...),
     import_kind: Optional[str] = Form(default="activities"),
-    category_column: Optional[str] = Form(default=None),
     current_user: User = Depends(get_current_user),
 ):
     """Return headers, first rows and suggested mapping for CSV/XLSX."""
@@ -1722,10 +1650,11 @@ def preview_upload(
     headers: List[str] = []
     suggested: Dict[str, Optional[str]] = {}
     category_values: set[str] = set()
-    cat_header: Optional[str] = None
+    category_values_by_header: Dict[str, set[str]] = {}
     max_sample_rows = 5
     max_scan_rows = 5000
     max_unique_categories = 200
+    normalized_activity_category_aliases = {_norm_header(v) for v in _ACTIVITY_CATEGORY_HEADER_ALIASES}
 
     def suggest_mapping(headers_in: List[str]) -> Dict[str, Optional[str]]:
         return _suggest_mapping_activities(headers_in)
@@ -1746,20 +1675,43 @@ def preview_upload(
             suggested = _suggest_mapping_budget(headers)
         else:
             suggested = suggest_mapping(headers)
-        cat_header = _resolve_preview_category_header(headers, suggested, kind, category_column)
+        candidate_category_headers: List[str] = []
+        if kind == "activities":
+            for h in headers:
+                if _norm_header(h) in normalized_activity_category_aliases:
+                    candidate_category_headers.append(h)
+            if suggested.get("category") and suggested.get("category") not in candidate_category_headers:
+                candidate_category_headers.append(str(suggested.get("category")))
+            for h in candidate_category_headers:
+                category_values_by_header[h] = set()
         for i, row in enumerate(reader):
             if i < max_sample_rows:
                 rows.append(row)
-            if cat_header:
-                s = _preview_category_cell_value(row.get(cat_header))
-                if s:
+            for h in candidate_category_headers:
+                v = row.get(h)
+                if v in (None, ""):
+                    continue
+                s = str(v).strip()
+                if not s:
+                    continue
+                category_values_by_header.setdefault(h, set()).add(s)
+                if h == suggested.get("category"):
                     category_values.add(s)
-            if i >= max_scan_rows or len(category_values) >= max_unique_categories:
+            if i >= max_scan_rows:
                 break
     elif name_lower.endswith(".xlsx") or ctype in {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:
         # Use multi-sheet extraction with format-specific normalizers (e.g., SAP Mediaplan timeline fills).
         tables = _extract_xlsx_tables(content)
-        headers, parsed_rows = _merge_xlsx_tables(tables, max_rows=max_scan_rows)
+        # Prefer a "Mediaplan" sheet if present; otherwise use the largest table.
+        picked = None
+        for t in tables:
+            if str(t.get("sheet") or "").strip().lower() == "mediaplan":
+                picked = t
+                break
+        if not picked and tables:
+            picked = max(tables, key=lambda t: len(t.get("rows") or []))
+        headers = list((picked or {}).get("headers") or [])
+        parsed_rows = list((picked or {}).get("rows") or [])
         if kind == "crm":
             suggested = _suggest_mapping_crm(headers)
         elif kind == "content":
@@ -1768,36 +1720,51 @@ def preview_upload(
             suggested = _suggest_mapping_budget(headers)
         else:
             suggested = suggest_mapping(headers)
-        cat_header = _resolve_preview_category_header(headers, suggested, kind, category_column)
-        for row in parsed_rows[:max_sample_rows]:
-            rows.append(row)
+        candidate_category_headers = []
         if kind == "activities":
-            for table in tables:
-                table_headers = list(table.get("headers") or [])
-                local_suggested = _suggest_mapping_activities(table_headers)
-                local_cat_header = _resolve_preview_category_header(table_headers, local_suggested, kind, category_column)
-                for i, row in enumerate(list(table.get("rows") or [])):
-                    if local_cat_header:
-                        s = _preview_category_cell_value(row.get(local_cat_header))
-                        if s:
-                            category_values.add(s)
-                    if i >= max_scan_rows or len(category_values) >= max_unique_categories:
-                        break
-                if len(category_values) >= max_unique_categories:
-                    break
+            for h in headers:
+                if _norm_header(h) in normalized_activity_category_aliases:
+                    candidate_category_headers.append(h)
+            if suggested.get("category") and suggested.get("category") not in candidate_category_headers:
+                candidate_category_headers.append(str(suggested.get("category")))
+            for h in candidate_category_headers:
+                category_values_by_header[h] = set()
+        for i, row in enumerate(parsed_rows):
+            if i < max_sample_rows:
+                rows.append(row)
+            for h in candidate_category_headers:
+                v = row.get(h)
+                if v in (None, ""):
+                    continue
+                s = str(v).strip()
+                if not s:
+                    continue
+                category_values_by_header.setdefault(h, set()).add(s)
+                if h == suggested.get("category"):
+                    category_values.add(s)
+            if i >= max_scan_rows:
+                break
     else:
         raise HTTPException(status_code=415, detail="Unsupported file type. Upload CSV or XLSX")
 
-    out: Dict[str, Any] = {
+    return {
         "headers": headers,
         "samples": rows,
         "suggested_mapping": suggested,
+        **({"category_values": sorted(list(category_values))} if kind == "activities" else {}),
+        **(
+            {
+                "category_values_by_header": {
+                    h: sorted(list(vals))[:max_unique_categories]
+                    for h, vals in category_values_by_header.items()
+                    if vals
+                }
+            }
+            if kind == "activities"
+            else {}
+        ),
         "import_kind": kind,
     }
-    if kind == "activities":
-        out["category_values"] = sorted(list(category_values))
-        out["category_column_used"] = cat_header
-    return out
 
 
 def _mask_value(v: Any) -> Any:
@@ -2200,7 +2167,7 @@ async def ai_analyze_upload(
 
             return {
                 "title": suggest("title", "name", "massnahme", "maßnahme", "aktion", "initiative", "kampagne", "projekt"),
-                "category": suggest("category", "type", "kategorie", "bereich", "thema", "channel", "kanal", "kostenart", "kosten_art", "cost_type"),
+                "category": suggest(*_ACTIVITY_CATEGORY_HEADER_ALIASES),
                 "status": suggest("status", "phase", "workflow"),
                 "budget": suggest("budget", "budgetchf", "kosten", "betrag", "chf"),
                 "notes": suggest("notes", "expected_output", "beschreibung", "kommentar", "notiz", "bemerkung"),
@@ -2225,7 +2192,7 @@ async def ai_analyze_upload(
 
     missingness = _compute_missingness(headers, parsed_rows[:min(400, len(parsed_rows))]) if parsed_rows else {}
     top_cats = []
-    cat_h = _suggest_header(headers, "category", "kategorie", "type", "bereich", "kanal", "channel")
+    cat_h = _suggest_header(headers, *_ACTIVITY_CATEGORY_HEADER_ALIASES)
     if cat_h:
         top_cats = _top_values(parsed_rows[:min(600, len(parsed_rows))], cat_h, limit=6)
 
