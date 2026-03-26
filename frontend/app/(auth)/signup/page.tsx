@@ -249,7 +249,7 @@ function SignupInner() {
     setLoginLoading(true)
     setLogin2faError(null)
     try {
-      wakeBackend()
+      await wakeBackend({ force: true, maxAgeMs: 0, maxWaitMs: 45_000 }).catch(() => {})
       // Use Next.js API proxy to avoid any direct browser CORS issues.
       // Also handle transient 502/503/504 (cold starts) gracefully.
       const payload = JSON.stringify({ email: loginEmail, password: loginPassword })
@@ -265,10 +265,9 @@ function SignupInner() {
 
       let res = await doLogin()
 
-      // One retry for transient gateway errors (Render cold start, etc.)
+      // One stronger retry for transient gateway errors (Render cold start, etc.)
       if (!res.ok && [502, 503, 504].includes(res.status)) {
-        wakeBackend()
-        await new Promise((r) => setTimeout(r, 5000))
+        await wakeBackend({ force: true, maxAgeMs: 0, maxWaitMs: 45_000 }).catch(() => {})
         res = await doLogin()
       }
 
