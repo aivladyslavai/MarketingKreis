@@ -9,6 +9,7 @@ import io
 import hashlib
 import json
 import httpx
+import logging
 import re
 import calendar
 
@@ -31,6 +32,25 @@ from app.api.deps import get_current_user, get_org_id, is_demo_user, require_wri
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/uploads", tags=["uploads"]) 
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_add_upload_audit_log(db: Session, **payload: Any) -> None:
+    """
+    Audit logging must never block the actual user action.
+    Use a savepoint so broken/misaligned audit constraints in production
+    do not abort the surrounding delete/import transaction.
+    """
+    try:
+        with db.begin_nested():
+            db.add(UploadAuditLog(**payload))
+            db.flush()
+    except Exception:
+        try:
+            logger.warning("upload audit log skipped", exc_info=True)
+        except Exception:
+            pass
 
 
 @router.delete("/{upload_id}")
@@ -300,19 +320,15 @@ def delete_upload(
         pass
 
     # Audit log: who deleted
-    try:
-        if get_settings().upload_audit_enabled:
-            db.add(
-                UploadAuditLog(
-                    organization_id=org,
-                    upload_id=int(upload_id),
-                    actor_id=current_user.id,
-                    action="deleted",
-                    details=json.dumps({"deleted": deleted}),
-                )
-            )
-    except Exception:
-        pass
+    if get_settings().upload_audit_enabled:
+        _safe_add_upload_audit_log(
+            db,
+            organization_id=org,
+            upload_id=int(upload_id),
+            actor_id=current_user.id,
+            action="deleted",
+            details=json.dumps({"deleted": deleted}),
+        )
 
     # Finally delete upload record itself.
     try:
@@ -3288,19 +3304,15 @@ def smart_import_upload(
     job.progress = 100
     db.flush()
     # Audit log: who imported
-    try:
-        if settings.upload_audit_enabled:
-            db.add(
-                UploadAuditLog(
-                    organization_id=org,
-                    upload_id=int(upload.id),
-                    actor_id=current_user.id,
-                    action="imported",
-                    details=json.dumps({"job_id": int(job.id), "totals": totals}),
-                )
-            )
-    except Exception:
-        pass
+    if settings.upload_audit_enabled:
+        _safe_add_upload_audit_log(
+            db,
+            organization_id=org,
+            upload_id=int(upload.id),
+            actor_id=current_user.id,
+            action="imported",
+            details=json.dumps({"job_id": int(job.id), "totals": totals}),
+        )
     db.commit()
 
     return {
