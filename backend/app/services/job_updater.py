@@ -25,13 +25,13 @@ def update_job_progress(
     progress: Optional[int] = None,
     result: Optional[str] = None,
 ) -> None:
-    """Update job stage/progress during long-running import."""
+    """Update job phase/progress during long-running import."""
     db: Session = SessionLocal()
     try:
         job = db.query(Job).filter(Job.rq_id == rq_id).first()
         if job:
             if stage is not None:
-                job.stage = stage
+                job.phase = stage
             if progress is not None:
                 job.progress = min(100, max(0, progress))
             if result is not None:

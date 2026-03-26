@@ -79,7 +79,13 @@ def _ensure_production_schema() -> None:
                         "where table_name='activities' and column_name='source_upload_id' limit 1"
                     )
                 ).first()
-                if has_org and has_src:
+                has_job_phase = conn.execute(
+                    text(
+                        "select 1 from information_schema.columns "
+                        "where table_name='jobs' and column_name='phase' limit 1"
+                    )
+                ).first()
+                if has_org and has_src and has_job_phase:
                     _schema_checked = True
                     return
         except Exception:
@@ -166,6 +172,17 @@ def _ensure_production_schema() -> None:
                 conn.execute(text("alter table if exists jobs add column if not exists progress integer;"))
                 conn.execute(text("alter table if exists jobs add column if not exists upload_id integer;"))
                 conn.execute(text("alter table if exists jobs add column if not exists cancelled_at timestamptz;"))
+                try:
+                    has_stage = conn.execute(
+                        text(
+                            "select 1 from information_schema.columns "
+                            "where table_name='jobs' and column_name='stage' limit 1"
+                        )
+                    ).first()
+                    if has_stage:
+                        conn.execute(text("update jobs set phase = stage where phase is null and stage is not null;"))
+                except Exception:
+                    pass
                 # Upload audit log (who imported/deleted)
                 conn.execute(
                     text(
@@ -224,7 +241,13 @@ def _ensure_production_schema() -> None:
                         "where table_name='activities' and column_name='source_upload_id' limit 1"
                     )
                 ).first()
-                _schema_checked = bool(has_org and has_src)
+                has_job_phase = conn.execute(
+                    text(
+                        "select 1 from information_schema.columns "
+                        "where table_name='jobs' and column_name='phase' limit 1"
+                    )
+                ).first()
+                _schema_checked = bool(has_org and has_src and has_job_phase)
         except Exception:
             _schema_checked = False
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
