@@ -118,6 +118,8 @@ function normalizeCategoryLoose(value: any): string {
     .replace(/[^A-Z0-9]/g, "")
 }
 
+const UPLOAD_CATEGORY_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"]
+
 function parseDateLike(value: any): Date | undefined {
   if (value == null || value === "") return undefined
   if (value instanceof Date) return value
@@ -163,6 +165,7 @@ export default function UploadsPage() {
     samples: any[]
     suggested_mapping: Record<string, string | null>
     category_values?: string[]
+    category_column_used?: string | null
     import_kind?: string
   } | null>(null)
   const activityMappingDefaults = React.useMemo(
@@ -208,10 +211,11 @@ export default function UploadsPage() {
   const [circleSize, setCircleSize] = React.useState<number>(520)
   const [isSmall, setIsSmall] = React.useState(false)
   const [showAllPreviewCols, setShowAllPreviewCols] = React.useState(false)
+  const [creatingCategories, setCreatingCategories] = React.useState(false)
 
   const { uploads, isLoading, refresh, uploadFile, previewFile, aiAnalyzeFile, smartImportFile, deleteUpload } = useUploadsApi()
   const { jobs, isLoading: jobsLoading, refresh: refreshJobs, downloadJobErrorsCsv } = useJobsApi()
-  const { categories: userCategories } = useUserCategories()
+  const { categories: userCategories, save: saveUserCategories } = useUserCategories()
 
   // Responsive circle size (prevents overflow on mobile)
   React.useEffect(() => {
@@ -320,6 +324,41 @@ export default function UploadsPage() {
     loadPreview(selectedFile)
   }, [importKind])
 
+  // Activities: backend category_values are scoped to the scanned column; refetch when mapping.category diverges.
+  React.useEffect(() => {
+    if (!selectedFile || !selectedIsTabular) return
+    if (importKind !== "activities") return
+    const cat = mapping.category
+    if (!cat) return
+    if (!preview) return
+    if (preview.category_column_used === cat) return
+
+    let cancelled = false
+    setPreviewLoading(true)
+    setError(null)
+    previewFile(selectedFile, importKind, cat)
+      .then((p) => {
+        if (!cancelled) setPreview(p)
+      })
+      .catch((e: any) => {
+        if (!cancelled) setError(e?.message || "Vorschau konnte nicht geladen werden")
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [
+    mapping.category,
+    importKind,
+    preview,
+    selectedFile,
+    selectedIsTabular,
+    preview?.category_column_used,
+    previewFile,
+  ])
+
   const platformCategoryOptions = React.useMemo(() => {
     return (userCategories || [])
       .map((c: any) => ({
@@ -348,22 +387,20 @@ export default function UploadsPage() {
   }, [platformCategoryOptions])
 
   const previewCategoryValues = React.useMemo(() => {
-    if (!preview || !selectedIsTabular) return [] as Array<{ key: string; raw: string }>
+    if (!preview || !selectedIsTabular || importKind !== "activities") return [] as Array<{ key: string; raw: string }>
     const header = mapping.category
     if (!header) return [] as Array<{ key: string; raw: string }>
     const seen = new Map<string, string>()
 
-    // If backend provided category values for the *suggested* category column,
-    // prefer them (covers all rows, not only the sample preview).
-    const suggestedHeader = (preview as any)?.suggested_mapping?.category
+    const backendCol = preview.category_column_used
+    const vals = preview.category_values
     const canUseBackendList =
-      Boolean(suggestedHeader) &&
-      header === suggestedHeader &&
-      Array.isArray((preview as any)?.category_values) &&
-      ((preview as any)?.category_values as any[]).length > 0
+      Array.isArray(vals) &&
+      vals.length > 0 &&
+      (backendCol === undefined || backendCol === null || backendCol === header)
 
     if (canUseBackendList) {
-      for (const raw of ((preview as any).category_values as any[]) || []) {
+      for (const raw of vals || []) {
         const s = String(raw ?? "").trim()
         if (!s) continue
         const key = normalizeCategoryKey(s)
@@ -379,7 +416,7 @@ export default function UploadsPage() {
       }
     }
     return Array.from(seen.entries()).map(([key, raw]) => ({ key, raw }))
-  }, [preview, selectedIsTabular, mapping.category])
+  }, [preview, selectedIsTabular, importKind, mapping.category])
 
   // Best-effort auto-match for common cases like "DIGITAL_MARKETING" vs "Digital Marketing"
   React.useEffect(() => {
@@ -421,6 +458,15 @@ export default function UploadsPage() {
       .filter(({ key }) => !platformCatsByKey.has(key) && !categoryValueMap[key])
       .map(({ key }) => key)
   }, [categoryMappingRequired, previewCategoryValues, platformCatsByKey, categoryValueMap])
+
+  const unresolvedCategoryValues = React.useMemo(() => {
+    if (!categoryMappingRequired) return [] as Array<{ key: string; raw: string }>
+    return previewCategoryValues.filter(({ key }) => !platformCatsByKey.has(key) && !categoryValueMap[key])
+  }, [categoryMappingRequired, previewCategoryValues, platformCatsByKey, categoryValueMap])
+
+  const creatableCategoryValues = React.useMemo(() => {
+    return previewCategoryValues.filter(({ key }) => !platformCatsByKey.has(key))
+  }, [previewCategoryValues, platformCatsByKey])
 
   const categoryMappingOk = unresolvedCategoryKeys.length === 0
 
@@ -492,7 +538,7 @@ export default function UploadsPage() {
 
     const year = (acts.find((a: any) => a?.start instanceof Date)?.start as Date | undefined)?.getFullYear() || new Date().getFullYear()
     return { year, activities: acts }
-  }, [preview, selectedIsTabular, mapping, platformCatsByKey, categoryValueMap])
+  }, [preview, selectedIsTabular, importKind, mapping, platformCatsByKey, categoryValueMap])
 
   const doImport = async () => {
     if (!selectedFile) return
@@ -525,6 +571,49 @@ export default function UploadsPage() {
       setUploading(false)
     }
   }
+
+  const createCategoriesFromFile = React.useCallback(async () => {
+    if (creatableCategoryValues.length === 0) return
+    const existing = (userCategories || [])
+      .map((c: any) => ({
+        name: String(c?.name || "").trim(),
+        color: String(c?.color || "").trim() || UPLOAD_CATEGORY_COLORS[0],
+        id: c?.id,
+        position: c?.position,
+      }))
+      .filter((c) => Boolean(c.name))
+    const existingKeys = new Set(existing.map((c) => normalizeCategoryKey(c.name)))
+    const next = [...existing]
+
+    for (const item of creatableCategoryValues) {
+      if (existingKeys.has(item.key)) continue
+      next.push({
+        name: item.raw,
+        color: UPLOAD_CATEGORY_COLORS[next.length % UPLOAD_CATEGORY_COLORS.length],
+      })
+      existingKeys.add(item.key)
+    }
+
+    if (next.length > 5) {
+      setError("Es können aktuell maximal 5 Kreis-Kategorien gespeichert werden. Bitte offene Kategorien zuerst zusammenführen.")
+      return
+    }
+
+    setCreatingCategories(true)
+    setError(null)
+    try {
+      await saveUserCategories(next)
+      openModal({
+        type: "info",
+        title: "Kategorien angelegt",
+        description: `${creatableCategoryValues.length} Kategorien aus der Datei wurden hinzugefügt und stehen jetzt direkt für den Import bereit.`,
+      })
+    } catch (e: any) {
+      setError(e?.message || "Kategorien konnten nicht angelegt werden")
+    } finally {
+      setCreatingCategories(false)
+    }
+  }, [creatableCategoryValues, openModal, saveUserCategories, userCategories])
 
   const doSmartImport = async (retryUploadId?: number) => {
     const file = retryUploadId ? undefined : selectedFile
@@ -1392,9 +1481,20 @@ export default function UploadsPage() {
                       auf deine bestehenden Kategorien am Kreis mappen.
                     </div>
                   ) : platformCategoryOptions.length === 0 ? (
-                    <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
-                      Keine bestehenden Kategorien gefunden. Lege zuerst Kategorien an (z.B. unter <b>Performance</b>),
-                      dann kannst du hier sauber mappen.
+                    <div className="mt-3 space-y-3">
+                      <div className="text-xs text-slate-600 dark:text-slate-400">
+                        Es gibt noch keine bestehenden Kategorien. Du kannst die in der Datei gefundenen Kategorien direkt
+                        hier anlegen und danach den Import ohne extra Zwischenschritt starten.
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="glass-card"
+                        disabled={creatingCategories || creatableCategoryValues.length === 0}
+                        onClick={createCategoriesFromFile}
+                      >
+                        {creatingCategories ? "legt an..." : `Kategorien aus Datei anlegen (${creatableCategoryValues.length})`}
+                      </Button>
                     </div>
                   ) : previewCategoryValues.length === 0 ? (
                     <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
@@ -1408,6 +1508,15 @@ export default function UploadsPage() {
             </div>
 
                       <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="glass-card"
+                          disabled={creatingCategories || creatableCategoryValues.length === 0}
+                          onClick={createCategoriesFromFile}
+                        >
+                          {creatingCategories ? "legt an..." : `Neue Kategorien anlegen (${creatableCategoryValues.length})`}
+                        </Button>
                         <GlassSelect
                           value={bulkCategoryTarget}
                           onChange={setBulkCategoryTarget}

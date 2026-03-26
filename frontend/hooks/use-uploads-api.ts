@@ -109,17 +109,20 @@ export function useUploadsApi() {
     previewFile: async (
       file: File,
       importKind?: ImportKind,
+      categoryColumn?: string | null,
     ): Promise<{
       headers: string[]
       samples: any[]
       suggested_mapping: Record<string, string | null>
       category_values?: string[]
+      category_column_used?: string | null
       import_kind?: string
     }> => {
       await wakeBackend().catch(() => {})
       const fd = new FormData()
       fd.append('file', file)
       if (importKind) fd.append('import_kind', importKind)
+      if (categoryColumn) fd.append('category_column', String(categoryColumn))
       const res = await fetch(`${apiBase}/uploads/preview`, { method: 'POST', body: fd, credentials: 'include' })
       if (!res.ok) throw new Error(await readApiErrorMessage(res))
       return await res.json()
