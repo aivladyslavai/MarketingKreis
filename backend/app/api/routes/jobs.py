@@ -9,8 +9,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from app.db.session import get_db_session
 from app.models.job import Job
-from app.models.user import UserRole
-from app.api.deps import get_current_user, get_org_id, require_role
+from app.api.deps import get_current_user, get_org_id
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -18,7 +17,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.get("")
 def list_jobs(
     db: Session = Depends(get_db_session),
-    current_user=Depends(require_role(UserRole.admin)),
+    current_user=Depends(get_current_user),
 ):
     org = get_org_id(current_user)
     jobs = db.query(Job).filter(Job.organization_id == org).order_by(Job.created_at.desc()).limit(50).all()
