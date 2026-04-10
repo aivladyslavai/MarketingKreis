@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { getISOWeeksInYear } from "date-fns"
+import { getISOWeek } from "date-fns"
 
 export type Activity = {
   id: string
@@ -32,28 +32,36 @@ interface RadialCircleProps {
   activities: Activity[]
   size?: number
   year?: number
+  viewStart?: Date
+  viewEnd?: Date
+  viewLabel?: string
   onActivityClick?: (activity: Activity) => void
   categories?: Array<{ name: string; color: string }>
   onActivityUpdate?: (activityId: string, updates: Partial<Activity>) => void
   labelMode?: RadialCircleLabelMode
   connectionMode?: RadialCircleConnectionMode
+  showRangeBadge?: boolean
 }
 
 export default function RadialCircle({
   activities,
   size = 600,
   year = new Date().getFullYear(),
+  viewStart,
+  viewEnd,
+  viewLabel,
   onActivityClick,
   categories,
   onActivityUpdate,
   labelMode = "auto",
   connectionMode = "auto",
+  showRangeBadge = false,
 }: RadialCircleProps) {
   // Responsive render size (fits container; capped by provided size)
   const wrapRef = React.useRef<HTMLDivElement | null>(null)
   const svgRef = React.useRef<SVGSVGElement | null>(null)
   // Month focus ("magnifier"): clicking a month zooms into it
-  const [focusedMonth, setFocusedMonth] = React.useState<number | null>(null)
+  const [focusedMonthStart, setFocusedMonthStart] = React.useState<Date | null>(null)
   const [renderSize, setRenderSize] = React.useState<number>(size)
   React.useEffect(() => {
     const el = wrapRef.current
@@ -66,7 +74,7 @@ export default function RadialCircle({
       setRenderSize(Math.min(size, w))
     }) : null
     if (ro) { ro.observe(el); return () => ro.disconnect() }
-  }, [size, focusedMonth])
+  }, [size, focusedMonthStart])
   const rs = renderSize
   const isSmall = rs < 520
   const isTiny = rs < 360
@@ -82,15 +90,27 @@ export default function RadialCircle({
   const sideGutter = Math.max(0, (rs - circleRs) / 2)
   const cx = rs / 2
   const cy = rs / 2
-  const months = 12
+  const baseViewStart = React.useMemo(() => {
+    if (viewStart instanceof Date && !Number.isNaN(viewStart.getTime())) {
+      return new Date(viewStart.getFullYear(), viewStart.getMonth(), viewStart.getDate(), 0, 0, 0, 0)
+    }
+    return new Date(year, 0, 1, 0, 0, 0, 0)
+  }, [viewStart, year])
+
+  const baseViewEnd = React.useMemo(() => {
+    if (viewEnd instanceof Date && !Number.isNaN(viewEnd.getTime())) {
+      return new Date(viewEnd.getFullYear(), viewEnd.getMonth(), viewEnd.getDate(), 23, 59, 59, 999)
+    }
+    return new Date(year, 11, 31, 23, 59, 59, 999)
+  }, [viewEnd, year])
 
   const focus = React.useMemo(() => {
-    if (focusedMonth == null) return null
-    const start = new Date(year, focusedMonth, 1, 0, 0, 0, 0)
-    const end = new Date(year, focusedMonth + 1, 0, 23, 59, 59, 999)
-    const days = new Date(year, focusedMonth + 1, 0).getDate()
-    return { month: focusedMonth, start, end, days }
-  }, [focusedMonth, year])
+    if (!(focusedMonthStart instanceof Date) || Number.isNaN(focusedMonthStart.getTime())) return null
+    const start = new Date(focusedMonthStart.getFullYear(), focusedMonthStart.getMonth(), 1, 0, 0, 0, 0)
+    const end = new Date(focusedMonthStart.getFullYear(), focusedMonthStart.getMonth() + 1, 0, 23, 59, 59, 999)
+    const days = new Date(focusedMonthStart.getFullYear(), focusedMonthStart.getMonth() + 1, 0).getDate()
+    return { month: focusedMonthStart.getMonth(), start, end, days }
+  }, [focusedMonthStart])
 
   // Normalize category names so lookups are stable regardless of case/whitespace
   const normalizeCategoryName = React.useCallback((name?: string) => String(name ?? "").trim().toUpperCase(), [])
@@ -98,7 +118,15 @@ export default function RadialCircle({
   const monthNamesFull = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
   const monthNamesTiny = ['J','F','M','A','M','J','J','A','S','O','N','D']
   const monthNames = isTiny ? monthNamesTiny : monthNamesFull
-  const weeksInYear = getISOWeeksInYear(new Date(year, 0, 4))
+  const viewRangeMs = Math.max(1, baseViewEnd.getTime() - baseViewStart.getTime())
+  const viewRangeDays = Math.max(1, Math.ceil(viewRangeMs / (1000 * 60 * 60 * 24)))
+  const viewCenterLabel = React.useMemo(() => {
+    if (viewLabel) return viewLabel
+    if (baseViewStart.getFullYear() === baseViewEnd.getFullYear() && baseViewStart.getMonth() === 0 && baseViewEnd.getMonth() === 11) {
+      return String(baseViewStart.getFullYear())
+    }
+    return `${monthNamesFull[baseViewStart.getMonth()]} ${baseViewStart.getFullYear()} - ${monthNamesFull[baseViewEnd.getMonth()]} ${baseViewEnd.getFullYear()}`
+  }, [baseViewEnd, baseViewStart, monthNamesFull, viewLabel])
 
   const getAngle = (date?: Date) => {
     if (focus) {
@@ -112,9 +140,10 @@ export default function RadialCircle({
       const frac = Math.min(0.999999, Math.max(0, dayFloat / Math.max(1, focus.days)))
       return frac * Math.PI * 2 - Math.PI / 2
     }
-    const d = date ?? new Date()
-    const m = d.getMonth() + d.getDate() / 30
-    return (m / months) * Math.PI * 2 - Math.PI / 2
+    const d = date ?? baseViewStart
+    const t = Math.min(Math.max(d.getTime(), baseViewStart.getTime()), baseViewEnd.getTime())
+    const frac = Math.min(0.999999, Math.max(0, (t - baseViewStart.getTime()) / viewRangeMs))
+    return frac * Math.PI * 2 - Math.PI / 2
   }
 
   const angleToDate = (angle: number): Date => {
@@ -128,21 +157,16 @@ export default function RadialCircle({
       const days = Math.max(1, focus.days)
       const dayFloat = fraction * days
       const day = Math.max(1, Math.min(days, Math.floor(dayFloat) + 1))
-      return new Date(year, focus.month, day, 9, 0, 0)
+      return new Date(focus.start.getFullYear(), focus.month, day, 9, 0, 0)
     }
-
-    const monthFloat = fraction * 12
-    const month = Math.floor(monthFloat)
-    const monthFrac = monthFloat - month
-    const daysInMonth = new Date(year, month + 1, 0).getDate()
-    const day = Math.max(1, Math.min(daysInMonth, Math.round(monthFrac * (daysInMonth - 1)) + 1))
-    return new Date(year, month, day, 9, 0, 0)
+    return new Date(baseViewStart.getTime() + fraction * viewRangeMs)
   }
 
   const renderActivities = React.useMemo(() => {
-    if (!focus) return activities
-    const startMs = focus.start.getTime()
-    const endMs = focus.end.getTime()
+    const activeStart = focus ? focus.start : baseViewStart
+    const activeEnd = focus ? focus.end : baseViewEnd
+    const startMs = activeStart.getTime()
+    const endMs = activeEnd.getTime()
     return activities.filter((a) => {
       const s = a.start instanceof Date ? a.start.getTime() : NaN
       const e = a.end instanceof Date ? a.end.getTime() : NaN
@@ -150,7 +174,41 @@ export default function RadialCircle({
       if (Number.isFinite(e)) return s <= endMs && e >= startMs
       return s >= startMs && s <= endMs
     })
-  }, [activities, focus])
+  }, [activities, baseViewEnd, baseViewStart, focus])
+
+  const monthTicks = React.useMemo(() => {
+    if (focus) return [] as Date[]
+    const ticks: Date[] = []
+    const cursor = new Date(baseViewStart.getFullYear(), baseViewStart.getMonth(), 1, 0, 0, 0, 0)
+    const last = new Date(baseViewEnd.getFullYear(), baseViewEnd.getMonth(), 1, 0, 0, 0, 0)
+    while (cursor <= last) {
+      ticks.push(new Date(cursor))
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
+    return ticks
+  }, [baseViewEnd, baseViewStart, focus])
+
+  const weekTicks = React.useMemo(() => {
+    if (focus) return [] as Date[]
+    const ticks: Date[] = []
+    const cursor = new Date(baseViewStart.getFullYear(), baseViewStart.getMonth(), baseViewStart.getDate(), 0, 0, 0, 0)
+    while (cursor <= baseViewEnd) {
+      ticks.push(new Date(cursor))
+      cursor.setDate(cursor.getDate() + 7)
+    }
+    return ticks
+  }, [baseViewEnd, baseViewStart, focus])
+
+  const getRangeBadge = React.useCallback((a: Activity) => {
+    if (!showRangeBadge) return null
+    const s = a.start instanceof Date ? a.start : null
+    const e = a.end instanceof Date ? a.end : null
+    if (!s || !e) return null
+    const sy = s.getFullYear()
+    const ey = e.getFullYear()
+    if (!Number.isFinite(sy) || !Number.isFinite(ey) || sy === ey) return null
+    return `${sy}-${ey}`
+  }, [showRangeBadge])
 
   // Build ring model
   const rings = React.useMemo(() => {
@@ -559,11 +617,11 @@ export default function RadialCircle({
             type="button"
             className="pointer-events-auto rounded-lg border border-white/15 bg-slate-900/70 px-2 py-1 text-[11px] font-semibold text-slate-100 hover:bg-slate-900/90"
             onClick={() => {
-              setFocusedMonth(null)
+              setFocusedMonthStart(null)
               setPopup(null)
             }}
           >
-            ← Jahr
+            ← Zeitraum
           </button>
         </div>
       )}
@@ -585,7 +643,7 @@ export default function RadialCircle({
       >
       <defs>
         {/* Glow filters for activity dots */}
-        {rings.map((ring, i) => (
+        {rings.map((ring) => (
           <filter key={`glow-${ring.nameKey}`} id={`glow-${ring.nameKey}`} x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
             <feMerge>
@@ -605,7 +663,6 @@ export default function RadialCircle({
         const color = ringColorByCategory[ring.nameKey]
         const fontSize = fs(11)
         const lineH = fontSize * 1.15
-        const approxCharW = Math.max(6, fontSize * 0.56)
         // Keep these labels compact; they are "category names" not activity titles.
         const maxChars = isSmall ? 12 : 16
         const lines = wrapLabel(ring.name, maxChars, 2)
@@ -659,8 +716,8 @@ export default function RadialCircle({
       })}
 
       {/* Month ticks and labels (click a month to zoom) */}
-      {!focus && Array.from({ length: months }).map((_, i) => {
-        const angle = (i / months) * Math.PI * 2 - Math.PI / 2
+      {!focus && monthTicks.map((monthDate, i) => {
+        const angle = getAngle(monthDate)
         // Outer tick
         const x1 = cx + Math.cos(angle) * (radius - 10 * scale)
         const y1 = cy + Math.sin(angle) * (radius - 10 * scale)
@@ -669,26 +726,39 @@ export default function RadialCircle({
         // Label position
         const labelX = cx + Math.cos(angle) * (radius + 18 * scale)
         const labelY = cy + Math.sin(angle) * (radius + 18 * scale)
+        const monthCount = monthTicks.length
+        const showLabel =
+          monthCount <= 12 ||
+          i === 0 ||
+          i === monthCount - 1 ||
+          monthDate.getMonth() === 0 ||
+          (monthCount <= 24 ? i % 2 === 0 : i % 3 === 0)
+        const isYearBreak = i === 0 || monthDate.getMonth() === 0
+        const monthLabel = monthCount <= 12
+          ? monthNames[monthDate.getMonth()]
+          : `${monthNames[monthDate.getMonth()]}${isYearBreak ? ` ${String(monthDate.getFullYear()).slice(-2)}` : ""}`
 
         return (
-          <g key={i}>
+          <g key={monthDate.toISOString()}>
             <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#475569" strokeWidth={sw(2)} />
-            <text
-              x={labelX}
-              y={labelY}
-              fontSize={fs(12)}
-              fill="#94a3b8"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontWeight="600"
-              style={{ cursor: "zoom-in", userSelect: "none" }}
-              onClick={() => {
-                setFocusedMonth(i)
-                setPopup(null)
-              }}
-            >
-              {monthNames[i]}
-            </text>
+            {showLabel && (
+              <text
+                x={labelX}
+                y={labelY}
+                fontSize={fs(monthCount <= 12 ? 12 : 10)}
+                fill="#94a3b8"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontWeight="600"
+                style={{ cursor: "zoom-in", userSelect: "none" }}
+                onClick={() => {
+                  setFocusedMonthStart(new Date(monthDate))
+                  setPopup(null)
+                }}
+              >
+                {monthLabel}
+              </text>
+            )}
           </g>
         )
       })}
@@ -729,9 +799,9 @@ export default function RadialCircle({
       })}
 
       {/* Week ticks and sparse labels (KW) */}
-      {!focus && Array.from({ length: weeksInYear }).map((_, i) => {
-        const w = i + 1
-        const angle = (w / weeksInYear) * Math.PI * 2 - Math.PI / 2
+      {!focus && weekTicks.map((weekDate, i) => {
+        const w = getISOWeek(weekDate)
+        const angle = getAngle(weekDate)
         const inner = radius - 16 * scale
         const outer = radius - 10 * scale
         const x1 = cx + Math.cos(angle) * inner
@@ -739,12 +809,12 @@ export default function RadialCircle({
         const x2 = cx + Math.cos(angle) * outer
         const y2 = cy + Math.sin(angle) * outer
         // Reduce visual noise on small screens
-        const step = isTiny ? 14 : isSmall ? 10 : 4
-        const showLabel = w === 1 || w % step === 1
+        const step = viewRangeDays <= 370 ? (isTiny ? 14 : isSmall ? 10 : 4) : viewRangeDays <= 740 ? 8 : 12
+        const showLabel = i === 0 || i === weekTicks.length - 1 || i % step === 0
         const lx = cx + Math.cos(angle) * (radius - 30 * scale)
         const ly = cy + Math.sin(angle) * (radius - 30 * scale)
         return (
-          <g key={`kw-${w}`}>
+          <g key={`kw-${weekDate.toISOString()}`}>
             <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#334155" strokeWidth={sw(1)} opacity={0.6} />
             {showLabel && !isTiny && (
               <text 
@@ -791,7 +861,13 @@ export default function RadialCircle({
 
       {/* Activity dots and ranges aligned to category ring */}
       {renderActivities.map((a) => {
-        const startAngle = getAngle(a.start)
+        const sourceStart = a.start instanceof Date ? a.start : undefined
+        const sourceEnd = a.end instanceof Date ? a.end : undefined
+        const activeRangeStart = focus ? focus.start : baseViewStart
+        const activeRangeEnd = focus ? focus.end : baseViewEnd
+        const displayStart = sourceStart ? new Date(Math.max(sourceStart.getTime(), activeRangeStart.getTime())) : undefined
+        const displayEnd = sourceEnd ? new Date(Math.min(sourceEnd.getTime(), activeRangeEnd.getTime())) : undefined
+        const startAngle = getAngle(displayStart ?? sourceStart)
         const catKey = resolveRingKey(a.category)
         const baseR = ringRadiusByCategory[catKey] ?? radius * 0.7
         const r = baseR + (laneOffsetById[a.id] ?? 0)
@@ -816,8 +892,8 @@ export default function RadialCircle({
         const labelText = truncateLabel(a.title, labelMax)
         
         // If activity has end date, draw an arc segment to represent duration
-        const endAngle = a.end ? getAngle(a.end) : null
-        const hasRange = a.end != null
+        const endAngle = displayEnd ? getAngle(displayEnd) : null
+        const hasRange = displayStart != null && displayEnd != null && displayEnd.getTime() >= displayStart.getTime()
 
         return (
           <g 
@@ -998,11 +1074,11 @@ export default function RadialCircle({
         style={focus ? { cursor: "zoom-out", userSelect: "none" } : { userSelect: "none" }}
         onClick={() => {
           if (!focus) return
-          setFocusedMonth(null)
+          setFocusedMonthStart(null)
           setPopup(null)
         }}
       >
-        {focus ? `${monthNamesFull[focus.month]} ${year}` : year}
+        {focus ? `${monthNamesFull[focus.month]} ${focus.start.getFullYear()}` : viewCenterLabel}
       </text>
       {focus && (
         <text
@@ -1015,7 +1091,7 @@ export default function RadialCircle({
           fontWeight="600"
           style={{ userSelect: "none" }}
         >
-          Zurück zum Jahr
+          Zurück zum Zeitraum
         </text>
       )}
       </svg>
@@ -1023,6 +1099,7 @@ export default function RadialCircle({
       {popup && (
         (() => {
           const isDetailed = Boolean(popup.detailed)
+          const rangeBadge = getRangeBadge(popup.a)
           const w = isDetailed ? Math.min(340, rs - 24) : popupW
           const h = isDetailed ? Math.min(260, rs - 24) : popupH
           return (
@@ -1030,6 +1107,11 @@ export default function RadialCircle({
               <div className="pointer-events-auto select-none rounded-xl border border-white/15 bg-slate-900/90 text-slate-100 shadow-xl backdrop-blur-md p-3 text-[11px]">
                 {/* Title */}
                 <div className="font-semibold text-xs mb-1 truncate" title={popup.a.title}>{popup.a.title}</div>
+                {rangeBadge && (
+                  <div className="mb-2 inline-flex rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+                    {rangeBadge}
+                  </div>
+                )}
                 {/* Summary rows when compact */}
                 {!isDetailed && (
                   <>
@@ -1043,6 +1125,7 @@ export default function RadialCircle({
                 {isDetailed && (
                   <div className="space-y-1 text-[11px]">
                     <div className="opacity-80">ID: <span className="opacity-100">{popup.a.id}</span></div>
+                    {rangeBadge && <div className="opacity-80">Zeitraum: <span className="opacity-100">{rangeBadge}</span></div>}
                     <div className="opacity-80">Kategorie: <span style={{color: ringColorByCategory[resolveRingKey(popup.a.category)]}}>{popup.a.category}</span></div>
                     <div className="opacity-80">Status: <span className="opacity-100">{popup.a.status}</span></div>
                     <div className="opacity-80">Start: <span className="opacity-100">{popup.a.start?.toLocaleString?.()}</span></div>

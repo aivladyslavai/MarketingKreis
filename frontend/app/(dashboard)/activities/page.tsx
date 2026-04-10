@@ -36,6 +36,18 @@ const defaultCategoryLabels: Record<string, string> = {
 }
 
 const checklistItems = ["Brief", "Copy", "Design", "Approved", "Scheduled"] as const
+type PeriodPreset = "1Y" | "2Y" | "3Y" | "CUSTOM"
+
+function getActivityRangeBadge(activity: any, enabled: boolean) {
+  if (!enabled) return null
+  const start = activity?.start ? new Date(activity.start as any) : null
+  const end = activity?.end ? new Date(activity.end as any) : null
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null
+  const startYear = start.getFullYear()
+  const endYear = end.getFullYear()
+  if (startYear === endYear) return null
+  return `${startYear}-${endYear}`
+}
 
 export default function ActivitiesPage() {
   const { activities, loading, error, addActivity, updateActivity, deleteActivity, refresh } = useActivities() as any
@@ -59,6 +71,19 @@ export default function ActivitiesPage() {
     const v = localStorage.getItem("activities:compact")
     return v === "1" || v === "true"
   })
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(() => {
+    if (typeof window === "undefined") return "1Y"
+    const v = localStorage.getItem("activities:periodPreset")
+    return v === "2Y" || v === "3Y" || v === "CUSTOM" ? v : "1Y"
+  })
+  const [customStart, setCustomStart] = useState<string>(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-01-01`
+  })
+  const [customEnd, setCustomEnd] = useState<string>(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-12-31`
+  })
   const { openModal, closeModal } = useModal()
   const { categories, save, reset } = useUserCategories()
   const [editCats, setEditCats] = useState(false)
@@ -76,6 +101,35 @@ export default function ActivitiesPage() {
   useEffect(() => { try { localStorage.setItem("activities:preset", preset) } catch {} }, [preset])
   useEffect(() => { try { localStorage.setItem("activities:compact", compact ? "1" : "0") } catch {} }, [compact])
   useEffect(() => { try { localStorage.setItem("activities:zoom", String(zoom)) } catch {} }, [zoom])
+  useEffect(() => { try { localStorage.setItem("activities:periodPreset", periodPreset) } catch {} }, [periodPreset])
+
+  const viewStart = (() => {
+    if (periodPreset === "CUSTOM") {
+      const start = new Date(`${customStart}T00:00:00`)
+      return Number.isNaN(start.getTime()) ? new Date(year, 0, 1, 0, 0, 0, 0) : start
+    }
+    return new Date(year, 0, 1, 0, 0, 0, 0)
+  })()
+
+  const viewEnd = (() => {
+    if (periodPreset === "CUSTOM") {
+      const end = new Date(`${customEnd}T23:59:59`)
+      const safeEnd = Number.isNaN(end.getTime()) ? new Date(year, 11, 31, 23, 59, 59, 999) : end
+      return safeEnd >= viewStart ? safeEnd : new Date(viewStart.getFullYear(), viewStart.getMonth(), viewStart.getDate(), 23, 59, 59, 999)
+    }
+    const spanYears = periodPreset === "3Y" ? 3 : periodPreset === "2Y" ? 2 : 1
+    return new Date(year + spanYears - 1, 11, 31, 23, 59, 59, 999)
+  })()
+
+  const viewLabel = (() => {
+    if (periodPreset === "CUSTOM") {
+      return `${format(viewStart, "dd.MM.yyyy", { locale: de })} - ${format(viewEnd, "dd.MM.yyyy", { locale: de })}`
+    }
+    if (periodPreset === "1Y") return String(year)
+    return `${year}-${viewEnd.getFullYear()}`
+  })()
+
+  const showYearRangeBadge = periodPreset === "1Y"
 
   // If imported activities live in a different year (e.g. media plan 2022/2023),
   // auto-switch the year once so the circle isn't empty.
@@ -137,14 +191,12 @@ export default function ActivitiesPage() {
   const getColor = (name: string) => userColorMap[name] || (categoryColors as any)[name] || '#64748b'
 
   const filtered = activities
-    // show if the activity overlaps the selected year at all
+    // show if the activity overlaps the selected visible period at all
     .filter((a: any) => {
       const s = a.start ? new Date(a.start) : undefined
       const e = a.end ? new Date(a.end) : undefined
-      const yearStart = new Date(year, 0, 1)
-      const yearEnd = new Date(year, 11, 31, 23, 59, 59)
-      if (s && e) return s <= yearEnd && e >= yearStart
-      if (s && !e) return s >= yearStart && s <= yearEnd
+      if (s && e) return s <= viewEnd && e >= viewStart
+      if (s && !e) return s >= viewStart && s <= viewEnd
       return true
     })
     .filter((a: any) => {
@@ -228,7 +280,7 @@ export default function ActivitiesPage() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
-    link.download = `activities-${year}-${preset.toLowerCase()}.csv`
+    link.download = `activities-${viewStart.getFullYear()}-${preset.toLowerCase()}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -298,13 +350,50 @@ export default function ActivitiesPage() {
           {/* Marketing Circle */}
           <Card className="glass-card p-3 sm:p-6 overflow-visible">
             {/* Controls - stacked on mobile, inline on desktop */}
-            <div className="mb-4 space-y-2 sm:space-y-0 sm:flex sm:items-center sm:gap-3 text-sm">
-              <div className="flex items-center justify-between sm:justify-start gap-2">
-                <span className="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-white/80 text-xs sm:text-sm">Jahr: {year}</span>
-                <div className="flex items-center gap-1">
-                  <Button size="sm" variant="outline" className="glass-card h-8 w-8 sm:w-auto sm:px-2 p-0" onClick={() => setYear((y) => y - 1)}>-</Button>
-                  <Button size="sm" variant="outline" className="glass-card h-8 w-8 sm:w-auto sm:px-2 p-0" onClick={() => setYear((y) => y + 1)}>+</Button>
+            <div className="mb-4 space-y-3 text-sm">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+                <span className="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-white/80 text-xs sm:text-sm">
+                  Zeitraum: {viewLabel}
+                </span>
+                <div className="w-full sm:w-40">
+                  <GlassSelect
+                    value={periodPreset}
+                    onChange={(value) => setPeriodPreset(value as PeriodPreset)}
+                    options={[
+                      { value: "1Y", label: "1 Jahr" },
+                      { value: "2Y", label: "2 Jahre" },
+                      { value: "3Y", label: "3 Jahre" },
+                      { value: "CUSTOM", label: "Custom" },
+                    ]}
+                    className="w-full"
+                  />
                 </div>
+                {periodPreset !== "CUSTOM" ? (
+                  <div className="flex items-center justify-between sm:justify-start gap-2">
+                    <span className="px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-white/80 text-xs sm:text-sm">
+                      Startjahr: {year}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button size="sm" variant="outline" className="glass-card h-8 w-8 sm:w-auto sm:px-2 p-0" onClick={() => setYear((y) => y - 1)}>-</Button>
+                      <Button size="sm" variant="outline" className="glass-card h-8 w-8 sm:w-auto sm:px-2 p-0" onClick={() => setYear((y) => y + 1)}>+</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
+                    <Input
+                      type="date"
+                      value={customStart}
+                      onChange={(e) => setCustomStart(e.target.value)}
+                      className="h-10 bg-white/10 border-white/20 text-white"
+                    />
+                    <Input
+                      type="date"
+                      value={customEnd}
+                      onChange={(e) => setCustomEnd(e.target.value)}
+                      className="h-10 bg-white/10 border-white/20 text-white"
+                    />
+                  </div>
+                )}
               </div>
               {/* Zoom controls are useful on desktop, but add noise on mobile */}
               {!isSmall && (
@@ -349,6 +438,10 @@ export default function ActivitiesPage() {
                 // Let the circle fill the available width on mobile (no tiny 360px cap)
                 size={(isSmall ? 740 : 820) * (isSmall ? 1 : zoom)}
                 year={year}
+                viewStart={viewStart}
+                viewEnd={viewEnd}
+                viewLabel={viewLabel}
+                showRangeBadge={showYearRangeBadge}
                 onActivityClick={(activity) => setSelectedActivity(activity)}
                 categories={categories}
                 onActivityUpdate={async (id, updates) => {
@@ -484,6 +577,11 @@ export default function ActivitiesPage() {
                       <Badge className="bg-white/10 text-slate-200 border-white/20 text-[11px] px-2 py-1">
                         {String(a.status).toUpperCase()}
                       </Badge>
+                      {getActivityRangeBadge(a, showYearRangeBadge) && (
+                        <Badge className="border-amber-400/30 bg-amber-400/10 text-amber-100 text-[11px] px-2 py-1">
+                          {getActivityRangeBadge(a, showYearRangeBadge)}
+                        </Badge>
+                      )}
                       {a?.stage && (
                         <Badge className="bg-blue-900/30 text-blue-200 border-blue-800 text-[11px] px-2 py-1">
                           {String(a.stage).toUpperCase()}
