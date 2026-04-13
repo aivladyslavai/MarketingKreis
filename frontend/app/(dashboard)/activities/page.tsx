@@ -18,7 +18,9 @@ import { GlassSelect } from "@/components/ui/glass-select"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import CategorySetup from "@/components/performance/CategorySetup"
 import { useUserCategories, type UserCategory } from "@/hooks/use-user-categories"
-import { CalendarDays, Check, Download, Pencil, Trash2 } from "lucide-react"
+import { Calendar } from "@/components/ui/calendar"
+import { cn } from "@/lib/utils"
+import { CalendarDays, Check, Download, Pencil, Trash2, X } from "lucide-react"
 
 // Category colors (same as in RadialCircle)
 const categoryColors: Record<string, string> = {
@@ -47,6 +49,110 @@ function getActivityRangeBadge(activity: any, enabled: boolean) {
   const endYear = end.getFullYear()
   if (startYear === endYear) return null
   return `${startYear}-${endYear}`
+}
+
+function parseDateValue(value?: string) {
+  if (!value) return undefined
+  const parsed = new Date(`${value}T12:00:00`)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed
+}
+
+function FancyDateInput({
+  value,
+  onChange,
+  placeholder,
+  className,
+  align = "left",
+  allowClear = false,
+}: {
+  value?: string
+  onChange: (value: string) => void
+  placeholder: string
+  className?: string
+  align?: "left" | "right"
+  allowClear?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const selectedDate = parseDateValue(value)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown)
+    return () => document.removeEventListener("mousedown", onPointerDown)
+  }, [open])
+
+  return (
+    <div ref={rootRef} className={cn("relative", className)}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className={cn(
+          "flex h-11 w-full items-center justify-between rounded-2xl border border-white/15 bg-white/8 px-3 text-left text-sm text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-sm transition-colors",
+          "hover:bg-white/12 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+        )}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-slate-200">
+            <CalendarDays className="h-3.5 w-3.5" />
+          </span>
+          <span className={cn("truncate", !selectedDate && "text-slate-400")}>
+            {selectedDate ? format(selectedDate, "d. MMM yyyy", { locale: de }) : placeholder}
+          </span>
+        </span>
+        {allowClear && value ? (
+          <span
+            role="button"
+            aria-label="Datum löschen"
+            className="ml-2 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+            onClick={(event) => {
+              event.stopPropagation()
+              onChange("")
+              setOpen(false)
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </span>
+        ) : null}
+      </button>
+
+      {open && (
+        <div
+          className={cn(
+            "absolute top-[calc(100%+0.5rem)] z-[130] rounded-2xl border border-white/10 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl",
+            align === "right" ? "right-0" : "left-0"
+          )}
+        >
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={(date) => {
+              if (!date) return
+              onChange(format(date, "yyyy-MM-dd"))
+              setOpen(false)
+            }}
+            initialFocus
+            className="rounded-xl bg-transparent text-white"
+            classNames={{
+              caption_label: "text-sm font-semibold text-white",
+              head_cell: "w-9 text-[0.8rem] font-medium uppercase tracking-[0.18em] text-slate-500",
+              day: "h-9 w-9 rounded-xl p-0 font-medium text-slate-200 hover:bg-white/10",
+              day_selected: "bg-blue-600 text-white hover:bg-blue-500 focus:bg-blue-600 focus:text-white",
+              day_today: "bg-white/10 text-white",
+              day_outside: "text-slate-600 opacity-70",
+              nav_button: "h-8 w-8 rounded-full border border-white/10 bg-white/5 p-0 text-slate-300 opacity-100 hover:bg-white/10 hover:text-white",
+              cell: "h-9 w-9 p-0 text-center text-sm",
+            }}
+          />
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function ActivitiesPage() {
@@ -380,17 +486,16 @@ export default function ActivitiesPage() {
                   </div>
                 ) : (
                   <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
-                    <Input
-                      type="date"
+                    <FancyDateInput
                       value={customStart}
-                      onChange={(e) => setCustomStart(e.target.value)}
-                      className="h-10 bg-white/10 border-white/20 text-white"
+                      onChange={setCustomStart}
+                      placeholder="Startdatum"
                     />
-                    <Input
-                      type="date"
+                    <FancyDateInput
                       value={customEnd}
-                      onChange={(e) => setCustomEnd(e.target.value)}
-                      className="h-10 bg-white/10 border-white/20 text-white"
+                      onChange={setCustomEnd}
+                      placeholder="Enddatum"
+                      align="right"
                     />
                   </div>
                 )}
@@ -700,11 +805,11 @@ function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<voi
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label>Start</Label>
-              <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} />
+              <FancyDateInput value={dateStart} onChange={setDateStart} placeholder="Startdatum" />
             </div>
             <div className="grid gap-1.5">
               <Label>Ende (optional)</Label>
-              <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} />
+              <FancyDateInput value={dateEnd} onChange={setDateEnd} placeholder="Enddatum" allowClear />
             </div>
           </div>
 
@@ -853,11 +958,11 @@ function EditActivityForm({ activity, onSave }: { activity: any; onSave: (update
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label>Start</Label>
-              <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} />
+              <FancyDateInput value={dateStart} onChange={setDateStart} placeholder="Startdatum" />
             </div>
             <div className="grid gap-1.5">
               <Label>Ende (optional)</Label>
-              <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} />
+              <FancyDateInput value={dateEnd} onChange={setDateEnd} placeholder="Enddatum" allowClear />
             </div>
           </div>
 
