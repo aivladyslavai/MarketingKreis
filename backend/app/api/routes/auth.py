@@ -114,14 +114,17 @@ def _set_auth_cookies(response: Response, *, access_token: str, refresh_token: s
         domain=cookie_domain,
         max_age=settings.access_token_expire_minutes * 60,
     )
-    # Refresh token: restrict to /auth to reduce exposure surface
+    # Refresh token must be available to same-origin proxy routes and middleware.
+    # Older direct-to-backend flows used path="/auth", but with Next.js proxying
+    # through "/api/auth/*" that path prevents the browser from sending the
+    # cookie during refresh and route-guard checks.
     response.set_cookie(
         key=settings.cookie_refresh_name,
         value=refresh_token,
         httponly=True,
         secure=cookie_secure,
         samesite=cookie_samesite,
-        path="/auth",
+        path="/",
         domain=cookie_domain,
         max_age=settings.refresh_token_expire_minutes * 60,
     )
@@ -144,9 +147,10 @@ def _set_auth_cookies(response: Response, *, access_token: str, refresh_token: s
 def _clear_auth_cookies(response: Response, settings) -> None:
     # Access cookie is global
     response.delete_cookie(settings.cookie_access_name, path="/", domain=settings.cookie_domain)
-    # Refresh cookie is restricted to /auth, but older deployments used path="/"
-    response.delete_cookie(settings.cookie_refresh_name, path="/auth", domain=settings.cookie_domain)
+    # Refresh cookie is now global for proxy compatibility, but clean up legacy paths too.
     response.delete_cookie(settings.cookie_refresh_name, path="/", domain=settings.cookie_domain)
+    response.delete_cookie(settings.cookie_refresh_name, path="/api/auth", domain=settings.cookie_domain)
+    response.delete_cookie(settings.cookie_refresh_name, path="/auth", domain=settings.cookie_domain)
     # CSRF cookie is global, but older deployments may have different path/domain combos.
     response.delete_cookie(settings.cookie_csrf_name, path="/", domain=settings.cookie_domain)
     response.delete_cookie(settings.cookie_csrf_name, path="/auth", domain=settings.cookie_domain)

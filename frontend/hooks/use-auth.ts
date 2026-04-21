@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { refreshAuthSession, requestLocal } from '@/lib/api'
 
 // Always go through Next.js API routes on the same origin (`/api/auth/...`)
 const API_BASE = ''
@@ -41,38 +42,60 @@ export function useAuth() {
     fetchProfile()
   }, [])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!state.user) return
+
+    const tick = async () => {
+      try {
+        if (document.visibilityState !== "visible") return
+      } catch {}
+      try {
+        await refreshAuthSession()
+      } catch {
+        // Best-effort only. On-demand requests can still refresh on 401.
+      }
+    }
+
+    const id = window.setInterval(() => {
+      void tick()
+    }, 10 * 60_000)
+
+    try {
+      document.addEventListener("visibilitychange", tick)
+    } catch {}
+
+    return () => {
+      window.clearInterval(id)
+      try {
+        document.removeEventListener("visibilitychange", tick)
+      } catch {}
+    }
+  }, [state.user])
+
   const fetchProfile = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/auth/profile`, {
-        credentials: 'include',
-      })
-
-      if (response.ok) {
-        const user = await response.json()
+      const user = await requestLocal<User | null>(`${API_BASE}/api/auth/profile`)
+      if (user) {
         setState({ user, loading: false, error: null })
       } else {
         setState({ user: null, loading: false, error: 'Not authenticated' })
       }
-    } catch (error) {
-      setState({ user: null, loading: false, error: 'Failed to fetch profile' })
+    } catch (error: any) {
+      const message = String(error?.message || "")
+      const notAuthenticated =
+        /not authenticated|invalid token|session revoked|user not found/i.test(message)
+      setState({
+        user: null,
+        loading: false,
+        error: notAuthenticated ? 'Not authenticated' : 'Failed to fetch profile',
+      })
     }
   }
 
   const logout = async () => {
     try {
-      const csrf = (() => {
-        try {
-          const m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/)
-          return m ? decodeURIComponent(m[1]) : ""
-        } catch {
-          return ""
-        }
-      })()
-      await fetch(`${API_BASE}/api/auth/logout`, {
-        method: 'POST',
-        headers: csrf ? { "X-CSRF-Token": csrf } : undefined,
-        credentials: 'include',
-      })
+      await requestLocal(`${API_BASE}/api/auth/logout`, { method: 'POST' })
       setState({ user: null, loading: false, error: null })
     } catch (error) {
       console.error('Logout failed:', error)

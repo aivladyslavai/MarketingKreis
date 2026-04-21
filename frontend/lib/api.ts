@@ -117,6 +117,7 @@ type StepUpEventDetail = {
 }
 
 let _stepUpGate: { promise: Promise<void>; resolve: () => void; reject: (err: any) => void } | null = null
+let _refreshGate: Promise<boolean> | null = null
 
 async function ensureAdminStepUp(message?: string): Promise<void> {
   if (typeof window === "undefined") throw new Error(message || "2FA step-up required")
@@ -144,6 +145,51 @@ async function ensureAdminStepUp(message?: string): Promise<void> {
   }
 }
 
+function shouldTrySessionRefresh(path: string, attempt: number): boolean {
+  if (attempt >= 1) return false
+  const normalized = path.startsWith("/") ? path : `/${path}`
+  const blockedPrefixes = [
+    "/auth/login",
+    "/auth/logout",
+    "/auth/register",
+    "/auth/refresh",
+    "/auth/verify",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/register",
+    "/api/auth/refresh",
+    "/api/auth/verify",
+  ]
+  return !blockedPrefixes.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`))
+}
+
+export async function refreshAuthSession(): Promise<boolean> {
+  if (_refreshGate) return _refreshGate
+
+  _refreshGate = (async () => {
+    const init = withCsrfHeader({ method: "POST" })
+    const timeoutMs = 25_000
+    const timed = withTimeout(init, timeoutMs)
+    try {
+      const res = await fetch("/api/auth/refresh", {
+        ...timed.init,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(timed.init.headers || {}) },
+        credentials: "include",
+        cache: "no-store",
+      })
+      return res.ok
+    } catch {
+      return false
+    } finally {
+      timed.cleanup()
+      _refreshGate = null
+    }
+  })()
+
+  return _refreshGate
+}
+
 async function request<T>(path: string, init: RequestInit = {}, attempt: number = 0): Promise<T> {
   const i = withCsrfHeader(init)
   const timeoutMs = timeoutFor(i)
@@ -162,6 +208,10 @@ async function request<T>(path: string, init: RequestInit = {}, attempt: number 
     timed.cleanup()
   }
   if (!res.ok) {
+    if (res.status === 401 && shouldTrySessionRefresh(path, attempt)) {
+      const refreshed = await refreshAuthSession()
+      if (refreshed) return request<T>(path, init, attempt + 1)
+    }
     if (res.status === 428 && attempt < 1) {
       // Admin step-up required: show popup and retry once.
       let msg = "2FA step-up required"
@@ -190,7 +240,7 @@ async function request<T>(path: string, init: RequestInit = {}, attempt: number 
 // This is critical in production (Vercel) so that authentication cookies
 // issued on the frontend domain are sent correctly to the backend via
 // server-side proxies, avoiding 401 "Not authenticated" errors.
-export async function requestLocal<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function requestLocal<T>(path: string, init: RequestInit = {}, attempt: number = 0): Promise<T> {
   const url = path.startsWith("/") ? path : "/" + path
   const i = withCsrfHeader(init)
   const timeoutMs = timeoutFor(i)
@@ -209,6 +259,10 @@ export async function requestLocal<T>(path: string, init: RequestInit = {}): Pro
     timed.cleanup()
   }
   if (!res.ok) {
+    if (res.status === 401 && shouldTrySessionRefresh(url, attempt)) {
+      const refreshed = await refreshAuthSession()
+      if (refreshed) return requestLocal<T>(path, init, attempt + 1)
+    }
     if (res.status === 428) {
       let msg = "2FA step-up required"
       try {
@@ -216,7 +270,7 @@ export async function requestLocal<T>(path: string, init: RequestInit = {}): Pro
         msg = (j as any)?.detail || (j as any)?.error || msg
       } catch {}
       await ensureAdminStepUp(msg)
-      return requestLocal<T>(path, init)
+      return requestLocal<T>(path, init, attempt + 1)
     }
     let msg = res.statusText
     try {
@@ -232,17 +286,23 @@ export async function requestLocal<T>(path: string, init: RequestInit = {}): Pro
   }
 }
 
-export const authFetch = async (path: string, init: RequestInit = {}): Promise<Response> => {
+export const authFetch = async (path: string, init: RequestInit = {}, attempt: number = 0): Promise<Response> => {
   const i = withCsrfHeader(init)
   const timeoutMs = timeoutFor(i)
   const timed = withTimeout(i, timeoutMs)
   try {
-    return await fetch(`${apiBase}${path.startsWith("/") ? path : "/" + path}`, {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`
+    const res = await fetch(`${apiBase}${normalizedPath}`, {
       ...timed.init,
       headers: { "Content-Type": "application/json", ...(timed.init.headers || {}) },
       credentials: "include",
       cache: "no-store",
     })
+    if (res.status === 401 && shouldTrySessionRefresh(normalizedPath, attempt)) {
+      const refreshed = await refreshAuthSession()
+      if (refreshed) return authFetch(path, init, attempt + 1)
+    }
+    return res
   } catch (e: any) {
     throw wrapTimeoutError(e, timeoutMs)
   } finally {

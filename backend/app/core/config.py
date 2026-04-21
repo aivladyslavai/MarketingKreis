@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # JWT Authentication - validate non-default
     jwt_secret_key: str = Field(default="dev-secret-key-change-in-production-d8f7g6h5j4k3l2m1n0", env="JWT_SECRET_KEY", min_length=32)
     jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
-    access_token_expire_minutes: int = Field(default=60, env="ACCESS_TOKEN_EXPIRE_MINUTES")
+    access_token_expire_minutes: int = Field(default=120, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_minutes: int = Field(default=43200, env="REFRESH_TOKEN_EXPIRE_MINUTES")
 
     # Cookie settings
@@ -205,6 +205,23 @@ class Settings(BaseSettings):
         if values.get("environment") in {"production", "staging"} and v:
             raise ValueError("DEBUG must be false in production.")
         return v
+
+    @validator("cookie_secure")
+    def validate_cookie_secure(cls, v: bool, values: dict) -> bool:
+        """
+        Same-origin cookie auth must stay secure on production hosts.
+        Force Secure cookies even if env drift left COOKIE_SECURE unset/false.
+        """
+        if values.get("environment") in {"production", "staging"}:
+            return True
+        return v
+
+    @validator("cookie_samesite")
+    def validate_cookie_samesite(cls, v: str) -> str:
+        normalized = (v or "lax").strip().lower()
+        if normalized not in {"lax", "strict", "none"}:
+            return "lax"
+        return normalized
 
     @validator("skip_email_verify")
     def validate_skip_email_verify(cls, v: bool, values: dict) -> bool:

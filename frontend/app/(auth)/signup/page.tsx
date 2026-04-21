@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Mail, Lock, Eye, EyeOff, UserPlus, Sparkles, CheckCircle2, XCircle, Info } from "lucide-react"
+import { refreshAuthSession } from "@/lib/api"
 import { wakeBackend } from "@/lib/wake-backend"
 
 export const dynamic = "force-dynamic"
@@ -243,6 +244,28 @@ function SignupInner() {
     return trimmed ? `Login fehlgeschlagen (Status ${status}): ${trimmed}` : `Login fehlgeschlagen (Status ${status}).`
   }
 
+  const waitForConfirmedSession = async () => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const res = await fetch("/api/auth/profile", {
+        credentials: "include",
+        cache: "no-store",
+      })
+
+      if (res.ok) {
+        const user = await res.json().catch(() => null)
+        if (user) return
+      } else if (res.status === 401) {
+        await refreshAuthSession().catch(() => false)
+      }
+
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
+      }
+    }
+
+    throw new Error("Login erfolgreich, aber die Session konnte nicht bestätigt werden. Bitte erneut versuchen.")
+  }
+
   async function onLoginSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoginError(null)
@@ -301,7 +324,8 @@ function SignupInner() {
       }
       const next = params?.get("next")
       const redirectTo = next || res.headers.get("X-Redirect-To") || "/dashboard"
-      router.push(redirectTo)
+      await waitForConfirmedSession()
+      router.replace(redirectTo)
     } catch (e: any) {
       setLoginError(e?.message || "Login fehlgeschlagen")
     } finally {
@@ -861,7 +885,8 @@ function SignupInner() {
                             if (!res.ok) throw new Error(await readLoginErrorFrom(res.status, text))
                             const next = params?.get("next")
                             const redirectTo = next || res.headers.get("X-Redirect-To") || "/dashboard"
-                            router.push(redirectTo)
+                            await waitForConfirmedSession()
+                            router.replace(redirectTo)
                           } catch (e: any) {
                             setLogin2faError(e?.message || "2FA fehlgeschlagen")
                           } finally {
