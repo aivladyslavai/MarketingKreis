@@ -121,6 +121,36 @@ def _normalize_exceptions(value: object) -> List[str]:
     return uniq
 
 
+def _resolve_company_and_project(
+    db: Session,
+    org: int,
+    *,
+    company_id: Optional[int],
+    project_id: Optional[int],
+) -> tuple[Optional[int], Optional[int]]:
+    company = None
+    project = None
+
+    if company_id is not None:
+        company = db.query(Company).filter(Company.id == int(company_id), Company.organization_id == org).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+    if project_id is not None:
+        project = db.query(Deal).filter(Deal.id == int(project_id), Deal.organization_id == org).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+    if project is not None and getattr(project, "company_id", None):
+        project_company_id = int(project.company_id)
+        if company is None:
+            company_id = project_company_id
+        elif int(company.id) != project_company_id:
+            raise HTTPException(status_code=400, detail="Project does not belong to selected company")
+
+    return company_id, project_id
+
+
 @router.get("", response_model=List[CalendarEventFrontend])
 def list_calendar_events(
     skip: int = 0,
@@ -202,14 +232,12 @@ def create_calendar_event(
         company_id = _to_int(event_data.get("company_id"))
         project_id = _to_int(event_data.get("project_id"))
         content_item_id = _to_int(event_data.get("content_item_id"))
-        if company_id is not None:
-            c = db.query(Company).filter(Company.id == int(company_id), Company.organization_id == org).first()
-            if not c:
-                raise HTTPException(status_code=404, detail="Company not found")
-        if project_id is not None:
-            p = db.query(Deal).filter(Deal.id == int(project_id), Deal.organization_id == org).first()
-            if not p:
-                raise HTTPException(status_code=404, detail="Project not found")
+        company_id, project_id = _resolve_company_and_project(
+            db,
+            org,
+            company_id=company_id,
+            project_id=project_id,
+        )
         if content_item_id is not None:
             it = db.query(ContentItem).filter(ContentItem.id == int(content_item_id), ContentItem.organization_id == org).first()
             if not it:
@@ -279,6 +307,8 @@ def create_calendar_event(
             created_at=event.created_at.isoformat() if event.created_at else None,
             updated_at=event.updated_at.isoformat() if event.updated_at else None,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error creating calendar event: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -352,24 +382,17 @@ def update_calendar_event(
             if rm_s:
                 existing = _normalize_exceptions(getattr(event, "recurrence_exceptions", None) or [])
                 event.recurrence_exceptions = [d for d in existing if d != rm_s]
-        if "company_id" in event_data:
-            cid = _to_int(event_data.get("company_id"))
-            if cid is None:
-                event.company_id = None
-            else:
-                c = db.query(Company).filter(Company.id == int(cid), Company.organization_id == org).first()
-                if not c:
-                    raise HTTPException(status_code=404, detail="Company not found")
-                event.company_id = int(cid)
-        if "project_id" in event_data:
-            pid = _to_int(event_data.get("project_id"))
-            if pid is None:
-                event.project_id = None
-            else:
-                p = db.query(Deal).filter(Deal.id == int(pid), Deal.organization_id == org).first()
-                if not p:
-                    raise HTTPException(status_code=404, detail="Project not found")
-                event.project_id = int(pid)
+        if "company_id" in event_data or "project_id" in event_data:
+            cid = _to_int(event_data.get("company_id")) if "company_id" in event_data else getattr(event, "company_id", None)
+            pid = _to_int(event_data.get("project_id")) if "project_id" in event_data else getattr(event, "project_id", None)
+            cid, pid = _resolve_company_and_project(
+                db,
+                org,
+                company_id=cid,
+                project_id=pid,
+            )
+            event.company_id = cid
+            event.project_id = pid
         if "content_item_id" in event_data:
             iid = _to_int(event_data.get("content_item_id"))
             if iid is None:

@@ -182,6 +182,8 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("alter table deals add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_deals_organization_id on deals (organization_id);"))
         conn.execute(text("update deals set organization_id = 1 where organization_id is null;"))
+        conn.execute(text("alter table deals add column if not exists owner_id integer;"))
+        conn.execute(text("create index if not exists ix_deals_owner_id on deals (owner_id);"))
 
         # Calendar entries: store category + recurrence in DB (cross-browser)
         conn.execute(text("alter table calendar_entries add column if not exists category varchar(255);"))

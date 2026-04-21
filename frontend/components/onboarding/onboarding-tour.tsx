@@ -135,7 +135,7 @@ function buildTours(): Record<TourKey, EnhancedStep[]> {
         target: "#tour-kpis",
         title: "Live KPIs",
         content:
-          "Diese Zahlen werden live aktualisiert: Unternehmen, Kontakte, aktive Deals und geplante Events. Ein schneller Health-Check für dein Marketing.",
+          "Diese Zahlen werden live aktualisiert: Unternehmen, Kontakte, aktive Projekte und geplante Events. Ein schneller Health-Check für dein Marketing.",
         placement: "bottom",
         icon: <Target className="h-5 w-5" />,
         emoji: "📈",
@@ -157,7 +157,7 @@ function buildTours(): Record<TourKey, EnhancedStep[]> {
         placement: "center",
         title: "CRM – Deine Kundenübersicht 👥",
         content:
-          "Verwalte Unternehmen, Kontakte und Deals zentral an einem Ort. Alles was du für erfolgreiches Kundenmanagement brauchst.",
+          "Verwalte Unternehmen, Kontakte und Projekte zentral an einem Ort. Alles was du für erfolgreiches Kundenmanagement brauchst.",
         disableBeacon: true,
         icon: <Users className="h-6 w-6" />,
         emoji: "🏢",
@@ -166,7 +166,7 @@ function buildTours(): Record<TourKey, EnhancedStep[]> {
         target: '[data-tour="crm-tabs"]',
         title: "Drei Bereiche, ein System",
         content:
-          "Companies = Unternehmen, Contacts = Ansprechpartner, Deals = Verkaufschancen. Wechsle mit einem Klick zwischen den Ansichten.",
+          "Companies = Unternehmen, Contacts = Ansprechpartner, Projects = laufende Vorhaben. Wechsle mit einem Klick zwischen den Ansichten.",
         placement: "bottom",
         icon: <Target className="h-5 w-5" />,
         emoji: "📑",

@@ -1,5 +1,5 @@
 // CRM API wrapper для работы с данными CRM
-import { companiesAPI, contactsAPI, dealsAPI } from "./api"
+import { companiesAPI, contactsAPI, dealsAPI, projectsAPI } from "./api"
 
 export interface Company {
   id: string
@@ -10,7 +10,7 @@ export interface Company {
   status?: string
 }
 
-export interface Deal {
+export interface Project {
   id: string
   title: string
   value: number
@@ -19,6 +19,8 @@ export interface Deal {
   company?: Company
   closeDate?: string
 }
+
+export type Deal = Project
 
 export interface Contact {
   id: string
@@ -46,14 +48,16 @@ export type CreateContactData = {
   position?: string
 }
 
-export type CreateDealData = {
+export type CreateProjectData = {
   title: string
   value: number
-  stage?: Deal["stage"]
+  stage?: Project["stage"]
   probability?: number
   companyId?: string
   closeDate?: string
 }
+
+export type CreateDealData = CreateProjectData
 
 class CRMApi {
   async getDeals(): Promise<Deal[]> {
@@ -63,6 +67,16 @@ class CRMApi {
     } catch (error) {
       console.warn("Failed to fetch deals:", error)
       return [] // No fallback data - only real CRM data
+    }
+  }
+
+  async getProjects(): Promise<Project[]> {
+    try {
+      const response = await projectsAPI.getAll()
+      return response || []
+    } catch (error) {
+      console.warn("Failed to fetch projects:", error)
+      return []
     }
   }
 
@@ -114,12 +128,24 @@ class CRMApi {
     return (await dealsAPI.create(data)) as Deal
   }
 
+  async createProject(data: CreateProjectData): Promise<Project> {
+    return (await projectsAPI.create(data)) as Project
+  }
+
   async updateDeal(id: string, data: Partial<CreateDealData>): Promise<Deal> {
     return (await dealsAPI.update(id, data)) as Deal
   }
 
+  async updateProject(id: string, data: Partial<CreateProjectData>): Promise<Project> {
+    return (await projectsAPI.update(id, data)) as Project
+  }
+
   async deleteDeal(id: string): Promise<void> {
     await dealsAPI.delete(id)
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    await projectsAPI.delete(id)
   }
 }
 

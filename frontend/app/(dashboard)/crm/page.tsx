@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -42,11 +43,32 @@ import {
   MapPin,
   CalendarDays
 } from "lucide-react"
-import { companiesAPI, contactsAPI, dealsAPI } from "@/lib/api"
+import { companiesAPI, contactsAPI, crmIntegrityAPI, projectsAPI } from "@/lib/api"
 import { sync } from "@/lib/sync"
 import { CompanyDialog } from "@/components/crm/company-dialog"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/hooks/use-auth"
+
+function DuplicateHint({
+  matches,
+  message,
+}: {
+  matches: Array<{ id: number; label: string }>
+  message: string
+}) {
+  if (!matches.length) return null
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
+      {message}{" "}
+      <span className="font-medium">
+        {matches
+          .slice(0, 2)
+          .map((match) => match.label)
+          .join(", ")}
+      </span>
+    </div>
+  )
+}
 
 function ContactDetailForm({
   contact,
@@ -70,9 +92,31 @@ function ContactDetailForm({
   const [phone, setPhone] = useState(String(contact.phone || ""))
   const [position, setPosition] = useState(String(contact.position || ""))
   const [companyId, setCompanyId] = useState<string>(
-    contact.company_id != null ? String(contact.company_id) : "none",
+    contact.company_id != null ? String(contact.company_id) : "",
   )
   const [saving, setSaving] = useState(false)
+  const [duplicateMatches, setDuplicateMatches] = useState<Array<{ id: number; label: string }>>([])
+
+  useEffect(() => {
+    const normalizedEmail = email.trim().toLowerCase()
+    if (!normalizedEmail) {
+      setDuplicateMatches([])
+      return
+    }
+    const timeout = window.setTimeout(async () => {
+      try {
+        const res = await crmIntegrityAPI.duplicateCheck({
+          entity: "contact",
+          email: normalizedEmail,
+          exclude_id: contact.id,
+        })
+        setDuplicateMatches((res.matches || []).map((match) => ({ id: match.id, label: match.label })))
+      } catch {
+        setDuplicateMatches([])
+      }
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [email, contact.id])
 
   const handleSubmit = async () => {
     setSaving(true)
@@ -83,7 +127,7 @@ function ContactDetailForm({
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
         position: position.trim() || undefined,
-        company_id: companyId !== "none" ? Number(companyId) : undefined,
+        company_id: companyId ? Number(companyId) : undefined,
       })
     } finally {
       setSaving(false)
@@ -114,6 +158,11 @@ function ContactDetailForm({
         </div>
       </div>
 
+      <DuplicateHint
+        matches={duplicateMatches}
+        message="Diese E-Mail existiert bereits bei einem Kontakt:"
+      />
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
         <div className="space-y-1">
           <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Vorname</label>
@@ -132,13 +181,12 @@ function ContactDetailForm({
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma</label>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma *</label>
           <Select value={companyId} onValueChange={(v) => setCompanyId(v)}>
             <SelectTrigger>
               <SelectValue placeholder="Firma wählen" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">— Keine —</SelectItem>
               {companies.map((c: any) => (
                 <SelectItem key={String(c.id)} value={String(c.id)}>
                   {String(c.name || "")}
@@ -157,7 +205,7 @@ function ContactDetailForm({
         <Button variant="outline" size="sm" onClick={onClose}>
           Abbrechen
         </Button>
-        <Button size="sm" onClick={handleSubmit} disabled={saving}>
+        <Button size="sm" onClick={handleSubmit} disabled={saving || !companyId}>
           Speichern
         </Button>
       </div>
@@ -188,11 +236,34 @@ function DealDetailForm({
   const [expectedClose, setExpectedClose] = useState<string>(
     deal.expected_close_date ? String(deal.expected_close_date).slice(0, 10) : "",
   )
-  const [companyId, setCompanyId] = useState<string>(deal.company_id != null ? String(deal.company_id) : "none")
+  const [companyId, setCompanyId] = useState<string>(deal.company_id != null ? String(deal.company_id) : "")
   const [contactId, setContactId] = useState<string>(deal.contact_id != null ? String(deal.contact_id) : "none")
   const [notes, setNotes] = useState(String(deal.notes || ""))
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [duplicateMatches, setDuplicateMatches] = useState<Array<{ id: number; label: string }>>([])
+
+  useEffect(() => {
+    const normalizedTitle = title.trim()
+    if (!normalizedTitle || !companyId) {
+      setDuplicateMatches([])
+      return
+    }
+    const timeout = window.setTimeout(async () => {
+      try {
+        const res = await crmIntegrityAPI.duplicateCheck({
+          entity: "project",
+          title: normalizedTitle,
+          company_id: Number(companyId),
+          exclude_id: deal.id,
+        })
+        setDuplicateMatches((res.matches || []).map((match) => ({ id: match.id, label: match.label })))
+      } catch {
+        setDuplicateMatches([])
+      }
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [title, companyId, deal.id])
 
   const submit = async () => {
     setSaving(true)
@@ -204,7 +275,7 @@ function DealDetailForm({
         probability: probability.trim() === "" ? undefined : Math.max(0, Math.min(100, Number(probability) || 0)),
         value: value.trim() === "" ? undefined : Math.max(0, Number(value) || 0),
         expected_close_date: expectedClose ? new Date(expectedClose).toISOString() : undefined,
-        company_id: companyId !== "none" ? Number(companyId) : undefined,
+        company_id: companyId ? Number(companyId) : undefined,
         contact_id: contactId !== "none" ? Number(contactId) : undefined,
         notes: notes.trim() || undefined,
       })
@@ -213,7 +284,7 @@ function DealDetailForm({
     }
   }
 
-  const canSave = title.trim().length > 0 && !saving && !deleting
+  const canSave = title.trim().length > 0 && !!companyId && !saving && !deleting
 
   const deleteNow = async () => {
     setDeleting(true)
@@ -232,13 +303,18 @@ function DealDetailForm({
         </div>
         <div className="min-w-0">
           <DialogTitle>
-            <span className="text-base sm:text-lg break-words">{title.trim() || "Deal"}</span>
+            <span className="text-base sm:text-lg break-words">{title.trim() || "Projekt"}</span>
           </DialogTitle>
           <DialogDescription>
-            <span className="text-xs sm:text-sm">Deal-Details bearbeiten</span>
+            <span className="text-xs sm:text-sm">Projekt-Details bearbeiten</span>
           </DialogDescription>
         </div>
       </div>
+
+      <DuplicateHint
+        matches={duplicateMatches}
+        message="Ein ähnliches Projekt existiert bereits in dieser Firma:"
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
         <div className="space-y-1 sm:col-span-2">
@@ -254,7 +330,7 @@ function DealDetailForm({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="lead">Lead</SelectItem>
-              <SelectItem value="qualification">Qualification</SelectItem>
+              <SelectItem value="qualified">Qualified</SelectItem>
               <SelectItem value="proposal">Proposal</SelectItem>
               <SelectItem value="negotiation">Negotiation</SelectItem>
               <SelectItem value="won">Won</SelectItem>
@@ -278,13 +354,12 @@ function DealDetailForm({
         </div>
 
         <div className="space-y-1">
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma</label>
-          <Select value={companyId} onValueChange={(v) => { setCompanyId(v); if (v === "none") setContactId("none") }}>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma *</label>
+          <Select value={companyId} onValueChange={(v) => { setCompanyId(v); if (!v) setContactId("none") }}>
             <SelectTrigger>
               <SelectValue placeholder="Firma wählen" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">— Keine —</SelectItem>
               {companies.map((c: any) => (
                 <SelectItem key={String(c.id)} value={String(c.id)}>
                   {String(c.name || "")}
@@ -302,7 +377,7 @@ function DealDetailForm({
             <SelectContent>
               <SelectItem value="none">— Kein —</SelectItem>
               {contacts
-                .filter((c: any) => (companyId === "none" ? true : String(c.company_id) === String(companyId)))
+                .filter((c: any) => (!companyId ? true : String(c.company_id) === String(companyId)))
                 .map((c: any) => (
                   <SelectItem key={String(c.id)} value={String(c.id)}>
                     {String(c.name || "")}
@@ -369,9 +444,10 @@ function ContactCreateDialog({
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [position, setPosition] = useState("")
-  const [companyId, setCompanyId] = useState<string>("none")
+  const [companyId, setCompanyId] = useState<string>("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [duplicateMatches, setDuplicateMatches] = useState<Array<{ id: number; label: string }>>([])
 
   useEffect(() => {
     if (!open) return
@@ -380,10 +456,32 @@ function ContactCreateDialog({
     setEmail("")
     setPhone("")
     setPosition("")
-    setCompanyId("none")
+    setCompanyId("")
     setSaving(false)
     setError(null)
+    setDuplicateMatches([])
   }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const normalizedEmail = email.trim().toLowerCase()
+    if (!normalizedEmail) {
+      setDuplicateMatches([])
+      return
+    }
+    const timeout = window.setTimeout(async () => {
+      try {
+        const res = await crmIntegrityAPI.duplicateCheck({
+          entity: "contact",
+          email: normalizedEmail,
+        })
+        setDuplicateMatches((res.matches || []).map((match) => ({ id: match.id, label: match.label })))
+      } catch {
+        setDuplicateMatches([])
+      }
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [open, email])
 
   const submit = async () => {
     setSaving(true)
@@ -395,7 +493,7 @@ function ContactCreateDialog({
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
         position: position.trim() || undefined,
-        company_id: companyId !== "none" ? Number(companyId) : undefined,
+        company_id: companyId ? Number(companyId) : undefined,
       })
       onOpenChange(false)
     } catch (e: any) {
@@ -405,7 +503,7 @@ function ContactCreateDialog({
     }
   }
 
-  const canSubmit = firstName.trim().length > 0 && lastName.trim().length > 0 && !saving
+  const canSubmit = firstName.trim().length > 0 && lastName.trim().length > 0 && !!companyId && !saving
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -420,6 +518,11 @@ function ContactCreateDialog({
             {error}
           </div>
         )}
+
+        <DuplicateHint
+          matches={duplicateMatches}
+          message="Diese E-Mail existiert bereits bei einem Kontakt:"
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
           <div className="space-y-1.5">
@@ -443,13 +546,12 @@ function ContactCreateDialog({
             <Input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="Marketing Manager" />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma</label>
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma *</label>
             <Select value={companyId} onValueChange={(v) => setCompanyId(v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Firma wählen" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">— Keine —</SelectItem>
                 {companies.map((c: any) => (
                   <SelectItem key={String(c.id)} value={String(c.id)}>
                     {String(c.name || "")}
@@ -504,11 +606,12 @@ function DealCreateDialog({
   const [probability, setProbability] = useState<string>("25")
   const [value, setValue] = useState<string>("")
   const [expectedClose, setExpectedClose] = useState<string>("")
-  const [companyId, setCompanyId] = useState<string>("none")
+  const [companyId, setCompanyId] = useState<string>("")
   const [contactId, setContactId] = useState<string>("none")
   const [notes, setNotes] = useState<string>("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [duplicateMatches, setDuplicateMatches] = useState<Array<{ id: number; label: string }>>([])
 
   useEffect(() => {
     if (!open) return
@@ -518,12 +621,35 @@ function DealCreateDialog({
     setProbability("25")
     setValue("")
     setExpectedClose("")
-    setCompanyId("none")
+    setCompanyId("")
     setContactId("none")
     setNotes("")
     setSaving(false)
     setError(null)
+    setDuplicateMatches([])
   }, [open, defaultOwner])
+
+  useEffect(() => {
+    if (!open) return
+    const normalizedTitle = title.trim()
+    if (!normalizedTitle || !companyId) {
+      setDuplicateMatches([])
+      return
+    }
+    const timeout = window.setTimeout(async () => {
+      try {
+        const res = await crmIntegrityAPI.duplicateCheck({
+          entity: "project",
+          title: normalizedTitle,
+          company_id: Number(companyId),
+        })
+        setDuplicateMatches((res.matches || []).map((match) => ({ id: match.id, label: match.label })))
+      } catch {
+        setDuplicateMatches([])
+      }
+    }, 250)
+    return () => window.clearTimeout(timeout)
+  }, [open, title, companyId])
 
   const submit = async () => {
     setSaving(true)
@@ -536,7 +662,7 @@ function DealCreateDialog({
         probability: probability.trim() === "" ? undefined : Math.max(0, Math.min(100, Number(probability) || 0)),
         value: value.trim() === "" ? undefined : Math.max(0, Number(value) || 0),
         expected_close_date: expectedClose ? new Date(expectedClose).toISOString() : undefined,
-        company_id: companyId !== "none" ? Number(companyId) : undefined,
+        company_id: companyId ? Number(companyId) : undefined,
         contact_id: contactId !== "none" ? Number(contactId) : undefined,
         notes: notes.trim() || undefined,
       })
@@ -548,14 +674,14 @@ function DealCreateDialog({
     }
   }
 
-  const canSubmit = title.trim().length > 0 && owner.trim().length > 0 && !saving
+  const canSubmit = title.trim().length > 0 && owner.trim().length > 0 && !!companyId && !saving
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl w-[min(92vw,820px)] bg-white dark:bg-slate-900/80 border-slate-200 dark:border-white/10 backdrop-blur-xl p-6">
         <DialogHeader>
-          <DialogTitle>Neuen Deal</DialogTitle>
-          <DialogDescription>Deal erfassen (Stage, Wert, Wahrscheinlichkeit, Owner).</DialogDescription>
+          <DialogTitle>Neues Projekt</DialogTitle>
+          <DialogDescription>Projekt erfassen (Stage, Wert, Wahrscheinlichkeit, Owner).</DialogDescription>
         </DialogHeader>
 
         {error && (
@@ -564,6 +690,11 @@ function DealCreateDialog({
           </div>
         )}
 
+        <DuplicateHint
+          matches={duplicateMatches}
+          message="Ein ähnliches Projekt existiert bereits in dieser Firma:"
+        />
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
           <div className="space-y-1.5 sm:col-span-2">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Titel *</label>
@@ -571,13 +702,12 @@ function DealCreateDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma</label>
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-300">Firma *</label>
             <Select value={companyId} onValueChange={(v) => setCompanyId(v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Firma wählen" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">— Keine —</SelectItem>
                 {companies.map((c: any) => (
                   <SelectItem key={String(c.id)} value={String(c.id)}>
                     {String(c.name || "")}
@@ -659,7 +789,7 @@ function DealCreateDialog({
             Abbrechen
           </Button>
           <Button onClick={submit} disabled={!canSubmit} className="bg-gradient-to-r from-blue-600 to-indigo-600">
-            {saving ? "Speichern…" : "Deal erstellen"}
+            {saving ? "Speichern…" : "Projekt erstellen"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -672,12 +802,21 @@ type Contact = any
 type Deal = any
 
 export default function CRMPage() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [companies, setCompanies] = useState<Company[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [deals, setDeals] = useState<Deal[]>([])
   const [searchQuery, setSearchQuery] = useState("")
-  const [activeTab, setActiveTab] = useState("companies")
+  const tabFromUrl = useMemo(() => {
+    const raw = searchParams?.get("tab")
+    if (raw === "deals") return "projects"
+    if (raw === "projects" || raw === "contacts" || raw === "companies") return raw
+    return "companies"
+  }, [searchParams])
+  const [activeTab, setActiveTab] = useState(tabFromUrl)
   const [filters, setFilters] = useState<string[]>([])
   const [viewingCompany, setViewingCompany] = useState<Company | null>(null)
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
@@ -689,13 +828,26 @@ export default function CRMPage() {
   const { user } = useAuth()
 
   useEffect(() => {
+    setActiveTab(tabFromUrl)
+  }, [tabFromUrl])
+
+  useEffect(() => {
+    const current = searchParams?.get("tab")
+    const normalizedCurrent = current === "deals" ? "projects" : current
+    if (normalizedCurrent === activeTab) return
+    const next = new URLSearchParams(searchParams?.toString() || "")
+    next.set("tab", activeTab)
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+  }, [activeTab, pathname, router, searchParams])
+
+  useEffect(() => {
     const fetchAll = async () => {
       try {
         setLoading(true)
         const [c, p, d] = await Promise.all([
           companiesAPI.getAll().catch(() => []),
           contactsAPI.getAll().catch(() => []),
-          dealsAPI.getAll().catch(() => []),
+          projectsAPI.getAll().catch(() => []),
         ])
         setCompanies(Array.isArray(c) ? c : [])
         setContacts(Array.isArray(p) ? p : [])
@@ -712,7 +864,7 @@ export default function CRMPage() {
     const [c, p, d] = await Promise.all([
       companiesAPI.getAll().catch(() => []),
       contactsAPI.getAll().catch(() => []),
-      dealsAPI.getAll().catch(() => []),
+      projectsAPI.getAll().catch(() => []),
     ])
     setCompanies(Array.isArray(c) ? c : [])
     setContacts(Array.isArray(p) ? p : [])
@@ -793,10 +945,10 @@ export default function CRMPage() {
     contact_id?: number
     notes?: string
   }) => {
-    await dealsAPI.create(payload)
+    await projectsAPI.create(payload)
     await refreshAll()
     sync.emit("crm:deals:changed")
-    toast({ title: "✅ Deal erstellt" })
+    toast({ title: "✅ Projekt erstellt" })
   }
 
   const updateDeal = async (original: any, updates: any) => {
@@ -812,15 +964,15 @@ export default function CRMPage() {
         contact_id: updates?.contact_id != null ? Number(updates.contact_id) : undefined,
         notes: String(updates?.notes ?? "").trim() || undefined,
       }
-      await dealsAPI.update(String(original.id), payload)
+      await projectsAPI.update(String(original.id), payload)
       await refreshAll()
       sync.emit("crm:deals:changed")
-      toast({ title: "✅ Deal aktualisiert" })
+      toast({ title: "✅ Projekt aktualisiert" })
       return true
     } catch (err) {
       console.error("updateDeal error", err)
       toast({
-        title: "Fehler beim Aktualisieren des Deals",
+        title: "Fehler beim Aktualisieren des Projekts",
         description: (err as any)?.message || "Bitte versuchen Sie es später erneut.",
         variant: "destructive",
       })
@@ -830,11 +982,11 @@ export default function CRMPage() {
 
   const deleteDeal = async (id: string) => {
     try {
-      if (typeof window !== "undefined" && !confirm("Deal löschen?")) return
-      await dealsAPI.delete(id).catch(() => {})
+      if (typeof window !== "undefined" && !confirm("Projekt löschen?")) return
+      await projectsAPI.delete(id).catch(() => {})
       await refreshAll()
       sync.emit("crm:deals:changed")
-      toast({ title: "🗑️ Deal gelöscht" })
+      toast({ title: "🗑️ Projekt gelöscht" })
     } catch {}
   }
 
@@ -1048,7 +1200,7 @@ export default function CRMPage() {
               <CardContent className="p-3 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0">
-                    <p className="text-[10px] sm:text-sm font-medium text-green-600 dark:text-green-400">Active Deals</p>
+                    <p className="text-[10px] sm:text-sm font-medium text-green-600 dark:text-green-400">Aktive Projekte</p>
                     <p className="text-lg sm:text-2xl font-bold text-green-900 dark:text-green-100">{activeDeals}</p>
                   </div>
                   <Target className="h-6 w-6 sm:h-8 sm:w-8 text-green-500 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0" />
@@ -1060,7 +1212,7 @@ export default function CRMPage() {
               <CardContent className="p-3 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0">
-                    <p className="text-[10px] sm:text-sm font-medium text-purple-600 dark:text-purple-400">Won Deals</p>
+                    <p className="text-[10px] sm:text-sm font-medium text-purple-600 dark:text-purple-400">Gewonnene Projekte</p>
                     <p className="text-lg sm:text-2xl font-bold text-purple-900 dark:text-purple-100">{wonDeals}</p>
                   </div>
                   <UserCheck className="h-6 w-6 sm:h-8 sm:w-8 text-purple-500 dark:text-purple-400 group-hover:scale-110 transition-transform shrink-0" />
@@ -1111,11 +1263,11 @@ export default function CRMPage() {
                 <span className="ml-1">({contacts.length})</span>
               </TabsTrigger>
               <TabsTrigger 
-                value="deals" 
+                value="projects" 
                 className="data-[state=active]:bg-white/80 dark:data-[state=active]:bg-slate-800/80 data-[state=active]:shadow-sm rounded-lg px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm"
               >
                 <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                Deals
+                Projekte
                 <span className="ml-1">({deals.length})</span>
               </TabsTrigger>
             </TabsList>
@@ -1318,7 +1470,7 @@ export default function CRMPage() {
                                 </div>
                               </div>
                               <div className="rounded-xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">
-                                <div className="text-[11px] text-slate-500 dark:text-slate-400">Deals</div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400">Projekte</div>
                                 <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
                                   {(dealsAggByCompanyId.get(Number(company.id))?.count || 0) as number}
                                 </div>
@@ -1516,7 +1668,7 @@ export default function CRMPage() {
                     <div className="font-medium">
                       CHF {(((dealsAggByCompanyId.get(Number(viewingCompany.id))?.pipeline || 0) as number) / 1000).toFixed(0)}K{" "}
                       <span className="text-slate-500 dark:text-slate-400">
-                        · {(dealsAggByCompanyId.get(Number(viewingCompany.id))?.count || 0) as number} deals
+                        · {(dealsAggByCompanyId.get(Number(viewingCompany.id))?.count || 0) as number} Projekte
                       </span>
                     </div>
                   </div>
@@ -1725,7 +1877,7 @@ export default function CRMPage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400">Deals</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">Projekte</div>
                         <div className="text-sm font-semibold text-slate-900 dark:text-white">
                           {(dealsAggByContactId.get(Number(contact.id))?.count || 0) as number}
                         </div>
@@ -1738,8 +1890,8 @@ export default function CRMPage() {
           </TabsContent>
 
           {/* DEALS TAB */}
-          <TabsContent value="deals" className="space-y-4 sm:space-y-6">
-            {/* Create Deal (opens dialog) */}
+          <TabsContent value="projects" className="space-y-4 sm:space-y-6">
+            {/* Create Project (opens dialog) */}
             <Card className="glass-card">
               <CardContent className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
@@ -1747,9 +1899,9 @@ export default function CRMPage() {
                     <Target className="h-5 w-5 text-blue-400" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-900 dark:text-white">Deals</div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">Projekte</div>
                     <div className="text-xs text-slate-600 dark:text-slate-400">
-                      Deal per Dialog anlegen (Stage, Wert, Wahrscheinlichkeit, Owner, Close Date, Notizen).
+                      Projekt per Dialog anlegen (Stage, Wert, Wahrscheinlichkeit, Owner, Close Date, Notizen).
                     </div>
                   </div>
                 </div>
@@ -1759,13 +1911,13 @@ export default function CRMPage() {
                     className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20"
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    Neuer Deal
+                    Neues Projekt
                   </Button>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Deals List */}
+            {/* Projects List */}
             <div className="space-y-3">
               {filteredDeals.map((deal: any) => (
                 <Card

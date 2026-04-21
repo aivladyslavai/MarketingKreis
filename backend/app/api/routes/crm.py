@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List, Optional, Any, Dict
 
 from app.db.session import get_db_session
+from app.models.calendar import CalendarEntry
 from app.models.company import Company
 from app.models.contact import Contact
 from app.models.deal import Deal
@@ -23,6 +26,253 @@ def _org_id(user: User) -> int:
     return int(getattr(user, "organization_id", None) or 1)
 
 
+def _normalize_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _normalize_email(value: Any) -> Optional[str]:
+    text = _normalize_text(value)
+    return text.lower() if text else None
+
+
+def _normalize_name(value: Any) -> Optional[str]:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    return " ".join(text.split())
+
+
+def _company_norm_expr():
+    return func.lower(func.btrim(Company.name))
+
+
+def _email_norm_expr(column):
+    return func.lower(func.btrim(column))
+
+
+def _get_company_or_404(db: Session, org: int, company_id: int) -> Company:
+    company = db.query(Company).filter(Company.id == company_id, Company.organization_id == org).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return company
+
+
+def _get_contact_or_404(db: Session, org: int, contact_id: int) -> Contact:
+    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.organization_id == org).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return contact
+
+
+def _get_project_or_404(db: Session, org: int, project_id: int) -> Deal:
+    project = db.query(Deal).filter(Deal.id == project_id, Deal.organization_id == org).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+def _commit_or_conflict(db: Session, detail: str) -> None:
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=detail) from exc
+
+
+def _resolve_owner_fields(
+    db: Session,
+    org: int,
+    *,
+    owner: Optional[str],
+    owner_id: Optional[int],
+) -> tuple[Optional[str], Optional[int]]:
+    normalized_owner = _normalize_email(owner) or _normalize_name(owner)
+    resolved_owner_id = owner_id
+    owner_user: Optional[User] = None
+
+    if owner_id is not None:
+        owner_user = (
+            db.query(User)
+            .filter(User.id == int(owner_id), User.organization_id == org)
+            .first()
+        )
+        if not owner_user:
+            raise HTTPException(status_code=404, detail="Owner not found")
+        resolved_owner_id = owner_user.id
+        if not normalized_owner:
+            normalized_owner = _normalize_email(owner_user.email) or owner_user.email
+    elif normalized_owner:
+        owner_user = (
+            db.query(User)
+            .filter(
+                User.organization_id == org,
+                _email_norm_expr(User.email) == normalized_owner.lower(),
+            )
+            .first()
+        )
+        if owner_user:
+            resolved_owner_id = owner_user.id
+            normalized_owner = _normalize_email(owner_user.email) or owner_user.email
+
+    return normalized_owner, resolved_owner_id
+
+
+def _find_duplicate_companies(
+    db: Session,
+    org: int,
+    *,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    exclude_id: Optional[int] = None,
+) -> List[Company]:
+    matches: List[Company] = []
+    seen_ids: set[int] = set()
+    normalized_name = _normalize_name(name)
+    normalized_email = _normalize_email(email)
+
+    if normalized_name:
+        q = db.query(Company).filter(
+            Company.organization_id == org,
+            _company_norm_expr() == normalized_name.lower(),
+        )
+        if exclude_id is not None:
+            q = q.filter(Company.id != exclude_id)
+        for company in q.order_by(Company.id.asc()).all():
+            if company.id not in seen_ids:
+                matches.append(company)
+                seen_ids.add(company.id)
+
+    if normalized_email:
+        q = db.query(Company).filter(
+            Company.organization_id == org,
+            Company.email.isnot(None),
+            _email_norm_expr(Company.email) == normalized_email,
+        )
+        if exclude_id is not None:
+            q = q.filter(Company.id != exclude_id)
+        for company in q.order_by(Company.id.asc()).all():
+            if company.id not in seen_ids:
+                matches.append(company)
+                seen_ids.add(company.id)
+
+    return matches
+
+
+def _find_duplicate_contacts(
+    db: Session,
+    org: int,
+    *,
+    email: Optional[str] = None,
+    exclude_id: Optional[int] = None,
+) -> List[Contact]:
+    normalized_email = _normalize_email(email)
+    if not normalized_email:
+        return []
+
+    q = db.query(Contact).filter(
+        Contact.organization_id == org,
+        Contact.email.isnot(None),
+        _email_norm_expr(Contact.email) == normalized_email,
+    )
+    if exclude_id is not None:
+        q = q.filter(Contact.id != exclude_id)
+    return q.order_by(Contact.id.asc()).all()
+
+
+def _find_duplicate_projects(
+    db: Session,
+    org: int,
+    *,
+    title: Optional[str] = None,
+    company_id: Optional[int] = None,
+    exclude_id: Optional[int] = None,
+) -> List[Deal]:
+    normalized_title = _normalize_name(title)
+    if not normalized_title or company_id is None:
+        return []
+
+    q = db.query(Deal).filter(
+        Deal.organization_id == org,
+        Deal.company_id == int(company_id),
+        func.lower(func.btrim(Deal.title)) == normalized_title.lower(),
+    )
+    if exclude_id is not None:
+        q = q.filter(Deal.id != exclude_id)
+    return q.order_by(Deal.id.asc()).all()
+
+
+@router.get("/duplicate-check")
+def duplicate_check(
+    entity: str = Query(..., regex="^(company|contact|project)$"),
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    title: Optional[str] = None,
+    company_id: Optional[int] = None,
+    exclude_id: Optional[int] = None,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    org = _org_id(current_user)
+
+    if entity == "company":
+        matches = _find_duplicate_companies(db, org, name=name, email=email, exclude_id=exclude_id)
+        return {
+            "entity": entity,
+            "has_duplicates": bool(matches),
+            "matches": [
+                {
+                    "id": company.id,
+                    "label": company.name,
+                    "email": company.email,
+                    "reason": "name_or_email_match",
+                }
+                for company in matches
+            ],
+        }
+
+    if entity == "contact":
+        matches = _find_duplicate_contacts(db, org, email=email, exclude_id=exclude_id)
+        return {
+            "entity": entity,
+            "has_duplicates": bool(matches),
+            "matches": [
+                {
+                    "id": contact.id,
+                    "label": contact.name,
+                    "email": contact.email,
+                    "company_id": contact.company_id,
+                    "reason": "email_match",
+                }
+                for contact in matches
+            ],
+        }
+
+    matches = _find_duplicate_projects(
+        db,
+        org,
+        title=title,
+        company_id=company_id,
+        exclude_id=exclude_id,
+    )
+    return {
+        "entity": entity,
+        "has_duplicates": bool(matches),
+        "matches": [
+            {
+                "id": project.id,
+                "label": project.title,
+                "company_id": project.company_id,
+                "stage": project.stage,
+                "reason": "same_company_title",
+            }
+            for project in matches
+        ],
+    }
+
+
 @router.get("/companies", response_model=List[CompanyOut])
 def list_companies(
     skip: int = 0,
@@ -35,6 +285,15 @@ def list_companies(
     if is_demo_user(current_user):
         q = q.filter(Company.lead_source == DEMO_SEED_SOURCE)
     return q.offset(skip).limit(limit).all()
+
+
+@router.get("/companies/{company_id}", response_model=CompanyOut)
+def get_company(
+    company_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    return _get_company_or_404(db, _org_id(current_user), company_id)
 
 
 @router.get("/contacts", response_model=List[ContactOut])
@@ -52,6 +311,15 @@ def list_contacts(
     if company_id:
         q = q.filter(Contact.company_id == company_id)
     return q.offset(skip).limit(limit).all()
+
+
+@router.get("/contacts/{contact_id}", response_model=ContactOut)
+def get_contact(
+    contact_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    return _get_contact_or_404(db, _org_id(current_user), contact_id)
 
 
 @router.get("/deals", response_model=List[DealOut])
@@ -72,6 +340,18 @@ def list_deals(
     if stage:
         q = q.filter(Deal.stage == stage)
     return q.offset(skip).limit(limit).all()
+
+
+@router.get("/deals/{deal_id}", response_model=DealOut)
+def get_deal(
+    deal_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    deal = db.query(Deal).filter(Deal.id == deal_id, Deal.organization_id == _org_id(current_user)).first()
+    if not deal:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return deal
 
 
 def _to_float(value: Any) -> float:
@@ -124,10 +404,10 @@ def get_crm_stats(
         deals = db.query(Deal).filter(Deal.organization_id == org).all()
     total_deals = len(deals)
 
-    open_deals = [d for d in deals if _stage(d) not in ("lost",)]
+    active_projects = [d for d in deals if _stage(d) not in ("won", "lost")]
     won_deals = [d for d in deals if _stage(d) == "won"]
 
-    pipeline_value = sum(_to_float(d.value) for d in open_deals)
+    pipeline_value = sum(_to_float(d.value) for d in active_projects)
     won_value = sum(_to_float(d.value) for d in won_deals)
     conversion_rate = (len(won_deals) / total_deals * 100.0) if total_deals > 0 else 0.0
 
@@ -135,6 +415,11 @@ def get_crm_stats(
         "totalCompanies": total_companies,
         "totalContacts": total_contacts,
         "totalDeals": total_deals,
+        "totalProjects": total_deals,
+        "activeDeals": len(active_projects),
+        "activeProjects": len(active_projects),
+        "wonDeals": len(won_deals),
+        "wonProjects": len(won_deals),
         "pipelineValue": pipeline_value,
         "wonValue": won_value,
         "conversionRate": conversion_rate,
@@ -188,17 +473,33 @@ def list_projects(
     return q.offset(skip).limit(limit).all()
 
 
+@router.get("/projects/{project_id}", response_model=DealOut)
+def get_project(
+    project_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    return get_deal(project_id, db=db, current_user=current_user)
+
+
 @router.post("/companies", response_model=CompanyOut)
 def create_company(
     company: CompanyCreate,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(require_writable_user),
 ):
+    org = _org_id(current_user)
     data = company.dict()
+    data["name"] = _normalize_name(data.get("name"))
+    data["email"] = _normalize_email(data.get("email"))
+    data["contact_person_email"] = _normalize_email(data.get("contact_person_email"))
+    duplicates = _find_duplicate_companies(db, org, name=data.get("name"), email=data.get("email"))
+    if duplicates:
+        raise HTTPException(status_code=409, detail="A company with the same name or email already exists")
     data["organization_id"] = _org_id(current_user)
     db_company = Company(**data)
     db.add(db_company)
-    db.commit()
+    _commit_or_conflict(db, "A company with the same name or email already exists")
     db.refresh(db_company)
     return db_company
 
@@ -224,14 +525,59 @@ def update_company(
         raise HTTPException(status_code=404, detail="Company not found")
 
     data = payload.dict(exclude_unset=True)
+    if "name" in data:
+        data["name"] = _normalize_name(data.get("name"))
+    if "email" in data:
+        data["email"] = _normalize_email(data.get("email"))
+    if "contact_person_email" in data:
+        data["contact_person_email"] = _normalize_email(data.get("contact_person_email"))
+
+    duplicates = _find_duplicate_companies(
+        db,
+        _org_id(current_user),
+        name=data.get("name", company.name),
+        email=data.get("email", company.email),
+        exclude_id=company.id,
+    )
+    if duplicates:
+        raise HTTPException(status_code=409, detail="A company with the same name or email already exists")
+
     for field, value in data.items():
         # просто обновляем известные поля; схема уже отфильтровала лишнее
         setattr(company, field, value)
 
     db.add(company)
-    db.commit()
+    _commit_or_conflict(db, "A company with the same name or email already exists")
     db.refresh(company)
     return company
+
+
+@router.delete("/companies/{company_id}")
+def delete_company(
+    company_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    org = _org_id(current_user)
+    company = _get_company_or_404(db, org, company_id)
+
+    linked_contacts = db.query(Contact).filter(Contact.organization_id == org, Contact.company_id == company.id).count()
+    linked_projects = db.query(Deal).filter(Deal.organization_id == org, Deal.company_id == company.id).count()
+    linked_events = db.query(CalendarEntry).filter(CalendarEntry.organization_id == org, CalendarEntry.company_id == company.id).count()
+    linked_content = db.query(ContentItem).filter(ContentItem.organization_id == org, ContentItem.company_id == company.id).count()
+
+    if any((linked_contacts, linked_projects, linked_events, linked_content)):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Company is still referenced and cannot be deleted yet. "
+                f"contacts={linked_contacts}, projects={linked_projects}, events={linked_events}, content_items={linked_content}"
+            ),
+        )
+
+    db.delete(company)
+    db.commit()
+    return {"ok": True, "id": company_id}
 
 
 @router.post("/contacts", response_model=ContactOut)
@@ -247,20 +593,25 @@ def create_contact(
         contact_data['name'] = f"{contact_data['first_name']} {contact_data['last_name']}"
         del contact_data['first_name']
         del contact_data['last_name']
-    
+
     # Filter out fields that don't exist in the Contact model
     valid_fields = {'company_id', 'name', 'email', 'phone', 'position'}
     contact_data = {k: v for k, v in contact_data.items() if k in valid_fields}
-    
-    if contact_data.get("company_id"):
-        company = db.query(Company).filter(Company.id == int(contact_data["company_id"]), Company.organization_id == org).first()
-        if not company:
-            raise HTTPException(status_code=404, detail="Company not found")
+
+    company_id = contact_data.get("company_id")
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Contact must belong to a company")
+    _get_company_or_404(db, org, int(company_id))
+
+    contact_data["name"] = _normalize_name(contact_data.get("name"))
+    contact_data["email"] = _normalize_email(contact_data.get("email"))
+    if contact_data.get("email") and _find_duplicate_contacts(db, org, email=contact_data["email"]):
+        raise HTTPException(status_code=409, detail="A contact with this email already exists")
 
     contact_data["organization_id"] = org
     db_contact = Contact(**contact_data)
     db.add(db_contact)
-    db.commit()
+    _commit_or_conflict(db, "A contact with this email already exists")
     db.refresh(db_contact)
     return db_contact
 
@@ -287,10 +638,10 @@ def update_contact(
 
     org = _org_id(current_user)
     data = payload.dict(exclude_unset=True)
-    if "company_id" in data and data.get("company_id"):
-        company = db.query(Company).filter(Company.id == int(data["company_id"]), Company.organization_id == org).first()
-        if not company:
-            raise HTTPException(status_code=404, detail="Company not found")
+    if "company_id" in data:
+        if not data.get("company_id"):
+            raise HTTPException(status_code=400, detail="Contact must belong to a company")
+        _get_company_or_404(db, org, int(data["company_id"]))
 
     # Сконструировать полное имя из first_name / last_name, если они переданы
     first = data.pop("first_name", None)
@@ -300,16 +651,38 @@ def update_contact(
         lname = (last or "").strip()
         full = f"{fname} {lname}".strip() or fname or lname
         if full:
-            contact.name = full
+            contact.name = _normalize_name(full) or contact.name
+
+    if "email" in data:
+        data["email"] = _normalize_email(data.get("email"))
+        if data["email"] and _find_duplicate_contacts(db, org, email=data["email"], exclude_id=contact.id):
+            raise HTTPException(status_code=409, detail="A contact with this email already exists")
 
     for field, value in data.items():
         if hasattr(contact, field):
             setattr(contact, field, value)
 
     db.add(contact)
-    db.commit()
+    _commit_or_conflict(db, "A contact with this email already exists")
     db.refresh(contact)
     return contact
+
+
+@router.delete("/contacts/{contact_id}")
+def delete_contact(
+    contact_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    org = _org_id(current_user)
+    contact = _get_contact_or_404(db, org, contact_id)
+    db.query(Deal).filter(Deal.organization_id == org, Deal.contact_id == contact.id).update(
+        {Deal.contact_id: None},
+        synchronize_session=False,
+    )
+    db.delete(contact)
+    db.commit()
+    return {"ok": True, "id": contact_id}
 
 
 @router.post("/deals", response_model=DealOut)
@@ -321,6 +694,8 @@ def create_deal(
     org = _org_id(current_user)
     data = deal.dict()
     data["organization_id"] = org
+    data["title"] = _normalize_name(data.get("title"))
+    data["owner"] = _normalize_email(data.get("owner")) or _normalize_name(data.get("owner"))
 
     # Multi-tenant safety: validate foreign keys belong to the same org.
     company_id = data.get("company_id")
@@ -328,23 +703,34 @@ def create_deal(
     company = None
     contact = None
     if company_id:
-        company = db.query(Company).filter(Company.id == int(company_id), Company.organization_id == org).first()
-        if not company:
-            raise HTTPException(status_code=404, detail="Company not found")
+        company = _get_company_or_404(db, org, int(company_id))
     if contact_id:
-        contact = db.query(Contact).filter(Contact.id == int(contact_id), Contact.organization_id == org).first()
-        if not contact:
-            raise HTTPException(status_code=404, detail="Contact not found")
+        contact = _get_contact_or_404(db, org, int(contact_id))
         # If company isn't provided, derive it from the contact to keep the graph consistent.
         if not company_id and getattr(contact, "company_id", None):
             data["company_id"] = int(contact.company_id)  # type: ignore[arg-type]
             company_id = data.get("company_id")
+            company = _get_company_or_404(db, org, int(company_id))
         if company_id and getattr(contact, "company_id", None) and int(contact.company_id) != int(company_id):  # type: ignore[arg-type]
             raise HTTPException(status_code=400, detail="Contact does not belong to company")
 
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Project must belong to a company")
+
+    resolved_owner, resolved_owner_id = _resolve_owner_fields(
+        db,
+        org,
+        owner=data.get("owner"),
+        owner_id=data.get("owner_id"),
+    )
+    if not resolved_owner:
+        raise HTTPException(status_code=400, detail="Project owner is required")
+    data["owner"] = resolved_owner
+    data["owner_id"] = resolved_owner_id
+
     db_deal = Deal(**data)
     db.add(db_deal)
-    db.commit()
+    _commit_or_conflict(db, "Project could not be saved")
     db.refresh(db_deal)
 
     # Automation hook: if deal starts as WON, create content package(s)
@@ -461,34 +847,53 @@ def update_deal(
 
     org = _org_id(current_user)
     data = payload.dict(exclude_unset=True)
+    if "title" in data:
+        data["title"] = _normalize_name(data.get("title"))
+    if "owner" in data:
+        data["owner"] = _normalize_email(data.get("owner")) or _normalize_name(data.get("owner"))
 
     # Multi-tenant safety: validate FK updates belong to the same org.
-    if "company_id" in data and data.get("company_id"):
-        company = db.query(Company).filter(Company.id == int(data["company_id"]), Company.organization_id == org).first()
-        if not company:
-            raise HTTPException(status_code=404, detail="Company not found")
+    if "company_id" in data:
+        if not data.get("company_id"):
+            raise HTTPException(status_code=400, detail="Project must belong to a company")
+        _get_company_or_404(db, org, int(data["company_id"]))
     if "contact_id" in data and data.get("contact_id"):
-        contact = db.query(Contact).filter(Contact.id == int(data["contact_id"]), Contact.organization_id == org).first()
-        if not contact:
-            raise HTTPException(status_code=404, detail="Contact not found")
+        _get_contact_or_404(db, org, int(data["contact_id"]))
 
     # Consistency check: if both are set (either already on deal or in payload),
     # ensure contact belongs to the selected company.
-    next_company_id = int(data.get("company_id") or getattr(deal, "company_id", 0) or 0)
-    next_contact_id = int(data.get("contact_id") or getattr(deal, "contact_id", 0) or 0)
+    next_company_raw = data["company_id"] if "company_id" in data else getattr(deal, "company_id", None)
+    next_contact_raw = data["contact_id"] if "contact_id" in data else getattr(deal, "contact_id", None)
+    next_company_id = int(next_company_raw or 0)
+    next_contact_id = int(next_contact_raw or 0)
+    if not next_company_id:
+        raise HTTPException(status_code=400, detail="Project must belong to a company")
     if next_company_id and next_contact_id:
-        contact = db.query(Contact).filter(Contact.id == next_contact_id, Contact.organization_id == org).first()
-        if not contact:
-            raise HTTPException(status_code=404, detail="Contact not found")
+        contact = _get_contact_or_404(db, org, next_contact_id)
         if getattr(contact, "company_id", None) and int(contact.company_id) != next_company_id:  # type: ignore[arg-type]
             raise HTTPException(status_code=400, detail="Contact does not belong to company")
+    elif next_contact_id and not data.get("company_id") and getattr(deal, "company_id", None) is None:
+        contact = _get_contact_or_404(db, org, next_contact_id)
+        data["company_id"] = int(contact.company_id)
+
+    if "owner" in data or "owner_id" in data:
+        resolved_owner, resolved_owner_id = _resolve_owner_fields(
+            db,
+            org,
+            owner=data.get("owner", deal.owner),
+            owner_id=data.get("owner_id", getattr(deal, "owner_id", None)),
+        )
+        if not resolved_owner:
+            raise HTTPException(status_code=400, detail="Project owner is required")
+        data["owner"] = resolved_owner
+        data["owner_id"] = resolved_owner_id
 
     for field, value in data.items():
         if hasattr(deal, field):
             setattr(deal, field, value)
 
     db.add(deal)
-    db.commit()
+    _commit_or_conflict(db, "Project could not be saved")
     db.refresh(deal)
 
     next_stage = (deal.stage or "").lower()
@@ -499,6 +904,25 @@ def update_deal(
             db.rollback()
 
     return deal
+
+
+@router.post("/projects", response_model=DealOut)
+def create_project(
+    project: DealCreate,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    return create_deal(project, db=db, current_user=current_user)
+
+
+@router.put("/projects/{project_id}", response_model=DealOut)
+def update_project(
+    project_id: int,
+    payload: DealUpdate,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    return update_deal(project_id, payload, db=db, current_user=current_user)
 
 
 @router.delete("/deals/{deal_id}")
@@ -517,6 +941,15 @@ def delete_deal(
     db.delete(deal)
     db.commit()
     return {"ok": True, "id": deal_id}
+
+
+@router.delete("/projects/{project_id}")
+def delete_project(
+    project_id: int,
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(require_writable_user),
+):
+    return delete_deal(project_id, db=db, current_user=current_user)
 
 
 

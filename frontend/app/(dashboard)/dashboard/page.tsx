@@ -18,7 +18,7 @@ import {
 	BarChart3,
 	ArrowRight
 } from "lucide-react"
-import { companiesAPI, contactsAPI, dealsAPI, crmAPI } from "@/lib/api"
+import { companiesAPI, contactsAPI, crmAPI, projectsAPI } from "@/lib/api"
 import useActivitiesApi from "@/hooks/use-activities-api"
 import { useCalendarApi } from "@/hooks/use-calendar-api"
 import { sync } from "@/lib/sync"
@@ -33,16 +33,16 @@ export default function DashboardPage() {
 	const fetchDashboardData = async () => {
 		try {
 			setIsLoading(true)
-			const [companies, contacts, deals, crmStats] = await Promise.all([
+			const [companies, contacts, projects, crmStats] = await Promise.all([
 				companiesAPI.getAll(),
 				contactsAPI.getAll(),
-				dealsAPI.getAll(),
+				projectsAPI.getAll(),
 				crmAPI.getStats()
 			])
 			setStats({
 				companies: companies.length,
 				contacts: contacts.length,
-				deals: deals.length,
+				projects: projects.length,
 				activities: activities?.length || 0,
 				events: calendarEvents?.length || 0,
 				...crmStats
@@ -60,6 +60,9 @@ export default function DashboardPage() {
 			sync.on('global:refresh', fetchDashboardData),
 			sync.on('activities:changed', fetchDashboardData),
 			sync.on('calendar:changed', fetchDashboardData),
+			sync.on('crm:companies:changed', fetchDashboardData),
+			sync.on('crm:contacts:changed', fetchDashboardData),
+			sync.on('crm:deals:changed', fetchDashboardData),
 		]
 		return () => { unsub.forEach(fn => fn && (fn as any)()) }
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,8 +94,8 @@ export default function DashboardPage() {
 	const kpiCards = [
 		{ title: "Unternehmen", value: stats?.totalCompanies || stats?.companies || 0, icon: Briefcase, link: "/crm?tab=companies", color: "text-blue-600 dark:text-blue-400", bgColor: "bg-blue-50 dark:bg-blue-900/20" },
 		{ title: "Kontakte", value: stats?.totalContacts || stats?.contacts || 0, icon: Users, link: "/crm?tab=contacts", color: "text-green-600 dark:text-green-400", bgColor: "bg-green-50 dark:bg-green-900/20" },
-		{ title: "Deals", value: stats?.totalDeals || stats?.deals || 0, icon: TrendingUp, link: "/crm?tab=deals", color: "text-purple-600 dark:text-purple-400", bgColor: "bg-purple-50 dark:bg-purple-900/20" },
-		{ title: "Pipeline Value", value: `${((stats?.pipelineValue || 0) / 1000).toFixed(0)}k CHF`, icon: BarChart3, link: "/crm?tab=deals", color: "text-orange-600 dark:text-orange-400", bgColor: "bg-orange-50 dark:bg-orange-900/20" },
+		{ title: "Projekte", value: stats?.totalProjects || stats?.projects || stats?.totalDeals || 0, icon: TrendingUp, link: "/crm?tab=projects", color: "text-purple-600 dark:text-purple-400", bgColor: "bg-purple-50 dark:bg-purple-900/20" },
+		{ title: "Pipeline Value", value: `${((stats?.pipelineValue || 0) / 1000).toFixed(0)}k CHF`, icon: BarChart3, link: "/crm?tab=projects", color: "text-orange-600 dark:text-orange-400", bgColor: "bg-orange-50 dark:bg-orange-900/20" },
 		{ title: "Aktivitäten", value: stats?.activities || 0, icon: Activity, link: "/activities", color: "text-pink-600 dark:text-pink-400", bgColor: "bg-pink-50 dark:bg-pink-900/20" },
 		{ title: "Kalender Events", value: stats?.events || 0, icon: Calendar, link: "/calendar", color: "text-cyan-600 dark:text-cyan-400", bgColor: "bg-cyan-50 dark:bg-cyan-900/20" },
 		{ title: "Content", value: "0", icon: FileText, link: "/content", color: "text-indigo-600 dark:text-indigo-400", bgColor: "bg-indigo-50 dark:bg-indigo-900/20" },

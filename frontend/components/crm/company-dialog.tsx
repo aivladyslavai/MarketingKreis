@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { companiesAPI } from "@/lib/api"
+import { companiesAPI, crmIntegrityAPI } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import { FormField } from "@/components/ui/form-field"
 import { Building2, UserRound, BadgeCheck, MapPin, Tag } from "lucide-react"
@@ -69,6 +69,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<Company>(company || emptyCompany)
+  const [duplicateMatches, setDuplicateMatches] = useState<Array<{ id: number; label: string; email?: string | null }>>([])
 
   // Keep local form state in sync when a different company is selected
   // or when switching between "new" and "edit" modes.
@@ -85,6 +86,32 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
       setFormData(emptyCompany)
     }
   }, [company, open])
+
+  useEffect(() => {
+    if (!open) return
+    const name = String(formData.name || "").trim()
+    const email = String(formData.email || "").trim()
+    if (!name && !email) {
+      setDuplicateMatches([])
+      return
+    }
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        const res = await crmIntegrityAPI.duplicateCheck({
+          entity: "company",
+          name: name || undefined,
+          email: email || undefined,
+          exclude_id: company?.id,
+        })
+        setDuplicateMatches(Array.isArray(res?.matches) ? res.matches : [])
+      } catch {
+        setDuplicateMatches([])
+      }
+    }, 250)
+
+    return () => window.clearTimeout(timeout)
+  }, [open, formData.name, formData.email, company?.id])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -173,6 +200,18 @@ export function CompanyDialog({ open, onOpenChange, company, onSuccess }: Compan
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
+            {duplicateMatches.length > 0 && (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+                Ein ähnliches Unternehmen existiert bereits:{" "}
+                <span className="font-medium">
+                  {duplicateMatches
+                    .slice(0, 2)
+                    .map((match) => match.label)
+                    .join(", ")}
+                </span>
+                . Prüfe bitte, ob du es wirklich neu anlegen willst.
+              </div>
+            )}
             <div className="rounded-2xl border border-white/10 bg-slate-950/5 dark:bg-slate-950/30 p-4">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <div className="min-w-0">

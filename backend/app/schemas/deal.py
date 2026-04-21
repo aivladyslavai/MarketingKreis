@@ -6,6 +6,7 @@ from datetime import datetime
 class DealBase(BaseModel):
     company_id: Optional[int] = Field(None, ge=1)
     contact_id: Optional[int] = Field(None, ge=1)
+    owner_id: Optional[int] = Field(None, ge=1)
     title: str = Field(..., min_length=1, max_length=255)
     value: Optional[float] = Field(0.0, ge=0.0, description="Deal value in CHF")
     stage: Optional[str] = Field("lead", pattern="^(lead|qualified|proposal|negotiation|won|lost)$")
@@ -17,7 +18,7 @@ class DealBase(BaseModel):
     @validator('title')
     def title_must_not_be_empty(cls, v):
         if not v or not v.strip():
-            raise ValueError('Deal title cannot be empty')
+            raise ValueError('Title cannot be empty')
         return v.strip()
 
 
@@ -27,6 +28,9 @@ class DealCreate(DealBase):
 
 class DealUpdate(BaseModel):
     company_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    owner_id: Optional[int] = None
+    owner: Optional[str] = None
     title: Optional[str] = None
     value: Optional[float] = None
     stage: Optional[str] = None

@@ -334,8 +334,41 @@ export const dealsAPI = {
   delete: (id: string) => request(`/crm/deals/${id}`, { method: "DELETE" }),
 }
 
+export const projectsAPI = {
+  getAll: () => request<any[]>(`/crm/projects`),
+  getById: (id: string) => request<any>(`/crm/projects/${id}`),
+  create: (data: any) => request(`/crm/projects`, { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, data: any) =>
+    request(`/crm/projects/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  delete: (id: string) => request(`/crm/projects/${id}`, { method: "DELETE" }),
+}
+
 export const crmAPI = {
   getStats: () => request<any>(`/crm/stats`),
+}
+
+export const crmIntegrityAPI = {
+  duplicateCheck: (params: {
+    entity: "company" | "contact" | "project"
+    name?: string
+    email?: string
+    title?: string
+    company_id?: number
+    exclude_id?: number | string
+  }) => {
+    const sp = new URLSearchParams()
+    sp.set("entity", params.entity)
+    if (params.name) sp.set("name", params.name)
+    if (params.email) sp.set("email", params.email)
+    if (params.title) sp.set("title", params.title)
+    if (params.company_id != null) sp.set("company_id", String(params.company_id))
+    if (params.exclude_id != null) sp.set("exclude_id", String(params.exclude_id))
+    return request<{
+      entity: string
+      has_duplicates: boolean
+      matches: Array<{ id: number; label: string; email?: string | null; company_id?: number | null; stage?: string | null; reason?: string }>
+    }>(`/crm/duplicate-check?${sp.toString()}`)
+  },
 }
 
 // === Content Tasks ===
@@ -736,6 +769,11 @@ export const contentItemsAPI = {
   },
   generateFromDeal: (dealId: number, templateId?: number) =>
     request<{ ok: boolean; item_id: number; template_id?: number | null }>(`/content/generate/from-deal/${dealId}`, {
+      method: "POST",
+      body: JSON.stringify({ template_id: templateId }),
+    }),
+  generateFromProject: (projectId: number, templateId?: number) =>
+    request<{ ok: boolean; item_id: number; template_id?: number | null }>(`/content/generate/from-deal/${projectId}`, {
       method: "POST",
       body: JSON.stringify({ template_id: templateId }),
     }),

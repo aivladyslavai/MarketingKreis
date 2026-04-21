@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { companiesAPI, contactsAPI, dealsAPI } from "@/lib/api"
+import { companiesAPI, contactsAPI, projectsAPI } from "@/lib/api"
 import { Input } from "@/components/ui/input"
 
 interface Item {
   id: string
   title: string
-  type: "company" | "contact" | "deal" | "event" | "page"
+  type: "company" | "contact" | "project" | "event" | "page"
   href?: string
   subtitle?: string
 }
@@ -37,10 +37,10 @@ export default function CommandPalette() {
     const load = async () => {
       setLoading(true)
       try {
-        const [companies, contacts, deals] = await Promise.all([
+        const [companies, contacts, projects] = await Promise.all([
           companiesAPI.getAll().catch(() => []),
           contactsAPI.getAll().catch(() => []),
-          dealsAPI.getAll().catch(() => []),
+          projectsAPI.getAll().catch(() => []),
         ])
         if (cancel) return
         const base: Item[] = [
@@ -55,7 +55,7 @@ export default function CommandPalette() {
           ...base,
           ...map(companies, "company", (x) => x.name || x.title, "/crm?tab=companies"),
           ...map(contacts, "contact", (x) => x.name || x.email, "/crm?tab=contacts"),
-          ...map(deals, "deal", (x) => x.title || "Deal", "/crm?tab=deals"),
+          ...map(projects, "project", (x) => x.title || "Projekt", "/crm?tab=projects"),
         ]
         setItems(all)
       } finally {

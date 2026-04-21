@@ -1131,7 +1131,7 @@ export default function SimpleCalendarView({
                     )}
                     {(selectedActivity as any)?.projectName && (
                       <div className="text-[11px] text-slate-400">
-                        Deal:{" "}
+                        Projekt:{" "}
                         <span className="text-slate-100">
                           {(selectedActivity as any).projectName}
                         </span>

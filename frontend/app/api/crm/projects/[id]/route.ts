@@ -50,9 +50,9 @@ function getBackendUrl() {
   throw new Error("BACKEND_URL is not configured")
 }
 
-async function forward(req: NextRequest) {
+async function forward(req: NextRequest, id: string) {
   const backendUrl = getBackendUrl()
-  const url = `${backendUrl}/crm/projects${req.nextUrl.search}`
+  const url = `${backendUrl}/crm/projects/${id}${req.nextUrl.search}`
   const cookie = req.headers.get("cookie") || ""
   const csrfHeader = req.headers.get("x-csrf-token") || ""
   const csrfCookie = cookie && canDeriveCsrfFromCookie(req) ? getCookieFromHeader(cookie, "csrf_token") : ""
@@ -65,7 +65,7 @@ async function forward(req: NextRequest) {
       cookie,
       ...(csrf ? { "x-csrf-token": csrf } : {}),
     },
-    body: req.method === "GET" ? undefined : await req.text(),
+    body: ["GET", "HEAD"].includes(req.method) ? undefined : await req.text(),
     cache: "no-store",
     credentials: "include",
   })
@@ -77,11 +77,14 @@ async function forward(req: NextRequest) {
   return next
 }
 
-export async function GET(req: NextRequest) {
-  return forward(req)
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  return forward(req, params.id)
 }
 
-export async function POST(req: NextRequest) {
-  return forward(req)
+export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  return forward(req, params.id)
 }
 
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  return forward(req, params.id)
+}

@@ -165,6 +165,8 @@ def _ensure_production_schema() -> None:
                 ]:
                     conn.execute(text(f"alter table if exists {t} add column if not exists source_upload_id integer;"))
 
+                conn.execute(text("alter table if exists deals add column if not exists owner_id integer;"))
+
                 # Upload ownership (new hardening)
                 conn.execute(text("alter table if exists uploads add column if not exists owner_id integer;"))
                 # Job progress/cancel/retry

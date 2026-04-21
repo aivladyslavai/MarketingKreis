@@ -9,11 +9,12 @@ class Deal(Base):
     __tablename__ = "deals"
 
     id = Column(Integer, primary_key=True, index=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=False, index=True)
     # Import provenance: when created from an Upload, we store its id here.
     source_upload_id = Column(Integer, nullable=True, index=True)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=False, index=True)
     contact_id = Column(Integer, ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     title = Column(String(255), nullable=False)
     value = Column(Numeric(14, 2), nullable=True)
     stage = Column(String(30), nullable=False, default="lead")  # lead, qualified, proposal, negotiation, won, lost
@@ -25,6 +26,8 @@ class Deal(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     company = relationship("Company", back_populates="deals")
+    contact = relationship("Contact", foreign_keys=[contact_id])
+    owner_user = relationship("User", foreign_keys=[owner_id])
 
 
 
