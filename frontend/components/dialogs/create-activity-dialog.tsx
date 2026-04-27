@@ -6,17 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar } from "@/components/ui/calendar"
 import { FormField } from "@/components/ui/form-field"
-import { CalendarIcon, Sparkles } from "lucide-react"
-import { format } from "date-fns"
-import { de } from "date-fns/locale"
-import { cn } from "@/lib/utils"
-import { type CategoryType } from "@/lib/colors"
+import { Sparkles } from "lucide-react"
+import { CategoryPicker } from "@/components/forms/category-picker"
+import { DateRangePicker } from "@/components/forms/date-range-picker"
 
 export interface NewActivityData {
   title: string
-  category: CategoryType
+  category: string
   status: 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'DONE' | 'CANCELLED'
   budgetCHF: number
   expectedLeads: number
@@ -51,14 +48,20 @@ export function CreateActivityDialog({
     notes: ''
   })
 
-  const [startDateOpen, setStartDateOpen] = React.useState(false)
-  const [endDateOpen, setEndDateOpen] = React.useState(false)
-
   React.useEffect(() => {
     if (initialDate) {
       setFormData(prev => ({ ...prev, start: initialDate }))
     }
   }, [initialDate])
+
+  const toDateInput = (value?: Date) => {
+    if (!value) return ""
+    return value.toISOString().slice(0, 10)
+  }
+
+  const fromDateInput = (value: string) => {
+    return value ? new Date(`${value}T12:00:00`) : undefined
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -69,7 +72,7 @@ export function CreateActivityDialog({
 
     onSubmit({
       title: formData.title,
-      category: formData.category as CategoryType,
+      category: String(formData.category || ""),
       status: formData.status as 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'DONE' | 'CANCELLED',
       budgetCHF: formData.budgetCHF || 0,
       expectedLeads: formData.expectedLeads || 0,
@@ -130,22 +133,12 @@ export function CreateActivityDialog({
             )}
           </FormField>
 
-          {/* Category */}
-          <FormField id="category" label="Kategorie" required>
-            {({ describedBy, invalid }) => (
-              <Select value={formData.category} onValueChange={(value) => setFormData((prev) => ({ ...prev, category: value as CategoryType }))}>
-                <SelectTrigger aria-describedby={describedBy} aria-invalid={invalid || undefined}>
-                  <SelectValue placeholder="Kategorie auswählen" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="VERKAUFSFOERDERUNG">Verkaufsförderung</SelectItem>
-                  <SelectItem value="IMAGE">Image</SelectItem>
-                  <SelectItem value="KUNDENPFLEGE">Kundenpflege</SelectItem>
-                  <SelectItem value="EMPLOYER_BRANDING">Employer Branding</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          </FormField>
+          <CategoryPicker
+            id="category"
+            value={String(formData.category || "")}
+            onChange={(value) => setFormData((prev) => ({ ...prev, category: value }))}
+            required
+          />
 
           {/* Status */}
           <FormField id="status" label="Status">
@@ -165,73 +158,14 @@ export function CreateActivityDialog({
             )}
           </FormField>
 
-          {/* Start Date */}
-          <div className="space-y-2">
-            <div className="text-[11px] sm:text-xs font-medium text-slate-600 dark:text-slate-300">Startdatum *</div>
-            <Button
-              type="button"
-              variant="outline"
-              className={cn(
-                "w-full justify-start text-left font-normal h-11 rounded-xl border-white/15 bg-white/50 hover:bg-white/70 dark:bg-slate-950/20 dark:hover:bg-slate-950/30",
-                !formData.start && "text-muted-foreground"
-              )}
-              onClick={() => setStartDateOpen(!startDateOpen)}
-            >
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {formData.start ? (
-                format(formData.start, "d. MMMM yyyy", { locale: de })
-              ) : (
-                <span>Datum auswählen</span>
-              )}
-            </Button>
-            {startDateOpen && (
-              <div className="mt-2 p-3 border border-white/10 rounded-2xl bg-white/70 dark:bg-slate-950/30 backdrop-blur-md">
-                <Calendar
-                  mode="single"
-                  selected={formData.start}
-                  onSelect={(date: Date | undefined) => {
-                    setFormData(prev => ({ ...prev, start: date || new Date() }))
-                    setStartDateOpen(false)
-                  }}
-                  initialFocus
-                />
-              </div>
-            )}
-          </div>
-
-          {/* End Date */}
-          <div className="space-y-2">
-            <div className="text-[11px] sm:text-xs font-medium text-slate-600 dark:text-slate-300">Enddatum (optional)</div>
-            <Button
-              type="button"
-              variant="outline"
-              className={cn(
-                "w-full justify-start text-left font-normal h-11 rounded-xl border-white/15 bg-white/50 hover:bg-white/70 dark:bg-slate-950/20 dark:hover:bg-slate-950/30",
-                !formData.end && "text-muted-foreground"
-              )}
-              onClick={() => setEndDateOpen(!endDateOpen)}
-            >
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {formData.end ? (
-                format(formData.end, "d. MMMM yyyy", { locale: de })
-              ) : (
-                <span>Datum auswählen</span>
-              )}
-            </Button>
-            {endDateOpen && (
-              <div className="mt-2 p-3 border border-white/10 rounded-2xl bg-white/70 dark:bg-slate-950/30 backdrop-blur-md">
-                <Calendar
-                  mode="single"
-                  selected={formData.end}
-                  onSelect={(date: Date | undefined) => {
-                    setFormData(prev => ({ ...prev, end: date }))
-                    setEndDateOpen(false)
-                  }}
-                  initialFocus
-                />
-              </div>
-            )}
-          </div>
+          <DateRangePicker
+            start={toDateInput(formData.start)}
+            end={toDateInput(formData.end)}
+            startLabel="Startdatum"
+            endLabel="Enddatum (optional)"
+            onStartChange={(value) => setFormData((prev) => ({ ...prev, start: fromDateInput(value) || new Date() }))}
+            onEndChange={(value) => setFormData((prev) => ({ ...prev, end: fromDateInput(value) }))}
+          />
 
           {/* Budget and Expected Leads */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -13,6 +13,7 @@ class BudgetTarget(Base):
     source_upload_id = Column(Integer, nullable=True, index=True)
     period = Column(String(20), nullable=False, index=True)  # e.g. 2025-Q2
     category = Column(String(50), nullable=False, index=True)  # VERKAUFSFOERDERUNG, IMAGE, EMPLOYER_BRANDING, KUNDENPFLEGE
+    category_id = Column(Integer, ForeignKey("user_categories.id", ondelete="SET NULL"), nullable=True, index=True)
     amount_chf = Column(Numeric(14, 2), nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

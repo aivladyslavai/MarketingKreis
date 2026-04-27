@@ -22,6 +22,7 @@ class Activity(Base):
     source_upload_id = Column(Integer, nullable=True, index=True)
     # Optional human-readable category name (e.g. user-defined ring like "Product")
     category_name = Column(String(255), nullable=True)
+    category_id = Column(Integer, ForeignKey("user_categories.id", ondelete="SET NULL"), nullable=True, index=True)
     budget = Column(Numeric(12, 2), nullable=True)
     expected_output = Column(String(1024), nullable=True)
     weight = Column(Float, nullable=True)
@@ -34,6 +35,7 @@ class Activity(Base):
     # Optional owner of the activity. If NULL, the activity is global/demo.
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     owner = relationship("User", back_populates="activities")
+    category = relationship("UserCategory", foreign_keys=[category_id])
 
     calendar_entries = relationship("CalendarEntry", back_populates="activity", cascade="all, delete-orphan")
 

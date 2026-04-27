@@ -7,6 +7,7 @@ from app.db.session import get_db_session
 from app.models.activity import Activity, ActivityType
 from app.models.user import User
 from app.api.deps import get_current_user, get_org_id, require_writable_user
+from app.services.categories import canonical_category_name, resolve_category
 from pydantic import BaseModel
 from typing import Optional
 
@@ -18,6 +19,7 @@ class ActivityFrontend(BaseModel):
     id: str
     title: str
     category: str  # VERKAUFSFOERDERUNG, IMAGE, EMPLOYER_BRANDING, KUNDENPFLEGE
+    category_id: Optional[int] = None
     status: str  # ACTIVE, PLANNED, COMPLETED, CANCELLED
     weight: Optional[int] = None
     budgetCHF: Optional[float] = None
@@ -57,8 +59,9 @@ def list_activities(
 
         result: List[ActivityFrontend] = []
         for activity in activities:
-            # Prefer explicit category_name (user-defined ring), fallback to enum-based mapping
-            category_name = (activity.category_name or "").strip()
+            category_ref = getattr(activity, "category", None)
+            # Prefer FK-backed category, fallback to legacy text for old rows.
+            category_name = (getattr(category_ref, "name", None) or activity.category_name or "").strip()
             category_value = category_name or map_activity_type_to_category(activity.type)
 
             result.append(
@@ -66,6 +69,7 @@ def list_activities(
                 id=str(activity.id),
                 title=activity.title or "",
                     category=category_value,
+                    category_id=getattr(activity, "category_id", None),
                 status=map_activity_status(activity.status),
                 weight=activity.weight,
                 budgetCHF=float(activity.budget) if activity.budget is not None else None,
@@ -106,11 +110,19 @@ def create_activity(
                 return None
 
         raw_category = activity_data.get("category", "VERKAUFSFOERDERUNG")
+        category_ref = resolve_category(
+            db,
+            org,
+            category_id=activity_data.get("category_id"),
+            category_name=raw_category,
+            required=True,
+        )
 
         activity = Activity(
             title=activity_data.get("title", "Untitled"),
-            type=map_category_to_activity_type(raw_category),
-            category_name=str(raw_category),
+            type=map_category_to_activity_type(category_ref.name),
+            category_name=category_ref.name,
+            category_id=category_ref.id,
             budget=activity_data.get("budgetCHF"),
             expected_output=activity_data.get("notes") or None,
             weight=activity_data.get("weight"),
@@ -124,12 +136,13 @@ def create_activity(
         db.commit()
         db.refresh(activity)
 
-        category_value = (activity.category_name or "").strip() or map_activity_type_to_category(activity.type)
+        category_value = (getattr(activity.category, "name", None) or activity.category_name or "").strip() or map_activity_type_to_category(activity.type)
 
         return ActivityFrontend(
             id=str(activity.id),
             title=activity.title,
             category=category_value,
+            category_id=activity.category_id,
             status=map_activity_status(activity.status),
             weight=activity.weight,
             budgetCHF=float(activity.budget) if activity.budget is not None else None,
@@ -178,10 +191,18 @@ def update_activity(
             activity.title = activity_data["title"]
         if "notes" in activity_data:
             activity.expected_output = activity_data["notes"]
-        if "category" in activity_data:
-            raw_cat = activity_data["category"]
-            activity.type = map_category_to_activity_type(raw_cat)
-            activity.category_name = str(raw_cat)
+        if "category" in activity_data or "category_id" in activity_data:
+            raw_cat = activity_data.get("category")
+            category_ref = resolve_category(
+                db,
+                org,
+                category_id=activity_data.get("category_id"),
+                category_name=raw_cat,
+                required=True,
+            )
+            activity.type = map_category_to_activity_type(category_ref.name)
+            activity.category_name = category_ref.name
+            activity.category_id = category_ref.id
         if "status" in activity_data:
             activity.status = normalize_activity_status_in(activity_data.get("status") or "ACTIVE")
         if "start" in activity_data:
@@ -196,12 +217,13 @@ def update_activity(
         db.commit()
         db.refresh(activity)
 
-        category_value = (activity.category_name or "").strip() or map_activity_type_to_category(activity.type)
+        category_value = (getattr(activity.category, "name", None) or activity.category_name or "").strip() or map_activity_type_to_category(activity.type)
 
         return ActivityFrontend(
             id=str(activity.id),
             title=activity.title,
             category=category_value,
+            category_id=activity.category_id,
             status=map_activity_status(activity.status),
             weight=activity.weight,
             budgetCHF=float(activity.budget) if activity.budget is not None else None,
@@ -261,11 +283,16 @@ def map_activity_type_to_category(activity_type: ActivityType) -> str:
 
 def map_category_to_activity_type(category: str) -> ActivityType:
     """Map frontend category to backend ActivityType"""
+    category = canonical_category_name(category)
     mapping = {
         "VERKAUFSFOERDERUNG": ActivityType.sales,
+        "Verkaufsförderung": ActivityType.sales,
         "IMAGE": ActivityType.branding,
+        "Image": ActivityType.branding,
         "EMPLOYER_BRANDING": ActivityType.employer_branding,
+        "Employer Branding": ActivityType.employer_branding,
         "KUNDENPFLEGE": ActivityType.kundenpflege,
+        "Kundenpflege": ActivityType.kundenpflege,
     }
     return mapping.get(category, ActivityType.sales)
 

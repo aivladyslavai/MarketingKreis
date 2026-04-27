@@ -16,6 +16,7 @@ export interface CalendarEvent {
   location?: string
   color?: string
   category?: string
+  category_id?: number | null
   status?: 'PLANNED' | 'DONE' | 'DELAYED' | 'CANCELLED'
   // simple RRULE-like structure stored client-side when backend lacks support
   recurrence?: { freq: 'daily' | 'weekly' | 'monthly'; interval?: number; count?: number; until?: string }

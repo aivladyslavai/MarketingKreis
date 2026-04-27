@@ -11,6 +11,7 @@ from app.models.company import Company
 from app.models.deal import Deal
 from app.models.user import User
 from app.api.deps import get_current_user, get_org_id, require_writable_user
+from app.services.categories import resolve_category
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -41,6 +42,7 @@ class CalendarEventFrontend(BaseModel):
     type: str = "event"
     status: Optional[str] = None
     category: Optional[str] = None
+    category_id: Optional[int] = None
     priority: Optional[str] = None
     attendees: Optional[List[str]] = None
     location: Optional[str] = None
@@ -181,7 +183,8 @@ def list_calendar_events(
                     end=event.end_time.isoformat() if event.end_time else None,
                     type=getattr(event, "event_type", "event") or "event",
                     status=getattr(event, "status", None),
-                    category=getattr(event, "category", None),
+                    category=(getattr(getattr(event, "category_ref", None), "name", None) or getattr(event, "category", None)),
+                    category_id=getattr(event, "category_id", None),
                     priority=getattr(event, "priority", None),
                     attendees=getattr(event, "attendees", None),
                     location=getattr(event, "location", None),
@@ -232,6 +235,13 @@ def create_calendar_event(
         company_id = _to_int(event_data.get("company_id"))
         project_id = _to_int(event_data.get("project_id"))
         content_item_id = _to_int(event_data.get("content_item_id"))
+        category_ref = resolve_category(
+            db,
+            org,
+            category_id=event_data.get("category_id"),
+            category_name=event_data.get("category"),
+            required=False,
+        )
         company_id, project_id = _resolve_company_and_project(
             db,
             org,
@@ -251,7 +261,8 @@ def create_calendar_event(
             event_type=event_data.get("type", "event"),
             status=event_data.get("status"),
             color=event_data.get("color"),
-            category=event_data.get("category"),
+            category=getattr(category_ref, "name", None) if category_ref else None,
+            category_id=getattr(category_ref, "id", None) if category_ref else None,
             priority=event_data.get("priority"),
             location=event_data.get("location"),
             attendees=event_data.get("attendees"),
@@ -292,7 +303,8 @@ def create_calendar_event(
             end=event.end_time.isoformat() if event.end_time else None,
             type=event.event_type or "event",
             status=event.status,
-            category=event.category,
+            category=(getattr(getattr(event, "category_ref", None), "name", None) or event.category),
+            category_id=event.category_id,
             priority=event.priority,
             attendees=event.attendees,
             location=event.location,
@@ -354,8 +366,16 @@ def update_calendar_event(
             event.color = event_data.get("color")
         if "type" in event_data:
             event.event_type = event_data.get("type")
-        if "category" in event_data:
-            event.category = event_data.get("category")
+        if "category" in event_data or "category_id" in event_data:
+            category_ref = resolve_category(
+                db,
+                org,
+                category_id=event_data.get("category_id"),
+                category_name=event_data.get("category"),
+                required=False,
+            )
+            event.category = getattr(category_ref, "name", None) if category_ref else None
+            event.category_id = getattr(category_ref, "id", None) if category_ref else None
         if "priority" in event_data:
             event.priority = event_data.get("priority")
         if "location" in event_data:
@@ -432,7 +452,8 @@ def update_calendar_event(
             end=event.end_time.isoformat() if event.end_time else None,
             type=event.event_type or "event",
             status=event.status,
-            category=event.category,
+            category=(getattr(getattr(event, "category_ref", None), "name", None) or event.category),
+            category_id=event.category_id,
             priority=event.priority,
             attendees=event.attendees,
             location=event.location,

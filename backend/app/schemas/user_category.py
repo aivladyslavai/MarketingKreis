@@ -6,7 +6,7 @@ from datetime import datetime
 class UserCategoryBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     color: str = Field(..., min_length=3, max_length=32, description="Hex or CSS color string")
-    position: int = Field(0, ge=0, le=100)
+    position: int = Field(0, ge=0, le=4)
 
 
 class UserCategoryCreate(UserCategoryBase):
@@ -22,6 +22,7 @@ class UserCategoryUpdate(BaseModel):
 class UserCategoryOut(UserCategoryBase):
     id: int
     user_id: Optional[int] = None
+    organization_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 

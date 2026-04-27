@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { useUserCategories } from "@/hooks/use-user-categories"
 import { Palette, Plus, Save, Trash2 } from "lucide-react"
 
-export type UserCategory = { name: string; color: string }
+export type UserCategory = { id?: number; name: string; color: string; position?: number }
 
 export default function CategorySetup({ onReady }: { onReady?: (cats: UserCategory[]) => void }) {
   const { categories, save } = useUserCategories()
@@ -31,9 +31,19 @@ export default function CategorySetup({ onReady }: { onReady?: (cats: UserCatego
     setItems((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  const onSave = () => {
-    const cleaned = items.map((i) => ({ name: i.name.trim() || "Kategorie", color: i.color }))
-    save(cleaned)
+  const onSave = async () => {
+    const seen = new Set<string>()
+    const cleaned = items
+      .map((i) => ({ id: i.id, name: i.name.trim() || "Kategorie", color: i.color }))
+      .filter((item) => {
+        const key = item.name.toLowerCase()
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .slice(0, 5)
+      .map((item, index) => ({ ...item, position: index }))
+    await save(cleaned)
     onReady?.(cleaned)
   }
 

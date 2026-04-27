@@ -12,7 +12,7 @@ This repository now follows the approved base model:
 - `Event`
 - `Task`
 
-The first implementation focus is `Phase 0 + Phase 1`.
+The first implementation focus was `Phase 0 + Phase 1`. The next implemented block is `Phase 2 + Phase 3`.
 
 ## Phase 0
 
@@ -55,9 +55,32 @@ Enforce basic relational integrity for CRM data and prevent the most common dupl
 - Add `project` aliases for new UI work.
 - Keep the current storage table during this phase to avoid a risky physical rename.
 
+## Phase 2
+
+### Objective
+Stop category chaos by making categories a small, fixed organization-level system.
+
+### Requirements
+1. Each organization may have at most five active marketing categories.
+2. `UserCategory` is the source of truth for selectable categories.
+3. Activities, calendar events, and budget targets store `category_id` links to `UserCategory`.
+4. Legacy free-text category columns remain only as compatibility/display fallbacks.
+5. Existing free-text categories are backfilled into the fixed set where possible.
+6. Unknown or old enum category values are normalized to the configured category names.
+
+## Phase 3
+
+### Objective
+Make entity forms predictable by using shared form primitives for repeated fields.
+
+### Requirements
+1. Category selection uses one shared `CategoryPicker`.
+2. Date range entry uses one shared `DateRangePicker`.
+3. Relation-like selects use a shared `RelationPicker` pattern.
+4. Form sections use a common `EntityFormSection` visual frame.
+5. Activity and calendar creation/editing must no longer define their own disconnected category choices.
+
 ## Out of Scope for This Phase
-- Category-system refactor
-- Shared entity form framework
 - Full onboarding wizard rewrite
 - Full task/domain expansion beyond the CRM foundation
 
@@ -68,3 +91,5 @@ Enforce basic relational integrity for CRM data and prevent the most common dupl
 4. Projects cannot be created without a company.
 5. Duplicate company/contact warnings appear before final submit.
 6. Production-safe migration/backfill exists for old data.
+7. Activities and calendar forms use the same fixed category list.
+8. Category setup prevents more than five categories and deduplicates names before saving.

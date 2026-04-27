@@ -23,6 +23,7 @@ class CalendarEntry(Base):
     color = Column(String(32), nullable=True)
     # User-defined category (e.g. Marketing circle ring / label)
     category = Column(String(255), nullable=True)
+    category_id = Column(Integer, ForeignKey("user_categories.id", ondelete="SET NULL"), nullable=True, index=True)
     # Optional metadata
     location = Column(String(255), nullable=True)
     attendees = Column(JSON, nullable=True)  # list[str]
@@ -48,6 +49,7 @@ class CalendarEntry(Base):
     # Optional convenience relationships to CRM / user entities (no backrefs required)
     company = relationship("Company", foreign_keys=[company_id])
     project = relationship("Deal", foreign_keys=[project_id])
+    category_ref = relationship("UserCategory", foreign_keys=[category_id])
     content_item = relationship("ContentItem", foreign_keys=[content_item_id])
     owner = relationship("User", foreign_keys=[owner_id])
 

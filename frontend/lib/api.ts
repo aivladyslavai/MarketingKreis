@@ -864,6 +864,8 @@ export const contentAI = {
 // User Categories persisted in backend
 export type UserCategory = {
   id?: number
+  user_id?: number | null
+  organization_id?: number | null
   name: string
   color: string
   position?: number
@@ -880,7 +882,7 @@ export const userCategoriesAPI = {
   put: async (categories: UserCategory[]): Promise<UserCategory[]> => {
     const data = await requestLocal<any>(`/api/user/categories`, {
       method: "PUT",
-      body: JSON.stringify({ categories }),
+      body: JSON.stringify({ categories: categories.slice(0, 5) }),
     })
     if (Array.isArray(data)) return data as UserCategory[]
     if (data && Array.isArray(data.categories)) return data.categories as UserCategory[]

@@ -30,6 +30,7 @@ from app.models.user_category import UserCategory
 from app.models.upload_audit_log import UploadAuditLog
 from app.api.deps import get_current_user, get_org_id, is_demo_user, require_writable_user
 from app.core.config import get_settings
+from app.services.categories import MAX_CATEGORIES, find_category_by_name, list_org_categories
 
 router = APIRouter(prefix="/uploads", tags=["uploads"]) 
 
@@ -1421,6 +1422,14 @@ def upload_file(
                     amount = _parse_float(amt_raw)
                     if cat_raw not in (None, "") and amount is not None:
                         category = _norm_budget_category(cat_raw)
+                        category_ref = find_category_by_name(db, org, category)
+                        if category_ref is not None:
+                            category = str(category_ref.name)
+                        if category_ref is None:
+                            fixed_categories = list_org_categories(db, org)
+                            category_ref = fixed_categories[0] if fixed_categories else None
+                            if category_ref is not None:
+                                category = str(category_ref.name)
                         existing = (
                             db.query(BudgetTarget)
                             .filter(
@@ -1433,9 +1442,10 @@ def upload_file(
                         if existing:
                             existing.amount_chf = float(amount)
                             existing.source_upload_id = int(upload.id)
+                            existing.category_id = getattr(category_ref, "id", None)
                             db.add(existing)
                         else:
-                            db.add(BudgetTarget(organization_id=org, period=period, category=category, amount_chf=float(amount), source_upload_id=int(upload.id)))
+                            db.add(BudgetTarget(organization_id=org, period=period, category=category, category_id=getattr(category_ref, "id", None), amount_chf=float(amount), source_upload_id=int(upload.id)))
                             created_count += 1
 
                     # KPI target row
@@ -2707,19 +2717,20 @@ def smart_import_upload(
                 present = seen[:5]
             ring_category_names = present[:5]
 
-            # Load existing user categories for this user+org
+            # Load fixed organization categories. Imports may add only up to the global max.
             existing = (
                 db.query(UserCategory)
-                .filter(UserCategory.user_id == current_user.id, UserCategory.organization_id == org)
+                .filter(UserCategory.user_id.is_(None), UserCategory.organization_id == org)
                 .order_by(UserCategory.position.asc(), UserCategory.id.asc())
                 .all()
             )
             used_colors = {str(c.color or "").strip() for c in existing if getattr(c, "color", None)}
             name_to_color = {str(c.name or "").strip(): str(c.color or "").strip() for c in existing}
             max_pos = max([int(getattr(c, "position", 0) or 0) for c in existing] + [-1])
+            remaining_slots = max(0, MAX_CATEGORIES - len(existing))
 
             # Ensure categories exist (do not delete/replace user's existing ones).
-            for idx, name in enumerate(ring_category_names):
+            for idx, name in enumerate(ring_category_names[:remaining_slots]):
                 if name in name_to_color and name_to_color[name]:
                     ring_category_color[name] = name_to_color[name]
                     continue
@@ -2732,7 +2743,7 @@ def smart_import_upload(
                     color = _CATEGORY_COLOR_PALETTE[(idx + max_pos + 1) % len(_CATEGORY_COLOR_PALETTE)]
                 used_colors.add(color)
                 item = UserCategory(
-                    user_id=current_user.id,
+                    user_id=None,
                     organization_id=org,
                     name=name,
                     color=color,
@@ -2796,6 +2807,9 @@ def smart_import_upload(
                 amount = _parse_float(amt_raw)
                 if cat_raw not in (None, "") and amount is not None:
                     category = _norm_budget_category(cat_raw)
+                    category_ref = find_category_by_name(db, org, category)
+                    if category_ref is not None:
+                        category = str(category_ref.name)
                     existing = (
                         db.query(BudgetTarget)
                         .filter(BudgetTarget.organization_id == org, BudgetTarget.period == period, BudgetTarget.category == category)
@@ -2804,9 +2818,10 @@ def smart_import_upload(
                     if existing:
                         existing.amount_chf = float(amount)
                         existing.source_upload_id = int(upload.id)
+                        existing.category_id = getattr(category_ref, "id", None)
                         db.add(existing)
                     else:
-                        db.add(BudgetTarget(organization_id=org, period=period, category=category, amount_chf=float(amount), source_upload_id=int(upload.id)))
+                        db.add(BudgetTarget(organization_id=org, period=period, category=category, category_id=getattr(category_ref, "id", None), amount_chf=float(amount), source_upload_id=int(upload.id)))
                     did_budget = True
 
                 target_val = _parse_float(target_raw)
@@ -3072,11 +3087,13 @@ def smart_import_upload(
                         start = _parse_datetime_loose(sd)
                         end = _parse_datetime_loose(ed)
 
+                        category_ref = find_category_by_name(db, org, category)
                         a_type = _activity_type_for_bucket(category) if is_sap and category in ring_category_names else _map_category_to_activity_type(category)
                         act = Activity(
                             title=title,
                             type=a_type,
                             category_name=category,
+                            category_id=getattr(category_ref, "id", None),
                             status=status_raw.upper(),
                             source_upload_id=int(upload.id),
                             budget=budget,
@@ -3109,6 +3126,7 @@ def smart_import_upload(
                                     event_type="activity",
                                     status=status_raw.upper(),
                                     category=category,
+                                    category_id=getattr(category_ref, "id", None),
                                     priority="medium",
                                     color=color,
                                     company_id=(sap_company_id if (is_sap and sap_company_id) else None),
@@ -3126,6 +3144,9 @@ def smart_import_upload(
                         try:
                             if budget is not None and start:
                                 bcat = _budget_category_for_type(a_type)
+                                budget_category_ref = find_category_by_name(db, org, bcat)
+                                if budget_category_ref is not None:
+                                    bcat = str(budget_category_ref.name)
                                 if is_sap:
                                     # SAP Mediaplan: budgets are usually split per year (e.g. CHF_2022 / CHF_2023).
                                     # Allocate each year's budget across overlapping quarters of that year, then upsert once (overwrite).
@@ -3160,6 +3181,7 @@ def smart_import_upload(
                                         existing_b.amount_chf = float(existing_b.amount_chf or 0) + float(budget)
                                         # Tag updates too so deletion can fully revert an import.
                                         existing_b.source_upload_id = int(upload.id)
+                                        existing_b.category_id = getattr(budget_category_ref, "id", None)
                                         db.add(existing_b)
                                     else:
                                         db.add(
@@ -3167,6 +3189,7 @@ def smart_import_upload(
                                                 organization_id=org,
                                                 period=period,
                                                 category=bcat,
+                                                category_id=getattr(budget_category_ref, "id", None),
                                                 amount_chf=float(budget),
                                                 source_upload_id=int(upload.id),
                                             )
@@ -3235,6 +3258,9 @@ def smart_import_upload(
                 amt = float(amount or 0)
                 if not p or not c or amt <= 0:
                     continue
+                category_ref = find_category_by_name(db, org, c)
+                if category_ref is not None:
+                    c = str(category_ref.name)
                 existing_b = (
                     db.query(BudgetTarget)
                     .filter(BudgetTarget.organization_id == org, BudgetTarget.period == p, BudgetTarget.category == c)
@@ -3243,9 +3269,10 @@ def smart_import_upload(
                 if existing_b:
                     existing_b.amount_chf = float(amt)
                     existing_b.source_upload_id = int(upload.id)
+                    existing_b.category_id = getattr(category_ref, "id", None)
                     db.add(existing_b)
                 else:
-                    db.add(BudgetTarget(organization_id=org, period=p, category=c, amount_chf=float(amt), source_upload_id=int(upload.id)))
+                    db.add(BudgetTarget(organization_id=org, period=p, category=c, category_id=getattr(category_ref, "id", None), amount_chf=float(amt), source_upload_id=int(upload.id)))
             except Exception:
                 continue
 

@@ -6,7 +6,8 @@ import { requestLocal } from "@/lib/api"
 export interface Activity {
   id: string
   title: string
-  category: "VERKAUFSFOERDERUNG" | "IMAGE" | "EMPLOYER_BRANDING" | "KUNDENPFLEGE"
+  category: string
+  category_id?: number | null
   status: "ACTIVE" | "PLANNED" | "COMPLETED" | "CANCELLED"
   weight?: number
   budgetCHF?: number

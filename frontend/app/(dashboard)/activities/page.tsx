@@ -21,6 +21,9 @@ import { useUserCategories, type UserCategory } from "@/hooks/use-user-categorie
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { CalendarDays, Check, Download, Pencil, Trash2, X } from "lucide-react"
+import { CategoryPicker } from "@/components/forms/category-picker"
+import { DateRangePicker } from "@/components/forms/date-range-picker"
+import { EntityFormSection } from "@/components/forms/entity-form"
 
 // Category colors (same as in RadialCircle)
 const categoryColors: Record<string, string> = {
@@ -28,13 +31,6 @@ const categoryColors: Record<string, string> = {
   IMAGE: "#a78bfa",
   EMPLOYER_BRANDING: "#10b981",
   KUNDENPFLEGE: "#f59e0b",
-}
-
-const defaultCategoryLabels: Record<string, string> = {
-  VERKAUFSFOERDERUNG: "Verkaufsförderung",
-  IMAGE: "Image",
-  EMPLOYER_BRANDING: "Employer Branding",
-  KUNDENPFLEGE: "Kundenpflege",
 }
 
 const checklistItems = ["Brief", "Copy", "Design", "Approved", "Scheduled"] as const
@@ -158,7 +154,6 @@ function FancyDateInput({
 export default function ActivitiesPage() {
   const { activities, loading, error, addActivity, updateActivity, deleteActivity, refresh } = useActivities() as any
   const [ready, setReady] = useState(false)
-  const [selectedActivity, setSelectedActivity] = useState<any>(null)
   const [year, setYear] = useState<number>(new Date().getFullYear())
   const didAutoYearRef = useRef(false)
   const [isSmall, setIsSmall] = useState(false)
@@ -191,7 +186,7 @@ export default function ActivitiesPage() {
     return `${now.getFullYear()}-12-31`
   })
   const { openModal, closeModal } = useModal()
-  const { categories, save, reset } = useUserCategories()
+  const { categories } = useUserCategories()
   const [editCats, setEditCats] = useState(false)
 
   useEffect(() => {
@@ -328,19 +323,6 @@ export default function ActivitiesPage() {
       .filter((a: any) => !!a.start)
       .sort((a: any, b: any) => new Date(b.start as any).getTime() - new Date(a.start as any).getTime())
   }
-
-  // Category data for pie chart
-  const categoryData = Object.entries(
-    filtered.reduce((acc: Record<string, number>, a: any) => {
-      const cat = a.category || 'OTHER'
-      acc[cat] = (acc[cat] || 0) + 1
-      return acc
-    }, {})
-  ).map(([name, value]) => ({
-    name,
-    value,
-    color: categoryColors[name] || '#64748b',
-  }))
 
   // Apply preset filter for visible set
   const visibleActivities = (() => {
@@ -547,7 +529,6 @@ export default function ActivitiesPage() {
                 viewEnd={viewEnd}
                 viewLabel={viewLabel}
                 showRangeBadge={showYearRangeBadge}
-                onActivityClick={(activity) => setSelectedActivity(activity)}
                 categories={categories}
                 onActivityUpdate={async (id, updates) => {
                   try {
@@ -613,7 +594,6 @@ export default function ActivitiesPage() {
                   <div 
                     key={a.id} 
                     className="group p-3 rounded-2xl bg-white/5 border border-white/10 text-sm hover:bg-white/10 hover:border-white/15 transition-colors cursor-pointer"
-                    onClick={() => setSelectedActivity(a)}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -774,44 +754,22 @@ function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<voi
   const [dateStart, setDateStart] = useState(new Date().toISOString().slice(0,10))
   const [dateEnd, setDateEnd] = useState("")
   const [type, setType] = useState("event")
-  const { categories: userCats } = useUserCategories()
   const [category, setCategory] = useState("")
   const [stage, setStage] = useState<'DRAFT'|'REVIEW'|'PUBLISHED'>('DRAFT')
   const [checklist, setChecklist] = useState<string[]>([])
   const [description, setDescription] = useState("")
-  useEffect(() => {
-    if (!category) {
-      if (userCats && userCats.length > 0) setCategory(userCats[0].name)
-      else setCategory("VERKAUFSFOERDERUNG")
-    }
-  }, [userCats, category])
-
-  const userColorMap: Record<string, string> = (userCats || []).reduce((m: any, c: any) => {
-    m[String(c?.name || "")] = String(c?.color || "")
-    return m
-  }, {} as Record<string, string>)
-  const catColor = userColorMap[category] || categoryColors[category] || "#64748b"
   const canCreate = title.trim().length > 0
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-4 sm:p-5">
+      <EntityFormSection>
         <div className="grid gap-4">
           <div className="grid gap-1.5">
             <Label>Titel</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="z.B. E-Mail Nurture Automation" />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Start</Label>
-              <FancyDateInput value={dateStart} onChange={setDateStart} placeholder="Startdatum" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Ende (optional)</Label>
-              <FancyDateInput value={dateEnd} onChange={setDateEnd} placeholder="Enddatum" allowClear />
-            </div>
-          </div>
+          <DateRangePicker start={dateStart} end={dateEnd} onStartChange={setDateStart} onEndChange={setDateEnd} endLabel="Ende (optional)" />
 
           <div className="grid gap-1.5">
             <Label>Beschreibung</Label>
@@ -823,28 +781,15 @@ function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<voi
             />
           </div>
         </div>
-      </div>
+      </EntityFormSection>
 
-      <div className="rounded-2xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-4 sm:p-5">
+      <EntityFormSection>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="grid gap-1.5">
             <Label>Typ</Label>
             <GlassSelect value={type} onChange={setType} options={[{ value: "event", label: "Event" }, { value: "task", label: "Aufgabe" }]} />
           </div>
-          <div className="grid gap-1.5">
-            <Label>Kategorie</Label>
-            <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: catColor }} />
-              <GlassSelect
-                className="flex-1"
-                value={category}
-                onChange={setCategory}
-                options={(userCats && userCats.length > 0)
-                  ? userCats.map((c: any) => ({ value: String(c.name), label: String(c.name) }))
-                  : Object.keys(categoryColors).map((k) => ({ value: k, label: defaultCategoryLabels[k] || k }))}
-              />
-            </div>
-          </div>
+          <CategoryPicker id="activity_category" value={category} onChange={setCategory} required />
         </div>
 
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -889,7 +834,7 @@ function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<voi
             </div>
           </div>
         </div>
-      </div>
+      </EntityFormSection>
 
       <div className="flex gap-2 pt-1">
         <Button
@@ -929,7 +874,6 @@ function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<voi
 
 function EditActivityForm({ activity, onSave }: { activity: any; onSave: (updates: any) => Promise<void> }) {
   const { closeModal } = useModal()
-  const { categories: userCats } = useUserCategories()
   const [title, setTitle] = useState(String(activity.title || ''))
   const [dateStart, setDateStart] = useState(activity.start ? new Date(activity.start as any).toISOString().slice(0,10) : new Date().toISOString().slice(0,10))
   const [dateEnd, setDateEnd] = useState(activity.end ? new Date(activity.end as any).toISOString().slice(0,10) : '')
@@ -938,33 +882,18 @@ function EditActivityForm({ activity, onSave }: { activity: any; onSave: (update
   const [description, setDescription] = useState(String(activity.notes || ''))
   const [stage, setStage] = useState<string>(String(activity.stage || 'DRAFT'))
   const [checklist, setChecklist] = useState<string[]>(Array.isArray(activity.checklist)? activity.checklist: [])
-
-  const userColorMap: Record<string, string> = (userCats || []).reduce((m: any, c: any) => {
-    m[String(c?.name || "")] = String(c?.color || "")
-    return m
-  }, {} as Record<string, string>)
-  const catColor = userColorMap[category] || categoryColors[category] || "#64748b"
   const canSave = title.trim().length > 0
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-4 sm:p-5">
+      <EntityFormSection>
         <div className="grid gap-4">
           <div className="grid gap-1.5">
             <Label>Titel</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titel" />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Start</Label>
-              <FancyDateInput value={dateStart} onChange={setDateStart} placeholder="Startdatum" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Ende (optional)</Label>
-              <FancyDateInput value={dateEnd} onChange={setDateEnd} placeholder="Enddatum" allowClear />
-            </div>
-          </div>
+          <DateRangePicker start={dateStart} end={dateEnd} onStartChange={setDateStart} onEndChange={setDateEnd} endLabel="Ende (optional)" />
 
           <div className="grid gap-1.5">
             <Label>Beschreibung</Label>
@@ -976,9 +905,9 @@ function EditActivityForm({ activity, onSave }: { activity: any; onSave: (update
             />
           </div>
         </div>
-      </div>
+      </EntityFormSection>
 
-      <div className="rounded-2xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-4 sm:p-5">
+      <EntityFormSection>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="grid gap-1.5">
             <Label>Status</Label>
@@ -994,20 +923,7 @@ function EditActivityForm({ activity, onSave }: { activity: any; onSave: (update
               ]}
             />
           </div>
-          <div className="grid gap-1.5">
-            <Label>Kategorie</Label>
-            <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: catColor }} />
-              <GlassSelect
-                className="flex-1"
-                value={category}
-                onChange={(v) => setCategory(String(v))}
-                options={(userCats && userCats.length > 0)
-                  ? userCats.map((c: any) => ({ value: String(c.name), label: String(c.name) }))
-                  : Object.keys(categoryColors).map((k) => ({ value: k, label: defaultCategoryLabels[k] || k }))}
-              />
-            </div>
-          </div>
+          <CategoryPicker id="activity_category_edit" value={category} onChange={setCategory} required />
         </div>
 
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1052,7 +968,7 @@ function EditActivityForm({ activity, onSave }: { activity: any; onSave: (update
             </div>
           </div>
         </div>
-      </div>
+      </EntityFormSection>
 
       <div className="flex gap-2 pt-1">
         <Button

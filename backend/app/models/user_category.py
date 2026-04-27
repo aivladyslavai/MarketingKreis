@@ -10,7 +10,7 @@ class UserCategory(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=False, index=True)
     # Import provenance: when created from an Upload, we store its id here.
     source_upload_id = Column(Integer, nullable=True, index=True)
     name = Column(String(255), nullable=False)

@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { FormField } from "@/components/ui/form-field"
-import { GlassSelect } from "@/components/ui/glass-select"
 import { CalendarDays } from "lucide-react"
+import { CategoryPicker } from "@/components/forms/category-picker"
 
 interface CalendarEventFormProps {
   isOpen: boolean
@@ -133,23 +133,7 @@ export function CalendarEventForm({
               )}
             </FormField>
 
-            <FormField id="evt_category" label="Kategorie">
-              {({ describedBy, invalid }) => (
-                <GlassSelect
-                  value={category}
-                  onChange={(v) => setCategory(v)}
-                  options={[
-                    { value: "meeting", label: "Meeting" },
-                    { value: "event", label: "Event" },
-                    { value: "deadline", label: "Deadline" },
-                    { value: "reminder", label: "Reminder" },
-                  ]}
-                  aria-invalid={invalid || undefined}
-                  aria-describedby={describedBy}
-                  className="w-full"
-                />
-              )}
-            </FormField>
+            <CategoryPicker id="evt_category" value={category} onChange={setCategory} />
 
             <FormField id="evt_location" label="Ort">
               {({ describedBy, invalid }) => (

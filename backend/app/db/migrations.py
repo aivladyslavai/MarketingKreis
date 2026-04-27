@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260220_0015"
+    target_revision = "20260427_0017"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:
@@ -194,6 +194,8 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("alter table calendar_entries add column if not exists recurrence_exceptions jsonb;"))
         conn.execute(text("alter table calendar_entries add column if not exists content_item_id integer;"))
         conn.execute(text("create index if not exists ix_calendar_entries_content_item_id on calendar_entries (content_item_id);"))
+        conn.execute(text("alter table calendar_entries add column if not exists category_id integer;"))
+        conn.execute(text("create index if not exists ix_calendar_entries_category_id on calendar_entries (category_id);"))
         conn.execute(text("alter table calendar_entries add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_calendar_entries_organization_id on calendar_entries (organization_id);"))
         conn.execute(text("update calendar_entries set organization_id = 1 where organization_id is null;"))
@@ -202,6 +204,8 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("alter table activities add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_activities_organization_id on activities (organization_id);"))
         conn.execute(text("update activities set organization_id = 1 where organization_id is null;"))
+        conn.execute(text("alter table activities add column if not exists category_id integer;"))
+        conn.execute(text("create index if not exists ix_activities_category_id on activities (category_id);"))
 
         # User categories (rings)
         conn.execute(text("alter table user_categories add column if not exists organization_id integer;"))
@@ -212,6 +216,8 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("alter table budget_targets add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_budget_targets_organization_id on budget_targets (organization_id);"))
         conn.execute(text("update budget_targets set organization_id = 1 where organization_id is null;"))
+        conn.execute(text("alter table budget_targets add column if not exists category_id integer;"))
+        conn.execute(text("create index if not exists ix_budget_targets_category_id on budget_targets (category_id);"))
         conn.execute(text("alter table kpi_targets add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_kpi_targets_organization_id on kpi_targets (organization_id);"))
         conn.execute(text("update kpi_targets set organization_id = 1 where organization_id is null;"))

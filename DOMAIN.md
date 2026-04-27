@@ -45,6 +45,7 @@ Required rules:
 - A block of marketing work inside a project or organization context.
 - Represents a thematic workstream, not a specific timeslot.
 - Uses a fixed `ActivityType`.
+- Must use one of the organization's fixed marketing categories.
 
 Examples:
 - `Spring Campaign Planning`
@@ -55,6 +56,7 @@ Examples:
 - Represents when something happens.
 - May reference a `Project`, `Company`, `Activity`, or content item.
 - If both project and company are present, they must be consistent.
+- May use one of the organization's fixed marketing categories.
 
 Examples:
 - `Kickoff meeting`
@@ -85,6 +87,8 @@ Examples:
 - Every CRM row must belong to an organization.
 - Every contact must belong to a company.
 - Project/contact/company relations must stay graph-consistent.
+- Each organization has at most five active marketing categories.
+- Activities, calendar events, and budget targets link to `UserCategory` through `category_id`; legacy category text is kept only for compatibility and display fallback.
 - Duplicate prevention starts with:
   - Company normalized name uniqueness per organization
   - Company email uniqueness per organization when present
@@ -94,3 +98,4 @@ Examples:
 - The `deals` table remains the storage layer for projects for now.
 - `/crm/deals` stays available for backward compatibility.
 - `/crm/projects` is the preferred compatibility-safe product-facing alias.
+- Legacy enum-like category values such as `VERKAUFSFOERDERUNG` are normalized to the configured category names.
