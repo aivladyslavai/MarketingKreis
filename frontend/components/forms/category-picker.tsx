@@ -5,7 +5,15 @@ import { FormField } from "@/components/ui/form-field"
 import { GlassSelect } from "@/components/ui/glass-select"
 import { useUserCategories } from "@/hooks/use-user-categories"
 
-const DEFAULT_CATEGORIES = [
+/** Backend row or local default: id/position only exist when persisted. */
+type CategorySource = {
+  id?: number
+  name: string
+  color: string
+  position?: number
+}
+
+const DEFAULT_CATEGORIES: CategorySource[] = [
   { name: "Verkaufsförderung", color: "#3b82f6" },
   { name: "Image", color: "#a78bfa" },
   { name: "Employer Branding", color: "#10b981" },
@@ -15,13 +23,24 @@ const DEFAULT_CATEGORIES = [
 export function useFixedCategories() {
   const { categories, isLoading, error, save, reset, mutate } = useUserCategories()
   const fixed = React.useMemo(() => {
-    const source = categories && categories.length > 0 ? categories : DEFAULT_CATEGORIES
-    return source.slice(0, 5).map((category, index) => ({
-      id: category.id,
-      name: String(category.name || "").trim(),
-      color: String(category.color || DEFAULT_CATEGORIES[index % DEFAULT_CATEGORIES.length]?.color || "#64748b"),
-      position: category.position ?? index,
-    })).filter((category) => category.name.length > 0)
+    const source: CategorySource[] =
+      categories && categories.length > 0
+        ? categories.map((c) => ({
+            id: c.id,
+            name: String(c.name || ""),
+            color: String(c.color || ""),
+            position: c.position,
+          }))
+        : DEFAULT_CATEGORIES
+    return source
+      .slice(0, 5)
+      .map((category, index) => ({
+        id: category.id,
+        name: String(category.name || "").trim(),
+        color: String(category.color || DEFAULT_CATEGORIES[index % DEFAULT_CATEGORIES.length]?.color || "#64748b"),
+        position: category.position ?? index,
+      }))
+      .filter((category) => category.name.length > 0)
   }, [categories])
 
   return { categories: fixed, isLoading, error, save, reset, mutate }

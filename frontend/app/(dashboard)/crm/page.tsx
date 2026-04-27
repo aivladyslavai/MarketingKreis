@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -801,7 +801,7 @@ type Company = any
 type Contact = any
 type Deal = any
 
-export default function CRMPage() {
+function CRMPageContent() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -2022,6 +2022,17 @@ export default function CRMPage() {
   )
 }
 
-
-
+export default function CRMPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[40vh] items-center justify-center p-8 text-sm text-muted-foreground">
+          CRM wird geladen…
+        </div>
+      }
+    >
+      <CRMPageContent />
+    </Suspense>
+  )
+}
 
