@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.db.session import get_db_session
+from app.models.activity import Activity
 from app.models.calendar import CalendarEntry
 from app.models.content_item import ContentItem, ContentItemStatus
 from app.models.company import Company
@@ -47,6 +48,7 @@ class CalendarEventFrontend(BaseModel):
     attendees: Optional[List[str]] = None
     location: Optional[str] = None
     color: Optional[str] = None
+    activity_id: Optional[int] = None
     # Simple RRULE-like structure (stored in DB)
     recurrence: Optional[dict] = None
     recurrence_exceptions: Optional[List[str]] = None
@@ -189,6 +191,7 @@ def list_calendar_events(
                     attendees=getattr(event, "attendees", None),
                     location=getattr(event, "location", None),
                     color=getattr(event, "color", None),
+                    activity_id=getattr(event, "activity_id", None),
                     recurrence=getattr(event, "recurrence", None),
                     recurrence_exceptions=getattr(event, "recurrence_exceptions", None),
                     company_id=getattr(event, "company_id", None),
@@ -235,6 +238,7 @@ def create_calendar_event(
         company_id = _to_int(event_data.get("company_id"))
         project_id = _to_int(event_data.get("project_id"))
         content_item_id = _to_int(event_data.get("content_item_id"))
+        activity_id = _to_int(event_data.get("activity_id"))
         category_ref = resolve_category(
             db,
             org,
@@ -252,8 +256,17 @@ def create_calendar_event(
             it = db.query(ContentItem).filter(ContentItem.id == int(content_item_id), ContentItem.organization_id == org).first()
             if not it:
                 raise HTTPException(status_code=404, detail="Content item not found")
+        if activity_id is not None:
+            activity = (
+                db.query(Activity)
+                .filter(Activity.id == int(activity_id), Activity.organization_id == org, Activity.owner_id == current_user.id)
+                .first()
+            )
+            if not activity:
+                raise HTTPException(status_code=404, detail="Activity not found")
 
         event = CalendarEntry(
+            activity_id=activity_id,
             title=event_data.get("title", "Untitled Event"),
             description=event_data.get("description"),
             start_time=start_time,
@@ -309,6 +322,7 @@ def create_calendar_event(
             attendees=event.attendees,
             location=event.location,
             color=event.color,
+            activity_id=event.activity_id,
             recurrence=event.recurrence,
             recurrence_exceptions=event.recurrence_exceptions,
             company_id=event.company_id,
@@ -366,6 +380,19 @@ def update_calendar_event(
             event.color = event_data.get("color")
         if "type" in event_data:
             event.event_type = event_data.get("type")
+        if "activity_id" in event_data:
+            activity_id = _to_int(event_data.get("activity_id"))
+            if activity_id is None:
+                event.activity_id = None
+            else:
+                activity = (
+                    db.query(Activity)
+                    .filter(Activity.id == int(activity_id), Activity.organization_id == org, Activity.owner_id == current_user.id)
+                    .first()
+                )
+                if not activity:
+                    raise HTTPException(status_code=404, detail="Activity not found")
+                event.activity_id = activity_id
         if "category" in event_data or "category_id" in event_data:
             category_ref = resolve_category(
                 db,
@@ -458,6 +485,7 @@ def update_calendar_event(
             attendees=event.attendees,
             location=event.location,
             color=event.color,
+            activity_id=event.activity_id,
             recurrence=event.recurrence,
             recurrence_exceptions=event.recurrence_exceptions,
             company_id=event.company_id,

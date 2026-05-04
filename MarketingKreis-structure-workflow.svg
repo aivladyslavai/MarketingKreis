@@ -1,0 +1,310 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1350" viewBox="0 0 1800 1350" role="img" aria-labelledby="title desc">
+  <title id="title">MarketingKreis Product Structure And Workflow</title>
+  <desc id="desc">Architecture map showing onboarding, core entities, relations, shared query layer, modules, APIs, migrations, and user workflow.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07111f"/>
+      <stop offset="52%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#db2777"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#84cc16"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d97706"/>
+      <stop offset="100%" stop-color="#facc15"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="14" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#34d399"/>
+    </marker>
+    <style>
+      .bg { fill: url(#bg); }
+      .panel { fill: rgba(15, 23, 42, 0.78); stroke: rgba(148, 163, 184, 0.28); stroke-width: 1.5; filter: url(#shadow); }
+      .panel-soft { fill: rgba(30, 41, 59, 0.72); stroke: rgba(148, 163, 184, 0.22); stroke-width: 1.2; }
+      .card { fill: rgba(255,255,255,0.055); stroke: rgba(255,255,255,0.16); stroke-width: 1.4; }
+      .card-strong { fill: rgba(255,255,255,0.09); stroke: rgba(255,255,255,0.28); stroke-width: 1.6; }
+      .title { fill: #f8fafc; font: 800 42px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: -0.03em; }
+      .subtitle { fill: #cbd5e1; font: 500 17px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .section { fill: #f8fafc; font: 800 22px Inter, ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.02em; }
+      .label { fill: #f8fafc; font: 700 17px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .small { fill: #cbd5e1; font: 500 13px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .tiny { fill: #94a3b8; font: 500 11px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .pillText { fill: #f8fafc; font: 700 12px Inter, ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.04em; }
+      .muted { fill: #94a3b8; font: 500 13px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .code { fill: #e2e8f0; font: 600 12px "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+      .line { stroke: #94a3b8; stroke-width: 2; fill: none; marker-end: url(#arrow); opacity: 0.78; }
+      .lineBlue { stroke: #38bdf8; stroke-width: 2.4; fill: none; marker-end: url(#arrowBlue); opacity: 0.9; }
+      .lineGreen { stroke: #34d399; stroke-width: 2.4; fill: none; marker-end: url(#arrowGreen); opacity: 0.9; }
+      .dash { stroke: #94a3b8; stroke-width: 1.5; fill: none; stroke-dasharray: 6 6; opacity: 0.65; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1800" height="1350"/>
+  <circle cx="230" cy="90" r="260" fill="#7c3aed" opacity="0.16"/>
+  <circle cx="1600" cy="220" r="280" fill="#06b6d4" opacity="0.13"/>
+  <circle cx="1420" cy="1240" r="360" fill="#db2777" opacity="0.10"/>
+
+  <!-- Header -->
+  <text x="70" y="78" class="title">MarketingKreis: Structure, Relations And Workflow</text>
+  <text x="72" y="112" class="subtitle">Product logic after Phase 0-5: from account setup to connected CRM, activities, calendar and dashboard.</text>
+  <rect x="1390" y="50" width="340" height="50" rx="25" fill="url(#violet)" opacity="0.95"/>
+  <text x="1430" y="81" class="pillText">SOURCE OF TRUTH: DOMAIN.md + Pflichtenheft.md</text>
+
+  <!-- Phase strip -->
+  <g transform="translate(70 145)">
+    <rect class="panel-soft" x="0" y="0" width="1660" height="86" rx="24"/>
+    <text x="28" y="35" class="section">Implemented Product Phases</text>
+    <g transform="translate(28 52)">
+      <rect x="0" y="0" width="180" height="26" rx="13" fill="#1d4ed8"/>
+      <text x="18" y="18" class="pillText">0 Vocabulary</text>
+      <rect x="195" y="0" width="180" height="26" rx="13" fill="#0f766e"/>
+      <text x="214" y="18" class="pillText">1 Integrity</text>
+      <rect x="390" y="0" width="180" height="26" rx="13" fill="#7c2d12"/>
+      <text x="410" y="18" class="pillText">2 Categories</text>
+      <rect x="585" y="0" width="180" height="26" rx="13" fill="#6d28d9"/>
+      <text x="608" y="18" class="pillText">3 Forms</text>
+      <rect x="780" y="0" width="210" height="26" rx="13" fill="#be185d"/>
+      <text x="804" y="18" class="pillText">4 Guided Onboarding</text>
+      <rect x="1005" y="0" width="235" height="26" rx="13" fill="#0369a1"/>
+      <text x="1028" y="18" class="pillText">5 Shared CRM Query Layer</text>
+    </g>
+  </g>
+
+  <!-- Left: user workflow -->
+  <g transform="translate(70 270)">
+    <rect class="panel" x="0" y="0" width="500" height="430" rx="30"/>
+    <text x="28" y="44" class="section">User Workflow</text>
+    <text x="28" y="72" class="small">The user is guided from registration to a connected working graph.</text>
+
+    <g transform="translate(35 105)">
+      <rect class="card-strong" x="0" y="0" width="430" height="58" rx="18"/>
+      <circle cx="32" cy="29" r="16" fill="url(#blue)"/>
+      <text x="62" y="26" class="label">1. Register / Login</text>
+      <text x="62" y="45" class="tiny">Auth cookies, refresh session, verified user</text>
+
+      <rect class="card-strong" x="0" y="88" width="430" height="58" rx="18"/>
+      <circle cx="32" cy="117" r="16" fill="url(#violet)"/>
+      <text x="62" y="114" class="label">2. Company Onboarding</text>
+      <text x="62" y="133" class="tiny">Company profile, industry, team size, position</text>
+
+      <rect class="card-strong" x="0" y="176" width="430" height="58" rx="18"/>
+      <circle cx="32" cy="205" r="16" fill="url(#amber)"/>
+      <text x="62" y="202" class="label">3. Setup Guide Panel</text>
+      <text x="62" y="221" class="tiny">Persistent guide inside AppShell</text>
+
+      <rect class="card-strong" x="0" y="264" width="430" height="80" rx="18"/>
+      <circle cx="32" cy="304" r="16" fill="url(#green)"/>
+      <text x="62" y="292" class="label">4. Master Flow</text>
+      <text x="62" y="313" class="small">Project -&gt; Activity -&gt; Event</text>
+      <text x="62" y="333" class="tiny">Creates connected records with company_id, project_id, activity_id</text>
+
+      <path class="lineBlue" d="M215 62 L215 82"/>
+      <path class="lineBlue" d="M215 150 L215 170"/>
+      <path class="lineBlue" d="M215 238 L215 258"/>
+    </g>
+  </g>
+
+  <!-- Center: core entities -->
+  <g transform="translate(620 270)">
+    <rect class="panel" x="0" y="0" width="630" height="590" rx="30"/>
+    <text x="28" y="44" class="section">Core Product Model</text>
+    <text x="28" y="72" class="small">The business graph that every module should understand.</text>
+
+    <g transform="translate(50 112)">
+      <rect class="card-strong" x="0" y="0" width="220" height="72" rx="20"/>
+      <text x="22" y="30" class="label">Company</text>
+      <text x="22" y="51" class="tiny">organization_id required</text>
+
+      <rect class="card-strong" x="330" y="0" width="220" height="72" rx="20"/>
+      <text x="352" y="30" class="label">Contact</text>
+      <text x="352" y="51" class="tiny">company_id required</text>
+
+      <rect class="card-strong" x="0" y="140" width="220" height="72" rx="20"/>
+      <text x="22" y="170" class="label">Project</text>
+      <text x="22" y="191" class="tiny">stored in legacy deals table</text>
+
+      <rect class="card-strong" x="330" y="140" width="220" height="72" rx="20"/>
+      <text x="352" y="170" class="label">Activity</text>
+      <text x="352" y="191" class="tiny">work block / marketing stream</text>
+
+      <rect class="card-strong" x="0" y="280" width="220" height="72" rx="20"/>
+      <text x="22" y="310" class="label">Event</text>
+      <text x="22" y="331" class="tiny">calendar time anchor</text>
+
+      <rect class="card-strong" x="330" y="280" width="220" height="72" rx="20"/>
+      <text x="352" y="310" class="label">Task</text>
+      <text x="352" y="331" class="tiny">personal unit of work</text>
+
+      <rect class="card-strong" x="165" y="408" width="220" height="72" rx="20"/>
+      <text x="187" y="438" class="label">UserCategory</text>
+      <text x="187" y="459" class="tiny">max 5 per organization</text>
+
+      <path class="lineGreen" d="M220 36 L322 36"/>
+      <text x="246" y="26" class="tiny">has many</text>
+
+      <path class="lineGreen" d="M110 75 L110 132"/>
+      <text x="123" y="108" class="tiny">has many</text>
+
+      <path class="line" d="M220 176 L322 176"/>
+      <text x="240" y="166" class="tiny">primary contact</text>
+
+      <path class="lineBlue" d="M220 316 C275 316 278 176 322 176"/>
+      <text x="228" y="256" class="tiny">event may reference project</text>
+
+      <path class="lineBlue" d="M330 198 C250 245 248 280 220 316"/>
+      <text x="258" y="292" class="tiny">event may reference activity</text>
+
+      <path class="dash" d="M440 214 L440 272"/>
+      <text x="456" y="250" class="tiny">tasks may relate</text>
+
+      <path class="lineGreen" d="M365 408 C390 370 410 356 440 352"/>
+      <path class="lineGreen" d="M245 408 C180 380 122 366 110 352"/>
+      <text x="162" y="398" class="tiny">category_id links</text>
+    </g>
+  </g>
+
+  <!-- Right: modules -->
+  <g transform="translate(1300 270)">
+    <rect class="panel" x="0" y="0" width="430" height="590" rx="30"/>
+    <text x="28" y="44" class="section">Product Modules</text>
+    <text x="28" y="72" class="small">Pages read or mutate the same graph.</text>
+
+    <g transform="translate(30 105)">
+      <rect class="card" x="0" y="0" width="370" height="52" rx="16"/>
+      <text x="20" y="31" class="label">Dashboard</text>
+      <text x="170" y="31" class="tiny">KPIs + relationship cards</text>
+
+      <rect class="card" x="0" y="70" width="370" height="52" rx="16"/>
+      <text x="20" y="101" class="label">CRM</text>
+      <text x="170" y="101" class="tiny">companies, contacts, projects</text>
+
+      <rect class="card" x="0" y="140" width="370" height="52" rx="16"/>
+      <text x="20" y="171" class="label">Activities</text>
+      <text x="170" y="171" class="tiny">work streams + categories</text>
+
+      <rect class="card" x="0" y="210" width="370" height="52" rx="16"/>
+      <text x="20" y="241" class="label">Calendar</text>
+      <text x="170" y="241" class="tiny">events with activity/project/company</text>
+
+      <rect class="card" x="0" y="280" width="370" height="52" rx="16"/>
+      <text x="20" y="311" class="label">Budget / Performance</text>
+      <text x="200" y="311" class="tiny">category-linked targets</text>
+
+      <rect class="card" x="0" y="350" width="370" height="52" rx="16"/>
+      <text x="20" y="381" class="label">Content Hub</text>
+      <text x="170" y="381" class="tiny">may link company/project/activity</text>
+
+      <rect class="card" x="0" y="420" width="370" height="52" rx="16"/>
+      <text x="20" y="451" class="label">Uploads</text>
+      <text x="170" y="451" class="tiny">imports CRM, activities, budgets</text>
+    </g>
+  </g>
+
+  <!-- Shared query layer -->
+  <g transform="translate(70 750)">
+    <rect class="panel" x="0" y="0" width="1180" height="250" rx="30"/>
+    <text x="28" y="44" class="section">Shared Query Layer</text>
+    <text x="28" y="72" class="small">One hook builds the relationship graph for Dashboard and CRM.</text>
+
+    <rect class="card-strong" x="35" y="105" width="300" height="86" rx="22"/>
+    <text x="58" y="137" class="label">useCrmOverview()</text>
+    <text x="58" y="160" class="code">companies + contacts + projects</text>
+    <text x="58" y="180" class="code">activities + events + stats</text>
+
+    <rect class="card" x="430" y="98" width="300" height="100" rx="22"/>
+    <text x="455" y="130" class="label">Company Graph</text>
+    <text x="455" y="154" class="code">company.contacts[]</text>
+    <text x="455" y="174" class="code">company.projects[]</text>
+    <text x="455" y="194" class="code">company.activities[] + events[]</text>
+
+    <rect class="card" x="835" y="98" width="300" height="100" rx="22"/>
+    <text x="860" y="130" class="label">Consumers</text>
+    <text x="860" y="154" class="code">Dashboard KPIs / Beziehung cards</text>
+    <text x="860" y="174" class="code">CRM company relation counters</text>
+    <text x="860" y="194" class="code">future reports / guide state</text>
+
+    <path class="lineBlue" d="M335 148 L422 148"/>
+    <path class="lineBlue" d="M730 148 L827 148"/>
+  </g>
+
+  <!-- Backend/API/Migrations -->
+  <g transform="translate(1300 910)">
+    <rect class="panel" x="0" y="0" width="430" height="360" rx="30"/>
+    <text x="28" y="44" class="section">Backend Guarantees</text>
+    <text x="28" y="72" class="small">Rules that keep product data connected.</text>
+
+    <g transform="translate(30 105)">
+      <rect class="card" x="0" y="0" width="370" height="52" rx="16"/>
+      <text x="18" y="31" class="code">/crm/projects aliases /crm/deals</text>
+
+      <rect class="card" x="0" y="70" width="370" height="52" rx="16"/>
+      <text x="18" y="101" class="code">/crm/duplicate-check</text>
+
+      <rect class="card" x="0" y="140" width="370" height="52" rx="16"/>
+      <text x="18" y="171" class="code">Calendar accepts activity_id</text>
+
+      <rect class="card" x="0" y="210" width="370" height="52" rx="16"/>
+      <text x="18" y="241" class="code">Alembic: CRM integrity + categories</text>
+    </g>
+  </g>
+
+  <!-- Workflow detail -->
+  <g transform="translate(70 1045)">
+    <rect class="panel" x="0" y="0" width="1180" height="225" rx="30"/>
+    <text x="28" y="44" class="section">Setup Guide Writes This Connected Flow</text>
+
+    <g transform="translate(38 86)">
+      <rect class="card-strong" x="0" y="0" width="190" height="70" rx="20"/>
+      <text x="25" y="32" class="label">Company</text>
+      <text x="25" y="53" class="tiny">existing or created</text>
+
+      <rect class="card-strong" x="260" y="0" width="190" height="70" rx="20"/>
+      <text x="285" y="32" class="label">Project</text>
+      <text x="285" y="53" class="tiny">company_id</text>
+
+      <rect class="card-strong" x="520" y="0" width="190" height="70" rx="20"/>
+      <text x="545" y="32" class="label">Activity</text>
+      <text x="545" y="53" class="tiny">category_id + dates</text>
+
+      <rect class="card-strong" x="780" y="0" width="190" height="70" rx="20"/>
+      <text x="805" y="32" class="label">Event</text>
+      <text x="805" y="53" class="tiny">company_id + project_id + activity_id</text>
+
+      <rect class="card-strong" x="1030" y="0" width="90" height="70" rx="20"/>
+      <text x="1055" y="32" class="label">UI</text>
+      <text x="1045" y="53" class="tiny">sync.emit</text>
+
+      <path class="lineGreen" d="M190 35 L252 35"/>
+      <path class="lineGreen" d="M450 35 L512 35"/>
+      <path class="lineGreen" d="M710 35 L772 35"/>
+      <path class="lineGreen" d="M970 35 L1022 35"/>
+    </g>
+  </g>
+
+  <!-- Cross-panel connectors -->
+  <path class="dash" d="M570 485 C600 485 590 485 620 485"/>
+  <path class="dash" d="M1250 560 C1280 560 1270 560 1300 560"/>
+  <path class="dash" d="M1250 875 C1300 875 1270 1030 1300 1030"/>
+
+  <!-- Footer -->
+  <text x="70" y="1310" class="muted">Key principle: every screen should explain the same product model: Company -&gt; Contact -&gt; Project -&gt; Activity -&gt; Event. Legacy names stay only for compatibility.</text>
+</svg>

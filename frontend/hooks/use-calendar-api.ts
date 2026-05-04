@@ -15,6 +15,7 @@ export interface CalendarEvent {
   attendees?: string[]
   location?: string
   color?: string
+  activity_id?: number | null
   category?: string
   category_id?: number | null
   status?: 'PLANNED' | 'DONE' | 'DELAYED' | 'CANCELLED'

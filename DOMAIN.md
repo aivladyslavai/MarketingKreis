@@ -78,6 +78,13 @@ Examples:
 - `Event`: when something happens.
 - `Task`: what one person needs to do.
 
+## Guided Flow
+- New users should be guided through `Project → Activity → Event`.
+- A project defines the initiative.
+- An activity defines the work block.
+- An event anchors the work to a concrete date/time.
+- Dashboards and CRM summaries should read the same relationship graph instead of rebuilding counts differently per page.
+
 ## Naming Policy
 - User-facing UI should use `Project`, not `Deal`.
 - Backend compatibility may still expose legacy `deal` names while migration is in progress.
@@ -89,6 +96,7 @@ Examples:
 - Project/contact/company relations must stay graph-consistent.
 - Each organization has at most five active marketing categories.
 - Activities, calendar events, and budget targets link to `UserCategory` through `category_id`; legacy category text is kept only for compatibility and display fallback.
+- Calendar events may link to `activity_id`, `project_id`, and `company_id`; this is the bridge used for company relationship cards.
 - Duplicate prevention starts with:
   - Company normalized name uniqueness per organization
   - Company email uniqueness per organization when present

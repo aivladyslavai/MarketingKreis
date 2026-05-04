@@ -10,6 +10,7 @@ import { sync } from "@/lib/sync"
 import CommandPalette from "@/components/command-palette"
 import MobileNav from "@/components/layout/mobile-nav"
 import OnboardingTour from "@/components/onboarding/onboarding-tour"
+import SetupGuidePanel from "@/components/onboarding/setup-guide-panel"
 import MobileMenuSheet from "@/components/layout/mobile-menu-sheet"
 import { wakeBackend } from "@/lib/wake-backend"
 import { useAuth } from "@/hooks/use-auth"
@@ -273,6 +274,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </main>
           <OnboardingTour />
+          <SetupGuidePanel organizationName={user?.organization?.name} />
           <ChatWidget />
           <div data-tour="mobile-nav">
             {!mobileMenuOpen && !keyboardActive && <MobileNav />}

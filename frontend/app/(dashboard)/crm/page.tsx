@@ -48,6 +48,7 @@ import { sync } from "@/lib/sync"
 import { CompanyDialog } from "@/components/crm/company-dialog"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/hooks/use-auth"
+import { useCrmOverview } from "@/hooks/use-crm-overview"
 
 function DuplicateHint({
   matches,
@@ -805,6 +806,8 @@ function CRMPageContent() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const overview = useCrmOverview()
+  const { refreshCrm } = overview
   const [loading, setLoading] = useState(true)
   const [companies, setCompanies] = useState<Company[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
@@ -828,6 +831,13 @@ function CRMPageContent() {
   const { user } = useAuth()
 
   useEffect(() => {
+    setCompanies(overview.companies)
+    setContacts(overview.contacts)
+    setDeals(overview.projects)
+    setLoading(overview.loading)
+  }, [overview.companies, overview.contacts, overview.loading, overview.projects])
+
+  useEffect(() => {
     setActiveTab(tabFromUrl)
   }, [tabFromUrl])
 
@@ -844,31 +854,17 @@ function CRMPageContent() {
     const fetchAll = async () => {
       try {
         setLoading(true)
-        const [c, p, d] = await Promise.all([
-          companiesAPI.getAll().catch(() => []),
-          contactsAPI.getAll().catch(() => []),
-          projectsAPI.getAll().catch(() => []),
-        ])
-        setCompanies(Array.isArray(c) ? c : [])
-        setContacts(Array.isArray(p) ? p : [])
-        setDeals(Array.isArray(d) ? d : [])
+        await refreshCrm()
       } finally {
         setLoading(false)
       }
     }
     fetchAll()
-  }, [])
+  }, [refreshCrm])
 
   // Handlers: create entities
   const refreshAll = async () => {
-    const [c, p, d] = await Promise.all([
-      companiesAPI.getAll().catch(() => []),
-      contactsAPI.getAll().catch(() => []),
-      projectsAPI.getAll().catch(() => []),
-    ])
-    setCompanies(Array.isArray(c) ? c : [])
-    setContacts(Array.isArray(p) ? p : [])
-    setDeals(Array.isArray(d) ? d : [])
+    await refreshCrm()
   }
 
   const deleteCompany = async (id: string) => {
@@ -1035,6 +1031,15 @@ function CRMPageContent() {
     }
     return m
   }, [contacts])
+
+  const companyRelationById = useMemo(() => {
+    const m = new Map<number, any>()
+    for (const item of overview.companyGraph || []) {
+      const id = Number(item?.company?.id)
+      if (Number.isFinite(id)) m.set(id, item)
+    }
+    return m
+  }, [overview.companyGraph])
 
   const dealsAggByCompanyId = useMemo(() => {
     const m = new Map<number, { count: number; pipeline: number }>()
@@ -1462,7 +1467,7 @@ function CRMPageContent() {
                               )}
                             </div>
 
-                            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
                               <div className="rounded-xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">
                                 <div className="text-[11px] text-slate-500 dark:text-slate-400">Contacts</div>
                                 <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
@@ -1479,6 +1484,12 @@ function CRMPageContent() {
                                 <div className="text-[11px] text-slate-500 dark:text-slate-400">Pipeline</div>
                                 <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
                                   CHF {(((dealsAggByCompanyId.get(Number(company.id))?.pipeline || 0) as number) / 1000).toFixed(0)}K
+                                </div>
+                              </div>
+                              <div className="rounded-xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400">Aktivitäten / Termine</div>
+                                <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                                  {companyRelationById.get(Number(company.id))?.activities?.length || 0} / {companyRelationById.get(Number(company.id))?.events?.length || 0}
                                 </div>
                               </div>
                               <div className="rounded-xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">

@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -18,55 +17,12 @@ import {
 	BarChart3,
 	ArrowRight
 } from "lucide-react"
-import { companiesAPI, contactsAPI, crmAPI, projectsAPI } from "@/lib/api"
-import useActivitiesApi from "@/hooks/use-activities-api"
-import { useCalendarApi } from "@/hooks/use-calendar-api"
 import { sync } from "@/lib/sync"
 import { getCategoryColor } from "@/lib/colors"
+import { useCrmOverview } from "@/hooks/use-crm-overview"
 
 export default function DashboardPage() {
-	const [stats, setStats] = useState<any>(null)
-	const [isLoading, setIsLoading] = useState(true)
-	const { activities } = useActivitiesApi()
-	const { events: calendarEvents, updateEvent: updateCalendarEvent } = useCalendarApi() as any
-
-	const fetchDashboardData = async () => {
-		try {
-			setIsLoading(true)
-			const [companies, contacts, projects, crmStats] = await Promise.all([
-				companiesAPI.getAll(),
-				contactsAPI.getAll(),
-				projectsAPI.getAll(),
-				crmAPI.getStats()
-			])
-			setStats({
-				companies: companies.length,
-				contacts: contacts.length,
-				projects: projects.length,
-				activities: activities?.length || 0,
-				events: calendarEvents?.length || 0,
-				...crmStats
-			})
-		} catch (error) {
-			console.error("Error fetching dashboard data:", error)
-		} finally {
-			setIsLoading(false)
-		}
-	}
-
-	useEffect(() => {
-		fetchDashboardData()
-		const unsub = [
-			sync.on('global:refresh', fetchDashboardData),
-			sync.on('activities:changed', fetchDashboardData),
-			sync.on('calendar:changed', fetchDashboardData),
-			sync.on('crm:companies:changed', fetchDashboardData),
-			sync.on('crm:contacts:changed', fetchDashboardData),
-			sync.on('crm:deals:changed', fetchDashboardData),
-		]
-		return () => { unsub.forEach(fn => fn && (fn as any)()) }
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [activities?.length, calendarEvents?.length])
+	const { stats, activities, events: calendarEvents, companyGraph, loading: isLoading, updateCalendarEvent } = useCrmOverview() as any
 
 	const containerVariants = {
 		hidden: { opacity: 0 },
@@ -175,6 +131,30 @@ export default function DashboardPage() {
 						</motion.div>
 					))}
 				</div>
+			</motion.div>
+
+			<motion.div variants={itemVariants}>
+				<h2 className="text-lg sm:text-2xl font-semibold text-slate-900 dark:text-slate-100 mb-3 sm:mb-6">CRM Beziehungen</h2>
+				<Card className="glass-card">
+					<CardContent className="p-3 sm:p-6">
+						<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+							{(companyGraph || []).slice(0, 6).map((item: any) => (
+								<Link key={item.company.id} href={`/crm?tab=companies`} className="rounded-2xl border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10">
+									<div className="font-semibold text-slate-900 dark:text-slate-100 truncate">{item.company.name}</div>
+									<div className="mt-3 grid grid-cols-4 gap-2 text-center text-[11px] text-slate-500 dark:text-slate-400">
+										<div><div className="text-base font-bold text-slate-900 dark:text-white">{item.contacts.length}</div>Kontakte</div>
+										<div><div className="text-base font-bold text-slate-900 dark:text-white">{item.projects.length}</div>Projekte</div>
+										<div><div className="text-base font-bold text-slate-900 dark:text-white">{item.activities.length}</div>Aktiv.</div>
+										<div><div className="text-base font-bold text-slate-900 dark:text-white">{item.events.length}</div>Termine</div>
+									</div>
+								</Link>
+							))}
+							{(!companyGraph || companyGraph.length === 0) && (
+								<div className="text-sm text-slate-500">Noch keine CRM-Beziehungen. Starte mit dem Guide rechts unten.</div>
+							)}
+						</div>
+					</CardContent>
+				</Card>
 			</motion.div>
 
 			{/* Today/Week widget */}

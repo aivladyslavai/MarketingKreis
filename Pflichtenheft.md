@@ -80,6 +80,29 @@ Make entity forms predictable by using shared form primitives for repeated field
 4. Form sections use a common `EntityFormSection` visual frame.
 5. Activity and calendar creation/editing must no longer define their own disconnected category choices.
 
+## Phase 4
+
+### Objective
+Guide users through the product model instead of expecting them to infer it.
+
+### Requirements
+1. Provide a persistent setup guide inside the logged-in app.
+2. The guide creates a connected `Project → Activity → Event` flow.
+3. The project step chooses or creates the company required by CRM integrity rules.
+4. The activity step uses the shared category system.
+5. The event step links back to the created project, activity, and company.
+
+## Phase 5
+
+### Objective
+Make dashboard and CRM read from the same relationship graph.
+
+### Requirements
+1. Add one shared CRM overview/query layer for companies, contacts, projects, activities, and events.
+2. Dashboard KPIs and relationship cards use that shared layer.
+3. CRM company cards surface the same relations: contacts, projects, activities, events.
+4. Calendar events expose `activity_id` so activities can be connected to company/project context through events.
+
 ## Out of Scope for This Phase
 - Full onboarding wizard rewrite
 - Full task/domain expansion beyond the CRM foundation
@@ -93,3 +116,5 @@ Make entity forms predictable by using shared form primitives for repeated field
 6. Production-safe migration/backfill exists for old data.
 7. Activities and calendar forms use the same fixed category list.
 8. Category setup prevents more than five categories and deduplicates names before saving.
+9. The logged-in app provides a persistent setup guide for first-time structure creation.
+10. Dashboard and CRM relationship counts come from the shared overview layer.
