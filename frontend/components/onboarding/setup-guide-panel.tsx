@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { companiesAPI, projectsAPI } from "@/lib/api"
+import { companiesAPI, projectsAPI, tasksAPI } from "@/lib/api"
 import useActivitiesApi from "@/hooks/use-activities-api"
 import { useCalendarApi } from "@/hooks/use-calendar-api"
 import { CategoryPicker } from "@/components/forms/category-picker"
@@ -15,12 +15,13 @@ import { sync } from "@/lib/sync"
 
 const GUIDE_KEY = "mk:setup-guide:v1"
 
-type Step = "project" | "activity" | "event" | "done"
+type Step = "project" | "activity" | "event" | "task" | "done"
 
 const STEPS: Array<{ id: Step; title: string; description: string }> = [
   { id: "project", title: "Projekt", description: "Warum machen wir es?" },
   { id: "activity", title: "Aktivität", description: "Was wird umgesetzt?" },
   { id: "event", title: "Termin", description: "Wann passiert es?" },
+  { id: "task", title: "Aufgabe", description: "Wer macht was?" },
 ]
 
 function today() {
@@ -56,9 +57,11 @@ export default function SetupGuidePanel({ organizationName }: { organizationName
     eventDate: today(),
     eventTime: "09:00",
     eventLocation: "",
+    taskTitle: "Nächster Schritt",
+    taskDue: inDays(2),
   })
 
-  const [created, setCreated] = React.useState<{ companyId?: number; projectId?: number; activityId?: string }>({})
+  const [created, setCreated] = React.useState<{ companyId?: number; projectId?: number; activityId?: string; eventId?: number }>({})
 
   React.useEffect(() => {
     try {
@@ -138,6 +141,8 @@ export default function SetupGuidePanel({ organizationName }: { organizationName
         weight: 50,
         start: `${form.activityStart}T09:00:00`,
         end: form.activityEnd ? `${form.activityEnd}T18:00:00` : undefined,
+        company_id: created.companyId,
+        project_id: created.projectId,
         notes: form.activityNotes || `Projekt ${form.projectTitle}`,
       } as any)
       if (!activity?.id) throw new Error("Aktivität konnte nicht erstellt werden")
@@ -169,13 +174,38 @@ export default function SetupGuidePanel({ organizationName }: { organizationName
         activity_id: created.activityId ? Number(created.activityId) : undefined,
       } as any)
       if (!event?.id) throw new Error("Termin konnte nicht erstellt werden")
+      setCreated((prev) => ({ ...prev, eventId: Number(event.id) }))
       sync.emit("calendar:changed")
+      setStep("task")
+    } catch (e: any) {
+      setError(e?.message || "Termin konnte nicht gespeichert werden")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveTask = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const task = await tasksAPI.create({
+        title: form.taskTitle.trim(),
+        status: "TODO",
+        priority: "MEDIUM",
+        due_at: form.taskDue ? `${form.taskDue}T12:00:00` : undefined,
+        company_id: created.companyId,
+        project_id: created.projectId,
+        activity_id: created.activityId ? Number(created.activityId) : undefined,
+        event_id: created.eventId,
+      })
+      if (!task?.id) throw new Error("Aufgabe konnte nicht erstellt werden")
+      sync.emit("tasks:changed")
       setStep("done")
       try {
         localStorage.setItem(GUIDE_KEY, "done")
       } catch {}
     } catch (e: any) {
-      setError(e?.message || "Termin konnte nicht gespeichert werden")
+      setError(e?.message || "Aufgabe konnte nicht gespeichert werden")
     } finally {
       setSaving(false)
     }
@@ -188,6 +218,8 @@ export default function SetupGuidePanel({ organizationName }: { organizationName
         ? form.activityTitle.trim().length > 1 && !!form.activityCategory && !!form.activityStart
         : step === "event"
           ? form.eventTitle.trim().length > 1 && !!form.eventDate
+          : step === "task"
+            ? form.taskTitle.trim().length > 1
           : true
 
   return (
@@ -201,7 +233,7 @@ export default function SetupGuidePanel({ organizationName }: { organizationName
             <div className="min-w-0 flex-1">
               <div className="font-semibold">Setup Guide</div>
               <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                Erstelle einmal sauber: Projekt → Aktivität → Termin. Danach ist die Systemlogik klar.
+                Erstelle einmal sauber: Projekt → Aktivität → Termin → Aufgabe. Danach ist die Systemlogik klar.
               </p>
               <div className="mt-3 flex gap-2">
                 <Button size="sm" className="h-8 bg-white text-slate-950 hover:bg-white/90" onClick={() => setOpen(true)}>
@@ -235,7 +267,7 @@ export default function SetupGuidePanel({ organizationName }: { organizationName
             <DialogTitle>
               <span className="flex items-center gap-2">
                 <Target className="h-5 w-5 text-violet-500" />
-                Project → Activity → Event
+                Project → Activity → Event → Task
               </span>
             </DialogTitle>
             <DialogDescription>
@@ -307,19 +339,32 @@ export default function SetupGuidePanel({ organizationName }: { organizationName
             </div>
           ) : null}
 
+          {step === "task" ? (
+            <div className="grid gap-4">
+              <div className="grid gap-1.5">
+                <label className="text-sm font-medium">Aufgabe</label>
+                <Input value={form.taskTitle} onChange={(event) => setForm((prev) => ({ ...prev, taskTitle: event.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-sm font-medium">Fällig am</label>
+                <Input type="date" value={form.taskDue} onChange={(event) => setForm((prev) => ({ ...prev, taskDue: event.target.value }))} />
+              </div>
+            </div>
+          ) : null}
+
           {step === "done" ? (
             <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
               <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-500" />
               <h3 className="mt-3 text-lg font-semibold">Flow erstellt</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Projekt, Aktivität und Termin sind jetzt verbunden. Dashboard und CRM zeigen diese Beziehungen über den gemeinsamen Daten-Layer.
+                Projekt, Aktivität, Termin und Aufgabe sind jetzt verbunden. Dashboard und CRM zeigen diese Beziehungen über den gemeinsamen Daten-Layer.
               </p>
             </div>
           ) : null}
 
           <DialogFooter>
             {step !== "project" && step !== "done" ? (
-              <Button variant="outline" onClick={() => setStep(step === "event" ? "activity" : "project")} disabled={saving}>
+              <Button variant="outline" onClick={() => setStep(step === "task" ? "event" : step === "event" ? "activity" : "project")} disabled={saving}>
                 <ChevronLeft className="mr-2 h-4 w-4" />
                 Zurück
               </Button>
@@ -327,8 +372,8 @@ export default function SetupGuidePanel({ organizationName }: { organizationName
             {step === "done" ? (
               <Button onClick={markDone}>Fertig</Button>
             ) : (
-              <Button disabled={!canContinue || saving} onClick={step === "project" ? saveProject : step === "activity" ? saveActivity : saveEvent}>
-                {saving ? "Speichern…" : step === "event" ? "Flow abschließen" : "Weiter"}
+              <Button disabled={!canContinue || saving} onClick={step === "project" ? saveProject : step === "activity" ? saveActivity : step === "event" ? saveEvent : saveTask}>
+                {saving ? "Speichern…" : step === "task" ? "Flow abschließen" : "Weiter"}
                 {!saving ? <ChevronRight className="ml-2 h-4 w-4" /> : null}
               </Button>
             )}

@@ -22,6 +22,7 @@ from app.api.routes import user_categories as user_categories_routes
 from app.api.routes import content_tasks as content_tasks_routes
 from app.api.routes import content_items as content_items_routes
 from app.api.routes import reports as reports_routes
+from app.api.routes import tasks as tasks_routes
 from app.db.base import Base
 from app.db.session import engine
 from app.db.migrations import run_migrations_on_startup
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(content_tasks_routes.router)
     app.include_router(content_items_routes.router)
     app.include_router(reports_routes.router)
+    app.include_router(tasks_routes.router)
     app.include_router(crm_routes.router)
     app.include_router(ai_routes.router)
     app.include_router(assistant_routes.router)

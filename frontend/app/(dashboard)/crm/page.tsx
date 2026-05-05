@@ -1487,9 +1487,9 @@ function CRMPageContent() {
                                 </div>
                               </div>
                               <div className="rounded-xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">
-                                <div className="text-[11px] text-slate-500 dark:text-slate-400">Aktivitäten / Termine</div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400">Aktivitäten / Termine / Tasks</div>
                                 <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
-                                  {companyRelationById.get(Number(company.id))?.activities?.length || 0} / {companyRelationById.get(Number(company.id))?.events?.length || 0}
+                                  {companyRelationById.get(Number(company.id))?.activities?.length || 0} / {companyRelationById.get(Number(company.id))?.events?.length || 0} / {companyRelationById.get(Number(company.id))?.tasks?.length || 0}
                                 </div>
                               </div>
                               <div className="rounded-xl border border-slate-200/60 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">

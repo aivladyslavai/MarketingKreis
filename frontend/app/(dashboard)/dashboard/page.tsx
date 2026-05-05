@@ -141,11 +141,12 @@ export default function DashboardPage() {
 							{(companyGraph || []).slice(0, 6).map((item: any) => (
 								<Link key={item.company.id} href={`/crm?tab=companies`} className="rounded-2xl border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10">
 									<div className="font-semibold text-slate-900 dark:text-slate-100 truncate">{item.company.name}</div>
-									<div className="mt-3 grid grid-cols-4 gap-2 text-center text-[11px] text-slate-500 dark:text-slate-400">
+									<div className="mt-3 grid grid-cols-5 gap-2 text-center text-[11px] text-slate-500 dark:text-slate-400">
 										<div><div className="text-base font-bold text-slate-900 dark:text-white">{item.contacts.length}</div>Kontakte</div>
 										<div><div className="text-base font-bold text-slate-900 dark:text-white">{item.projects.length}</div>Projekte</div>
 										<div><div className="text-base font-bold text-slate-900 dark:text-white">{item.activities.length}</div>Aktiv.</div>
 										<div><div className="text-base font-bold text-slate-900 dark:text-white">{item.events.length}</div>Termine</div>
+										<div><div className="text-base font-bold text-slate-900 dark:text-white">{item.tasks?.length || 0}</div>Tasks</div>
 									</div>
 								</Link>
 							))}

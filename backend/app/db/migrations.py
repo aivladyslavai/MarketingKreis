@@ -84,7 +84,7 @@ def bootstrap_production_schema() -> None:
     This function applies the minimal DDL needed for production safety in an
     idempotent way, and ensures alembic_version is set to our current head.
     """
-    target_revision = "20260427_0017"
+    target_revision = "20260505_0018"
 
     # Use a single transaction; Postgres supports transactional DDL.
     with engine.begin() as conn:
@@ -206,6 +206,10 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("update activities set organization_id = 1 where organization_id is null;"))
         conn.execute(text("alter table activities add column if not exists category_id integer;"))
         conn.execute(text("create index if not exists ix_activities_category_id on activities (category_id);"))
+        conn.execute(text("alter table activities add column if not exists company_id integer;"))
+        conn.execute(text("alter table activities add column if not exists project_id integer;"))
+        conn.execute(text("create index if not exists ix_activities_company_id on activities (company_id);"))
+        conn.execute(text("create index if not exists ix_activities_project_id on activities (project_id);"))
 
         # User categories (rings)
         conn.execute(text("alter table user_categories add column if not exists organization_id integer;"))
@@ -229,6 +233,37 @@ def bootstrap_production_schema() -> None:
         conn.execute(text("alter table content_tasks add column if not exists organization_id integer;"))
         conn.execute(text("create index if not exists ix_content_tasks_organization_id on content_tasks (organization_id);"))
         conn.execute(text("update content_tasks set organization_id = 1 where organization_id is null;"))
+
+        # Product tasks: company -> project -> activity -> event action items
+        conn.execute(
+            text(
+                "create table if not exists tasks ("
+                "id serial primary key, "
+                "organization_id integer not null, "
+                "title varchar(255) not null, "
+                "description varchar(2000), "
+                "status varchar(50) not null default 'TODO', "
+                "priority varchar(20) not null default 'MEDIUM', "
+                "due_at timestamptz, "
+                "company_id integer, "
+                "project_id integer, "
+                "activity_id integer, "
+                "event_id integer, "
+                "owner_id integer, "
+                "created_at timestamptz not null default now(), "
+                "updated_at timestamptz not null default now()"
+                ")"
+            )
+        )
+        conn.execute(text("create index if not exists ix_tasks_organization_id on tasks (organization_id);"))
+        conn.execute(text("create index if not exists ix_tasks_status on tasks (status);"))
+        conn.execute(text("create index if not exists ix_tasks_priority on tasks (priority);"))
+        conn.execute(text("create index if not exists ix_tasks_due_at on tasks (due_at);"))
+        conn.execute(text("create index if not exists ix_tasks_company_id on tasks (company_id);"))
+        conn.execute(text("create index if not exists ix_tasks_project_id on tasks (project_id);"))
+        conn.execute(text("create index if not exists ix_tasks_activity_id on tasks (activity_id);"))
+        conn.execute(text("create index if not exists ix_tasks_event_id on tasks (event_id);"))
+        conn.execute(text("create index if not exists ix_tasks_owner_id on tasks (owner_id);"))
 
         # Content Hub: enum types (idempotent)
         conn.execute(

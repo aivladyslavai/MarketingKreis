@@ -13,6 +13,7 @@ export type SyncEvent =
   | 'crm:deals:changed'
   | 'content:changed'
   | 'content:items:changed'
+  | 'tasks:changed'
   | 'performance:changed'
   | 'budget:changed'
   | 'onboarding:restart'

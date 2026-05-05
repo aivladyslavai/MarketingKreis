@@ -5,6 +5,8 @@ from datetime import datetime, date
 
 from app.db.session import get_db_session
 from app.models.activity import Activity, ActivityType
+from app.models.company import Company
+from app.models.deal import Deal
 from app.models.user import User
 from app.api.deps import get_current_user, get_org_id, require_writable_user
 from app.services.categories import canonical_category_name, resolve_category
@@ -14,12 +16,53 @@ from typing import Optional
 router = APIRouter(prefix="/activities", tags=["activities"])
 
 
+def _to_int(value: object) -> Optional[int]:
+    try:
+        return int(value) if value not in (None, "", "null") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_company_and_project(
+    db: Session,
+    org: int,
+    *,
+    company_id: object = None,
+    project_id: object = None,
+) -> tuple[Optional[int], Optional[int]]:
+    cid = _to_int(company_id)
+    pid = _to_int(project_id)
+    company = None
+    project = None
+
+    if cid is not None:
+        company = db.query(Company).filter(Company.id == cid, Company.organization_id == org).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+    if pid is not None:
+        project = db.query(Deal).filter(Deal.id == pid, Deal.organization_id == org).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+    if project is not None and getattr(project, "company_id", None):
+        project_company_id = int(project.company_id)
+        if company is None:
+            cid = project_company_id
+        elif int(company.id) != project_company_id:
+            raise HTTPException(status_code=400, detail="Project does not belong to selected company")
+
+    return cid, pid
+
+
 # Schemas для frontend совместимости
 class ActivityFrontend(BaseModel):
     id: str
     title: str
     category: str  # VERKAUFSFOERDERUNG, IMAGE, EMPLOYER_BRANDING, KUNDENPFLEGE
     category_id: Optional[int] = None
+    company_id: Optional[int] = None
+    project_id: Optional[int] = None
     status: str  # ACTIVE, PLANNED, COMPLETED, CANCELLED
     weight: Optional[int] = None
     budgetCHF: Optional[float] = None
@@ -70,6 +113,8 @@ def list_activities(
                 title=activity.title or "",
                     category=category_value,
                     category_id=getattr(activity, "category_id", None),
+                    company_id=getattr(activity, "company_id", None),
+                    project_id=getattr(activity, "project_id", None),
                 status=map_activity_status(activity.status),
                 weight=activity.weight,
                 budgetCHF=float(activity.budget) if activity.budget is not None else None,
@@ -117,12 +162,20 @@ def create_activity(
             category_name=raw_category,
             required=True,
         )
+        company_id, project_id = _resolve_company_and_project(
+            db,
+            org,
+            company_id=activity_data.get("company_id"),
+            project_id=activity_data.get("project_id"),
+        )
 
         activity = Activity(
             title=activity_data.get("title", "Untitled"),
             type=map_category_to_activity_type(category_ref.name),
             category_name=category_ref.name,
             category_id=category_ref.id,
+            company_id=company_id,
+            project_id=project_id,
             budget=activity_data.get("budgetCHF"),
             expected_output=activity_data.get("notes") or None,
             weight=activity_data.get("weight"),
@@ -143,6 +196,8 @@ def create_activity(
             title=activity.title,
             category=category_value,
             category_id=activity.category_id,
+            company_id=activity.company_id,
+            project_id=activity.project_id,
             status=map_activity_status(activity.status),
             weight=activity.weight,
             budgetCHF=float(activity.budget) if activity.budget is not None else None,
@@ -213,6 +268,15 @@ def update_activity(
             activity.budget = activity_data.get("budgetCHF")
         if "weight" in activity_data:
             activity.weight = activity_data.get("weight")
+        if "company_id" in activity_data or "project_id" in activity_data:
+            company_id, project_id = _resolve_company_and_project(
+                db,
+                org,
+                company_id=activity_data.get("company_id") if "company_id" in activity_data else activity.company_id,
+                project_id=activity_data.get("project_id") if "project_id" in activity_data else activity.project_id,
+            )
+            activity.company_id = company_id
+            activity.project_id = project_id
 
         db.commit()
         db.refresh(activity)
@@ -224,6 +288,8 @@ def update_activity(
             title=activity.title,
             category=category_value,
             category_id=activity.category_id,
+            company_id=activity.company_id,
+            project_id=activity.project_id,
             status=map_activity_status(activity.status),
             weight=activity.weight,
             budgetCHF=float(activity.budget) if activity.budget is not None else None,

@@ -8,6 +8,8 @@ export interface Activity {
   title: string
   category: string
   category_id?: number | null
+  company_id?: number | null
+  project_id?: number | null
   status: "ACTIVE" | "PLANNED" | "COMPLETED" | "CANCELLED"
   weight?: number
   budgetCHF?: number

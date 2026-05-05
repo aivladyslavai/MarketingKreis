@@ -371,6 +371,66 @@ export const crmIntegrityAPI = {
   },
 }
 
+export type TaskDTO = {
+  id: number
+  organization_id: number
+  title: string
+  description?: string | null
+  status: "TODO" | "IN_PROGRESS" | "DONE" | "CANCELLED"
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT"
+  due_at?: string | null
+  company_id?: number | null
+  project_id?: number | null
+  activity_id?: number | null
+  event_id?: number | null
+  owner_id?: number | null
+  created_at: string
+  updated_at: string
+}
+
+export type TaskCreateDTO = {
+  title: string
+  description?: string | null
+  status?: TaskDTO["status"]
+  priority?: TaskDTO["priority"]
+  due_at?: string | null
+  company_id?: number | null
+  project_id?: number | null
+  activity_id?: number | null
+  event_id?: number | null
+  owner_id?: number | null
+}
+
+export type TaskUpdateDTO = Partial<TaskCreateDTO>
+
+export const tasksAPI = {
+  list: (params?: { status?: TaskDTO["status"]; q?: string; company_id?: number; project_id?: number; activity_id?: number; event_id?: number }) => {
+    const sp = new URLSearchParams()
+    if (params?.status) sp.set("status", params.status)
+    if (params?.q) sp.set("q", params.q)
+    if (params?.company_id != null) sp.set("company_id", String(params.company_id))
+    if (params?.project_id != null) sp.set("project_id", String(params.project_id))
+    if (params?.activity_id != null) sp.set("activity_id", String(params.activity_id))
+    if (params?.event_id != null) sp.set("event_id", String(params.event_id))
+    const qs = sp.toString()
+    return requestLocal<TaskDTO[]>(`/api/tasks${qs ? `?${qs}` : ""}`)
+  },
+  create: (payload: TaskCreateDTO) =>
+    requestLocal<TaskDTO>(`/api/tasks`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  update: (id: number, payload: TaskUpdateDTO) =>
+    requestLocal<TaskDTO>(`/api/tasks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  delete: (id: number) =>
+    requestLocal<{ ok: boolean; id: number }>(`/api/tasks/${id}`, {
+      method: "DELETE",
+    }),
+}
+
 // === Content Tasks ===
 
 export type ContentTaskDTO = {

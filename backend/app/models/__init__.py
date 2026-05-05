@@ -26,5 +26,6 @@ from app.models.content_item import (  # noqa
 from app.models.report import ReportTemplate, ReportRun, ReportSchedule  # noqa
 from app.models.auth_session import AuthSession, AuthRefreshToken  # noqa
 from app.models.organization_invite import OrganizationInvite  # noqa
+from app.models.task import Task  # noqa
 
 

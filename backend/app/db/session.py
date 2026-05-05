@@ -167,8 +167,30 @@ def _ensure_production_schema() -> None:
 
                 conn.execute(text("alter table if exists deals add column if not exists owner_id integer;"))
                 conn.execute(text("alter table if exists activities add column if not exists category_id integer;"))
+                conn.execute(text("alter table if exists activities add column if not exists company_id integer;"))
+                conn.execute(text("alter table if exists activities add column if not exists project_id integer;"))
                 conn.execute(text("alter table if exists calendar_entries add column if not exists category_id integer;"))
                 conn.execute(text("alter table if exists budget_targets add column if not exists category_id integer;"))
+                conn.execute(
+                    text(
+                        "create table if not exists tasks ("
+                        "id serial primary key, "
+                        "organization_id integer not null, "
+                        "title varchar(255) not null, "
+                        "description varchar(2000), "
+                        "status varchar(50) not null default 'TODO', "
+                        "priority varchar(20) not null default 'MEDIUM', "
+                        "due_at timestamptz, "
+                        "company_id integer, "
+                        "project_id integer, "
+                        "activity_id integer, "
+                        "event_id integer, "
+                        "owner_id integer, "
+                        "created_at timestamptz not null default now(), "
+                        "updated_at timestamptz not null default now()"
+                        ")"
+                    )
+                )
 
                 # Upload ownership (new hardening)
                 conn.execute(text("alter table if exists uploads add column if not exists owner_id integer;"))
