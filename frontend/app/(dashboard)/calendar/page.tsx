@@ -18,6 +18,8 @@ import { type Activity } from "@/components/circle/radial-circle"
 import dynamic from 'next/dynamic'
 const SimpleCalendar = dynamic(() => import("@/components/calendar/simple-calendar"), { ssr: false })
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, LineChart, Line } from "recharts"
+import { PageHeader } from "@/components/layout/page-header"
+import { CalendarDays, Plus, FileText } from "lucide-react"
 
 export default function CalendarPage() {
   const { events, isLoading, error, createEvent, updateEvent, deleteEvent, refresh, addExceptionDate, getExceptions } =
@@ -185,17 +187,13 @@ export default function CalendarPage() {
   
   return (
     <div className="space-y-6 sm:space-y-8">
-      {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-6 sm:p-8">
-        <div className="pointer-events-none absolute -top-24 -right-20 h-72 w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-gradient-to-tr from-cyan-500/30 to-emerald-500/30 blur-3xl" />
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold text-white">Kalender</h1>
-            <p className="text-slate-300 text-sm">Marketing Termine, Events und Aufgaben</p>
-          </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto" data-tour="calendar-toolbar">
-            <Button size="sm" variant="outline" className="glass-card w-full sm:w-auto" onClick={() => openModal({
+      <PageHeader
+        title="Kalender"
+        description="Marketing-Termine, Events und Aufgaben deines Teams auf einen Blick."
+        icon={CalendarDays}
+        actions={
+          <div className="flex items-center gap-2" data-tour="calendar-toolbar">
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => openModal({
               type: "custom",
               title: "Vorlagen",
               content: (
@@ -206,8 +204,11 @@ export default function CalendarPage() {
                   }}
                 />
               )
-            })}>Vorlagen</Button>
-            <Button size="sm" className="bg-white text-slate-900 hover:bg-white/90 w-full sm:w-auto" onClick={() => openModal({
+            })}>
+              <FileText className="h-4 w-4" />
+              Vorlagen
+            </Button>
+            <Button size="sm" className="gap-2" onClick={() => openModal({
               type: "custom",
               title: "Neue Aktivität",
               content: (
@@ -220,10 +221,13 @@ export default function CalendarPage() {
                   }}
                 />
               )
-            })}>+ Neue Aktivität</Button>
+            })}>
+              <Plus className="h-4 w-4" />
+              Neue Aktivität
+            </Button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <div data-tour="calendar-grid">
         <SimpleCalendar

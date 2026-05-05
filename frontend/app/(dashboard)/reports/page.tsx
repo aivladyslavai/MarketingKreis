@@ -15,6 +15,8 @@ import { useCalendarApi } from "@/hooks/use-calendar-api"
 import { useUploadsApi, useJobsApi } from "@/hooks/use-uploads-api"
 import { sync } from "@/lib/sync"
 import { ResponsiveContainer, AreaChart, Area } from "recharts"
+import { PageHeader } from "@/components/layout/page-header"
+import { FileBarChart } from "lucide-react"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { reportsAPI } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
@@ -458,33 +460,31 @@ export default function ReportsPage() {
           </div>
         </div>
       )}
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-4 sm:p-6 md:p-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0">
-              <Activity className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-semibold text-white">Reports</h1>
-              <p className="text-slate-300 text-xs sm:text-sm truncate">Live Business Überblick über CRM, Calendar, Activities und Uploads</p>
-            </div>
-          </div>
+      <PageHeader
+        title="Reports"
+        description="Live Business-Überblick über CRM, Kalender, Aktivitäten und Uploads."
+        icon={FileBarChart}
+        actions={
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" className="border-white/20 text-slate-200 h-8 sm:h-9 text-xs sm:text-sm" onClick={()=>{ load(); refetchActivities(); refreshCalendar(); refreshUploads(); refreshJobs(); }}>
-              <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" /> <span className="hidden sm:inline">Aktualisieren</span>
+            <Button variant="outline" size="sm" className="gap-2" onClick={()=>{ load(); refetchActivities(); refreshCalendar(); refreshUploads(); refreshJobs(); }}>
+              <RefreshCw className="h-4 w-4" />
+              <span className="hidden sm:inline">Aktualisieren</span>
             </Button>
-            <Button variant="outline" size="sm" className="border-white/20 text-slate-200 h-8 sm:h-9 text-xs sm:text-sm" onClick={()=> window.open('/api/reports/export?format=csv', '_blank') }>
-              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" /> <span className="hidden xs:inline">CSV</span>
+            <Button variant="outline" size="sm" className="gap-2" onClick={()=> window.open('/api/reports/export?format=csv', '_blank') }>
+              <Download className="h-4 w-4" />
+              CSV
             </Button>
-            <Button size="sm" className="bg-white text-slate-900 hover:bg-white/90 h-8 sm:h-9 text-xs sm:text-sm" onClick={()=> window.open('/api/reports/export?format=json', '_blank') }>
-              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" /> <span className="hidden xs:inline">JSON</span>
+            <Button size="sm" className="gap-2" onClick={()=> window.open('/api/reports/export?format=json', '_blank') }>
+              <Download className="h-4 w-4" />
+              JSON
             </Button>
           </div>
-        </div>
+        }
+      />
 
-        {/* Generator */}
-        <div className="mt-4 space-y-3">
+      {/* Generator */}
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <div className="space-y-3">
           {/* Presets - scrollable on mobile */}
           <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
             <div className="flex items-center gap-2 text-xs min-w-max">

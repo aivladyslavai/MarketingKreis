@@ -20,7 +20,8 @@ import CategorySetup from "@/components/performance/CategorySetup"
 import { useUserCategories, type UserCategory } from "@/hooks/use-user-categories"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
-import { CalendarDays, Check, Download, Pencil, Trash2, X } from "lucide-react"
+import { CalendarDays, Check, Download, Pencil, Trash2, X, ActivitySquare, Plus } from "lucide-react"
+import { PageHeader } from "@/components/layout/page-header"
 import { CategoryPicker } from "@/components/forms/category-picker"
 import { DateRangePicker } from "@/components/forms/date-range-picker"
 import { EntityFormSection } from "@/components/forms/entity-form"
@@ -425,66 +426,68 @@ export default function ActivitiesPage() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-4 sm:p-6 lg:p-8">
-        <div className="pointer-events-none absolute -top-24 -right-20 h-72 w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-gradient-to-tr from-cyan-500/30 to-emerald-500/30 blur-3xl" />
-        <div className="relative flex flex-col gap-4">
-          {/* Title */}
-          <div>
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-semibold text-white">Aktivitäten</h1>
-            <p className="text-slate-300 text-xs sm:text-sm mt-1">Planen und visualisieren Sie Ihre Marketing-Aktivitäten</p>
-          </div>
-          
-          {/* Controls - responsive grid */}
-          <div className="flex flex-col gap-3">
-            {/* Filter tabs - scrollable on mobile */}
-            <div className="overflow-x-auto -mx-1 px-1">
-              <div className="inline-flex rounded-lg overflow-hidden border border-white/20 min-w-max">
-                {[
-                  { k: "ALL", label: "Alle" },
-                  { k: "ONGOING", label: "Läuft" },
-                  { k: "UPCOMING", label: "Zukünftig" },
-                  { k: "PAST", label: "Vergangen" },
-                ].map(({ k, label }) => (
-                  <button
-                    key={k}
-                    onClick={() => setPreset(k as any)}
-                    className={`px-2.5 sm:px-3 h-10 sm:h-9 text-xs sm:text-sm whitespace-nowrap ${preset === k ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            
-            {/* Action buttons */}
-            <div className="flex flex-wrap items-center gap-2" data-tour="activities-actions">
+      <PageHeader
+        title="Aktivitäten"
+        description="Plane und visualisiere alle Marketing-Aktivitäten deiner Organisation."
+        icon={ActivitySquare}
+        actions={
+          <Button size="sm" className="gap-2" onClick={() => openModal({
+            type: 'custom',
+            title: 'Aktivität hinzufügen',
+            content: (
+              <AddActivityForm
+                companies={companies}
+                projects={projects}
+                defaultCompanyId={selectedCompanyId}
+                defaultProjectId={selectedProjectId}
+                onCreate={async (p) => { await addActivity(p); refresh?.(); }}
+              />
+            )
+          })}>
+            <Plus className="h-4 w-4" />
+            Neue Aktivität
+          </Button>
+        }
+      />
+
+      {/* Filter & action bar */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3 sm:p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="overflow-x-auto -mx-1 px-1">
+          <div className="inline-flex rounded-lg overflow-hidden border border-border min-w-max">
+            {[
+              { k: "ALL", label: "Alle" },
+              { k: "ONGOING", label: "Läuft" },
+              { k: "UPCOMING", label: "Zukünftig" },
+              { k: "PAST", label: "Vergangen" },
+            ].map(({ k, label }) => (
               <button
-                onClick={() => setCompact(c => !c)}
-                className={`h-10 sm:h-9 px-2.5 sm:px-3 rounded-lg border border-white/20 text-xs sm:text-sm ${compact ? "bg-white/20 text-white" : "bg-white/5 text-white/80"}`}
+                key={k}
+                onClick={() => setPreset(k as any)}
+                className={cn(
+                  "px-3 h-9 text-sm whitespace-nowrap transition-colors",
+                  preset === k ? "bg-kaboom-red text-white" : "bg-card text-foreground/70 hover:bg-secondary"
+                )}
               >
-                {compact ? "Kompakt" : "Erweitert"}
+                {label}
               </button>
-              <Button size="sm" variant="outline" className="glass-card h-8 sm:h-9 text-xs sm:text-sm" onClick={exportCsv}>
-                <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Export</span>
-              </Button>
-              <Button size="sm" className="bg-white text-slate-900 hover:bg-white/90 h-8 sm:h-9 text-xs sm:text-sm ml-auto" onClick={() => openModal({
-                type: 'custom',
-                title: 'Aktivität hinzufügen',
-                content: (
-                  <AddActivityForm
-                    companies={companies}
-                    projects={projects}
-                    defaultCompanyId={selectedCompanyId}
-                    defaultProjectId={selectedProjectId}
-                    onCreate={async (p) => { await addActivity(p); refresh?.(); }}
-                  />
-                )
-              })}>+ Aktivität</Button>
-            </div>
+            ))}
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2" data-tour="activities-actions">
+          <button
+            onClick={() => setCompact(c => !c)}
+            className={cn(
+              "h-9 px-3 rounded-lg border text-sm transition-colors",
+              compact ? "border-kaboom-red/40 bg-kaboom-red/10 text-kaboom-red" : "border-border bg-card text-foreground/70 hover:bg-secondary"
+            )}
+          >
+            {compact ? "Kompakt" : "Erweitert"}
+          </button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={exportCsv}>
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Export</span>
+          </Button>
         </div>
       </div>
       {/* Grid layout */}

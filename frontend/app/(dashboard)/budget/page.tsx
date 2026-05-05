@@ -9,6 +9,7 @@ import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tool
 import { AlertTriangle, DollarSign, Handshake, Target, RefreshCw, Wallet } from "lucide-react"
 import { motion } from "framer-motion"
 import { useEffect, useState } from "react"
+import { PageHeader } from "@/components/layout/page-header"
 
 export default function BudgetPage() {
   const { budgetData, loading, error, refetch, period, periodOptions, setPeriod } = useBudgetData()
@@ -108,27 +109,13 @@ export default function BudgetPage() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      {/* Hero */}
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45 }}
-        className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-6 sm:p-8"
-      >
-        <div className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl animate-gradient-shift" />
-        <div className="pointer-events-none absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-gradient-to-tr from-cyan-500/30 to-emerald-500/30 blur-3xl animate-gradient-shift" />
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-kaboom-red/30 to-blue-500/30 flex items-center justify-center border border-white/20 shadow-lg">
-              <Wallet className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-semibold text-white">Budget & KPIs</h1>
-              <p className="text-slate-300 text-sm">Ziele, Verlauf und Verteilung über Kategorien</p>
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-            <div className="w-full sm:w-[180px]">
+      <PageHeader
+        title="Budget & KPIs"
+        description="Ziele, Verlauf und Verteilung deines Marketing-Budgets über alle Kategorien."
+        icon={Wallet}
+        actions={
+          <div className="flex items-center gap-2">
+            <div className="w-[180px]">
               <GlassSelect
                 value={period}
                 onChange={(v) => setPeriod?.(v)}
@@ -139,19 +126,15 @@ export default function BudgetPage() {
                 disabled={!period}
               />
             </div>
-            <Button variant="outline" className="glass-card w-full sm:w-auto" onClick={refetch}>
-              <RefreshCw className="h-4 w-4 mr-2" /> Aktualisieren
+            <Button variant="outline" size="sm" className="gap-2" onClick={refetch}>
+              <RefreshCw className="h-4 w-4" /> Aktualisieren
             </Button>
-            <Button
-              variant="outline"
-              className="glass-card w-full sm:w-auto"
-              onClick={() => alert('Bearbeitung der Ziele – kommt bald')}
-            >
+            <Button variant="outline" size="sm" onClick={() => alert('Bearbeitung der Ziele – kommt bald')}>
               Ziele bearbeiten
             </Button>
           </div>
-        </div>
-      </motion.div>
+        }
+      />
 
       {/* Budget Scenario – premium controls (collapsible) */}
       <motion.div

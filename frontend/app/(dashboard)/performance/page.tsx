@@ -14,6 +14,7 @@ import { LineChart, Line, BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell, X
 import CategorySetup from "@/components/performance/CategorySetup"
 import { useUserCategories, type UserCategory } from "@/hooks/use-user-categories"
 import { getWeek } from "date-fns"
+import { PageHeader } from "@/components/layout/page-header"
 
 export default function PerformancePage() {
   const [loading, setLoading] = useState(true)
@@ -242,30 +243,23 @@ export default function PerformancePage() {
     >
       {/* Header */}
       <motion.div variants={itemVariants} className="relative">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8">
-          <div className="flex items-center gap-4 sm:gap-6">
-            <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-2xl bg-gradient-to-br from-red-500/20 to-orange-500/20 flex items-center justify-center backdrop-blur-sm">
-              <BarChart3 className="h-8 w-8 text-red-600 dark:text-red-400" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-light tracking-tight text-slate-900 dark:text-slate-100">Performance</h1>
-              <p className="text-slate-600 dark:text-slate-400 mt-1 text-sm sm:text-base">Umsatz, Pipeline, Leads und Aktivitäten im Überblick</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            {isSmall && (
+        <PageHeader
+          title="Performance"
+          description="Umsatz, Pipeline, Leads und Aktivitäten im Überblick."
+          icon={BarChart3}
+          actions={
+            isSmall ? (
               <Button
                 variant="outline"
                 size="sm"
-                className="glass-card h-11 sm:h-9 text-xs"
                 onClick={() => setChartsOpen((v) => !v)}
               >
                 {chartsOpen ? "Charts ausblenden" : "Charts anzeigen"}
               </Button>
-            )}
-            <Badge className="glass-card px-4 py-2 text-sm font-medium">KABOOM</Badge>
-          </div>
-        </div>
+            ) : undefined
+          }
+          className="mb-6 sm:mb-8"
+        />
 
         {/* KPI Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">

@@ -31,6 +31,7 @@ import {
   Files,
 } from "lucide-react"
 import Link from "next/link"
+import { PageHeader } from "@/components/layout/page-header"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { sync } from "@/lib/sync"
@@ -1774,65 +1775,28 @@ function ContentPageInner() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-4 sm:p-6 md:p-10 text-white shadow-2xl border border-white/10">
-        <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-gradient-to-tr from-cyan-500/30 to-emerald-500/30 blur-3xl" />
-        <div className="relative flex flex-col gap-4">
-          {/* Top row: back + title */}
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 h-11 sm:h-8 px-2 sm:px-3">
-                <ArrowLeft className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Dashboard</span>
-              </Button>
-            </Link>
-            <div className="h-6 w-px bg-white/10 hidden sm:block" />
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center border border-white/20 shadow shrink-0">
-                <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg sm:text-2xl md:text-3xl font-semibold">Content Hub</h1>
-                <p className="text-xs sm:text-sm text-white/70">Content Management</p>
-              </div>
-            </div>
-          </div>
-          {/* Action buttons */}
+      <PageHeader
+        title="Content Hub"
+        description="Content Management — Items, Tasks, Templates und Editorial-Kalender."
+        icon={FileText}
+        actions={
           <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="bg-white/10 text-white hover:bg-white/20 h-11 sm:h-8 text-xs sm:text-sm"
-              onClick={() => setShowPlanner((v) => !v)}
-            >
-              <Filter className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowPlanner((v) => !v)}>
+              <Filter className="h-4 w-4" />
               <span className="hidden sm:inline">{showPlanner ? "Planner ausblenden" : "Planner anzeigen"}</span>
-              <span className="sm:hidden">{showPlanner ? "Planner" : "Planner"}</span>
-              {dealsLoading && <span className="ml-2 hidden sm:inline text-[10px] text-white/70">Sync…</span>}
-              {!dealsLoading && dealsError && <span className="ml-2 hidden sm:inline text-[10px] text-amber-200">Error</span>}
+              <span className="sm:hidden">Planner</span>
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="bg-white/10 text-white hover:bg-white/20 h-11 sm:h-8 text-xs sm:text-sm"
-              onClick={exportItemsCsv}
-            >
-              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
+            <Button variant="outline" size="sm" className="gap-2" onClick={exportItemsCsv}>
+              <Download className="h-4 w-4" />
               <span className="hidden sm:inline">Export</span>
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="bg-white/10 text-white hover:bg-white/20 h-11 sm:h-8 text-xs sm:text-sm"
-              onClick={() => openContentItem()}
-            >
-              <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Item</span>
-              <span className="sm:hidden">Item</span>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => openContentItem()}>
+              <Plus className="h-4 w-4" />
+              Item
             </Button>
             <Button
               size="sm"
-              className="bg-white text-slate-900 hover:bg-white/90 h-11 sm:h-8 text-xs sm:text-sm w-full sm:w-auto sm:ml-auto"
+              className="gap-2"
               onClick={() =>
                 openModal({
                   type: "custom",
@@ -1868,12 +1832,12 @@ function ContentPageInner() {
                 })
               }
             >
-              <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <Plus className="h-4 w-4" />
               Task
             </Button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <Card className="glass-card overflow-hidden">
         <CardHeader className="relative px-4 sm:px-6 pt-5 pb-4 border-b border-white/10">

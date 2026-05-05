@@ -20,6 +20,7 @@ import {
   AdminSeedStatus,
 } from "@/lib/api"
 import { Shield, Server, Settings, PlayCircle, RefreshCw, RotateCcw, Database, Wrench, Flag, Info, Users, Briefcase, Contact2, Tag, Plus, FlaskConical, PanelLeft, Bug, Bot, Globe, Clock3, Monitor, Sun, Moon, Wifi, Grid3X3, Lock } from "lucide-react"
+import { PageHeader } from "@/components/layout/page-header"
 import { Input } from "@/components/ui/input"
 import { GlassSelect } from "@/components/ui/glass-select"
 
@@ -534,37 +535,28 @@ export default function AdminPage() {
 
   return (
     <div className="p-4 sm:p-10 md:p-12 space-y-6 sm:space-y-16">
-      {/* Hero header with animated blobs */}
-      <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-4 sm:p-8 md:p-10">
-        <div className="pointer-events-none absolute -top-24 -right-16 h-48 sm:h-72 w-48 sm:w-72 rounded-full bg-gradient-to-tr from-fuchsia-500/30 to-blue-500/30 blur-3xl animate-gradient-shift" />
-        <div className="pointer-events-none absolute -bottom-20 -left-16 h-40 sm:h-64 w-40 sm:w-64 rounded-full bg-gradient-to-tr from-cyan-500/30 to-emerald-500/30 blur-3xl animate-gradient-shift" />
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-10">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-purple-500/30 to-blue-500/30 flex items-center justify-center border border-white/20 shadow-lg flex-shrink-0">
-              <Shield className="h-5 w-5 sm:h-7 sm:w-7 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-3xl md:text-4xl font-bold text-white/90">Admin</h1>
-              <p className="text-slate-200/80 mt-0.5 sm:mt-1 text-xs sm:text-sm md:text-base">Systemeinstellungen, Datenpflege und Hintergrundjobs</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <Button variant="outline" size="sm" className="glass-card h-8 text-xs sm:text-sm" onClick={checkHealth}>
-              <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" /> <span className="hidden xs:inline">Health</span>
+      <PageHeader
+        title="Admin"
+        description="Systemeinstellungen, Datenpflege und Hintergrundjobs."
+        icon={Shield}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={checkHealth}>
+              <RefreshCw className="h-4 w-4" /> Health
             </Button>
-            <Button variant="outline" size="sm" className="glass-card h-8 text-xs sm:text-sm" onClick={copyDiagnostics}>
-              <Info className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" /> <span className="hidden xs:inline">Diagnostics</span>
+            <Button variant="outline" size="sm" className="gap-2" onClick={copyDiagnostics}>
+              <Info className="h-4 w-4" /> Diagnostics
             </Button>
           </div>
-        </div>
-        {/* quick stats bar */}
-        <div className="mt-4 sm:mt-8 grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-5 sm:items-center sm:justify-between rounded-lg bg-white/5 border border-white/10 px-3 sm:px-8 py-3 sm:py-6 text-[10px] sm:text-sm text-slate-100 relative overflow-hidden">
-          <div className="pointer-events-none absolute -left-1/3 top-0 h-full w-1/2 animate-shine" />
-          <span className="flex items-center gap-1.5 sm:gap-2 truncate"><Server className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" /> <span className="truncate">API: {apiBase.replace('https://', '')}</span></span>
-          <span className="flex items-center gap-1.5 sm:gap-2"><Database className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" /> Kategorien: {categoriesCount}</span>
-          <span className="flex items-center gap-1.5 sm:gap-2"><Wrench className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" /> Jobs: {jobsSummary.total}</span>
-          <span className="flex items-center gap-1.5 sm:gap-2"><Flag className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" /> Flags: {Object.keys(flags).filter(k=>flags[k]).length}</span>
-        </div>
+        }
+      />
+
+      {/* Quick stats bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-xs sm:text-sm">
+        <span className="flex items-center gap-2 text-muted-foreground"><Server className="h-4 w-4 text-kaboom-red" /> <span className="truncate">API: {apiBase.replace('https://', '')}</span></span>
+        <span className="flex items-center gap-2 text-muted-foreground"><Database className="h-4 w-4 text-kaboom-red" /> Kategorien: <span className="font-semibold text-foreground">{categoriesCount}</span></span>
+        <span className="flex items-center gap-2 text-muted-foreground"><Wrench className="h-4 w-4 text-kaboom-red" /> Jobs: <span className="font-semibold text-foreground">{jobsSummary.total}</span></span>
+        <span className="flex items-center gap-2 text-muted-foreground"><Flag className="h-4 w-4 text-kaboom-red" /> Flags: <span className="font-semibold text-foreground">{Object.keys(flags).filter(k=>flags[k]).length}</span></span>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 sm:space-y-12">

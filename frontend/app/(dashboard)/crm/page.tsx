@@ -49,6 +49,7 @@ import { CompanyDialog } from "@/components/crm/company-dialog"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/hooks/use-auth"
 import { useCrmOverview } from "@/hooks/use-crm-overview"
+import { PageHeader } from "@/components/layout/page-header"
 
 function DuplicateHint({
   matches,
@@ -1168,24 +1169,17 @@ function CRMPageContent() {
   return (
     <div className="min-w-0">
       {/* Header Section */}
-      <div className="md:sticky md:top-[calc(4rem+env(safe-area-inset-top))] z-10 backdrop-blur-xl bg-white/80 dark:bg-[#0b101a]/70 border-b border-slate-200 dark:border-slate-800/60">
-        <div className="py-4 sm:py-6">
-          <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-            <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 dark:from-blue-500/40 dark:to-purple-600/40 border border-blue-200/50 dark:border-white/10 shadow-lg shadow-blue-500/10 flex items-center justify-center shrink-0">
-              <Users className="h-5 w-5 sm:h-7 sm:w-7 text-blue-600 dark:text-white" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">CRM</h1>
-                {loading && (
-                  <Badge className="bg-slate-200/60 dark:bg-white/10 text-slate-700 dark:text-slate-200 border-slate-300/50 dark:border-white/10">
-                    Lädt…
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 truncate">Schneller Aufbau Ihrer Datenbasis</p>
-            </div>
-          </div>
+      <div>
+        <PageHeader
+          title="CRM"
+          description="Schneller Aufbau und Pflege deiner Kunden-, Kontakt- und Projektdatenbasis."
+          icon={Users}
+          meta={loading ? (
+            <Badge className="bg-secondary text-foreground border-border">Lädt…</Badge>
+          ) : undefined}
+          className="mb-4 sm:mb-6"
+        />
+        <div className="py-0">
 
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">

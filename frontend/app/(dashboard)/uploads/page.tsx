@@ -36,6 +36,7 @@ import RadialCircle from "@/components/circle/radial-circle"
 import { useJobsApi, useUploadsApi, type AiAnalyzeResult, type ImportKind } from "@/hooks/use-uploads-api"
 import { useUserCategories } from "@/hooks/use-user-categories"
 import { sync } from "@/lib/sync"
+import { PageHeader } from "@/components/layout/page-header"
 
 function formatBytes(bytes: number) {
   if (!bytes || bytes < 0) return "0 B"
@@ -778,79 +779,68 @@ export default function UploadsPage() {
       initial="hidden"
       animate="visible"
     >
-      <motion.div variants={itemVariants} className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/70 via-slate-950/50 to-slate-950/70 p-6 sm:p-8">
-        <div className="pointer-events-none absolute -top-24 -right-24 h-44 w-44 rounded-full bg-gradient-to-tr from-rose-500/25 to-orange-500/15 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-28 -left-24 h-44 w-44 rounded-full bg-gradient-to-tr from-blue-500/20 to-cyan-500/10 blur-3xl" />
-
-        <div className="relative flex flex-col gap-4 sm:gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4 sm:gap-6">
-            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-2xl bg-gradient-to-br from-rose-500/20 to-orange-500/10 border border-white/10 flex items-center justify-center backdrop-blur-sm">
-              <UploadCloud className="h-6 w-6 sm:h-7 sm:w-7 text-rose-400" />
+      <input
+        ref={fileRef}
+        type="file"
+        className="hidden"
+        onChange={onFileChange}
+        accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp"
+      />
+      <motion.div variants={itemVariants}>
+        <PageHeader
+          title="Uploads"
+          description="CSV/XLSX importieren, Dateien verwalten und den Status im Blick behalten."
+          icon={UploadCloud}
+          meta={<Badge className="bg-kaboom-red/10 text-kaboom-red border-kaboom-red/30">Import Center</Badge>}
+          actions={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={async () => {
+                  setError(null)
+                  try {
+                    await Promise.all([refresh(), refreshJobs()])
+                  } catch (e: any) {
+                    setError(e?.message || "Aktualisieren fehlgeschlagen")
+                  }
+                }}
+                disabled={uploading}
+              >
+                <RefreshCw className={`h-4 w-4 ${uploading ? "animate-spin" : ""}`} />
+                Aktualisieren
+              </Button>
+              <Button size="sm" onClick={onPick} disabled={uploading} className="gap-2">
+                <UploadCloud className="h-4 w-4" />
+                Datei hochladen
+              </Button>
             </div>
-          <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-3xl font-light tracking-tight text-slate-100">Uploads</h1>
-                <Badge className="glass-card text-[10px] sm:text-xs px-2 py-1">Import Center</Badge>
-          </div>
-              <p className="text-xs sm:text-sm text-slate-400 mt-2 leading-relaxed">
-                CSV/XLSX importieren, Dateien verwalten und den Status im Blick behalten.
-              </p>
-            </div>
-          </div>
+          }
+        />
+      </motion.div>
 
-          <div className="flex items-center gap-3">
-            <input
-              ref={fileRef}
-              type="file"
-              className="hidden"
-              onChange={onFileChange}
-              accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp"
-            />
-            <Button
-              variant="outline"
-              className="glass-card"
-              onClick={async () => {
-                setError(null)
-                try {
-                  await Promise.all([refresh(), refreshJobs()])
-                } catch (e: any) {
-                  setError(e?.message || "Aktualisieren fehlgeschlagen")
-                }
-              }}
-              disabled={uploading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${uploading ? "animate-spin" : ""}`} />
-              Aktualisieren
-            </Button>
-            <Button onClick={onPick} disabled={uploading} className="bg-kaboom-red hover:bg-red-600">
-              <UploadCloud className="h-4 w-4 mr-2" />
-              Datei hochladen
-            </Button>
+      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-2xl border border-border bg-card p-4 flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            Letzter Upload: <span className="font-semibold text-foreground">{formatRelativeTime(lastUploadAt)}</span>
           </div>
+          <ArrowUpRight className="h-4 w-4 text-kaboom-red" />
         </div>
-
-        <div className="relative mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between">
-            <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Letzter Upload: <span className="font-semibold text-slate-100">{formatRelativeTime(lastUploadAt)}</span>
+        <div className="rounded-2xl border border-border bg-card p-4 flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            Speicher genutzt: <span className="font-semibold text-foreground">{formatBytes(totalSize)}</span>
+          </div>
+          <HardDrive className="h-4 w-4 text-kaboom-red" />
         </div>
-            <ArrowUpRight className="h-4 w-4 text-slate-400" />
-      </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between">
-            <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Speicher genutzt: <span className="font-semibold text-slate-100">{formatBytes(totalSize)}</span>
-            </div>
-            <HardDrive className="h-4 w-4 text-slate-400" />
+        <div className="rounded-2xl border border-border bg-card p-4 flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            Import Jobs:{" "}
+            <span className="font-semibold text-foreground">
+              {jobsByStatus.completed} ok · {jobsByStatus.failed} failed
+            </span>
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between">
-            <div className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Import Jobs:{" "}
-              <span className="font-semibold text-slate-100">
-                {jobsByStatus.completed} ok · {jobsByStatus.failed} failed
-              </span>
-            </div>
-            <Briefcase className="h-4 w-4 text-slate-400" />
-          </div>
+          <Briefcase className="h-4 w-4 text-kaboom-red" />
         </div>
       </motion.div>
 
