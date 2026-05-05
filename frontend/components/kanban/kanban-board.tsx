@@ -58,61 +58,42 @@ const statusConfig = {
   TODO: {
     title: 'To Do',
     icon: Plus,
-    accent: 'from-slate-500/40 via-slate-400/20 to-transparent',
-    ring: 'ring-slate-400/25',
   },
   IN_PROGRESS: {
     title: 'In Bearbeitung',
     icon: Play,
-    accent: 'from-blue-500/45 via-cyan-400/20 to-transparent',
-    ring: 'ring-blue-500/30',
   },
   REVIEW: {
     title: 'Review',
     icon: Eye,
-    accent: 'from-amber-500/45 via-yellow-400/20 to-transparent',
-    ring: 'ring-amber-400/25',
   },
   APPROVED: {
     title: 'Freigegeben',
     icon: CheckCircle,
-    accent: 'from-emerald-500/45 via-green-400/20 to-transparent',
-    ring: 'ring-emerald-500/25',
   },
   PUBLISHED: {
     title: 'Veröffentlicht',
     icon: CheckCircle,
-    accent: 'from-violet-500/45 via-fuchsia-400/20 to-transparent',
-    ring: 'ring-violet-500/25',
   },
   ARCHIVED: {
     title: 'Archiviert',
     icon: Pause,
-    accent: 'from-slate-400/35 via-slate-300/15 to-transparent',
-    ring: 'ring-slate-400/15',
   }
 }
 
 const priorityConfig = {
-  LOW: { label: 'Niedrig', color: 'border-emerald-400/20 bg-emerald-500/10 text-emerald-100' },
-  MEDIUM: { label: 'Mittel', color: 'border-amber-300/25 bg-amber-500/10 text-amber-100' },
-  HIGH: { label: 'Hoch', color: 'border-orange-300/25 bg-orange-500/10 text-orange-100' },
-  URGENT: { label: 'Dringend', color: 'border-rose-400/25 bg-rose-500/10 text-rose-100' }
-}
-
-const priorityAccent: Record<TaskPriority, string> = {
-  LOW: 'bg-emerald-400',
-  MEDIUM: 'bg-amber-400',
-  HIGH: 'bg-orange-400',
-  URGENT: 'bg-rose-500',
+  LOW: { label: 'Niedrig', color: 'border-border bg-secondary text-muted-foreground' },
+  MEDIUM: { label: 'Mittel', color: 'border-border bg-secondary text-foreground' },
+  HIGH: { label: 'Hoch', color: 'border-kaboom-red/35 bg-kaboom-red/10 text-kaboom-red' },
+  URGENT: { label: 'Dringend', color: 'border-kaboom-red bg-kaboom-red text-white' }
 }
 
 const deadlineBadge = (d: Date) => {
   if (isPast(d) && !isToday(d))
-    return { bg: 'bg-rose-500/15 border-rose-400/25', text: 'text-rose-300', icon: 'text-rose-400' }
+    return { bg: 'bg-kaboom-red/10 border-kaboom-red/30', text: 'text-kaboom-red', icon: 'text-kaboom-red' }
   if (isToday(d))
-    return { bg: 'bg-amber-500/15 border-amber-400/25', text: 'text-amber-300', icon: 'text-amber-400' }
-  return { bg: 'bg-white/5 border-white/10', text: 'text-slate-300', icon: 'text-slate-400' }
+    return { bg: 'bg-secondary border-border', text: 'text-foreground', icon: 'text-kaboom-red' }
+  return { bg: 'bg-secondary border-border', text: 'text-muted-foreground', icon: 'text-muted-foreground' }
 }
 
 function TaskCard({ task, onTaskClick, onDragStart }: {
@@ -129,11 +110,10 @@ function TaskCard({ task, onTaskClick, onDragStart }: {
   return (
     <Card
       className={cn(
-        "group/card relative mb-3 cursor-pointer select-none overflow-hidden rounded-xl border border-white/[0.07]",
-        "bg-gradient-to-br from-slate-900/80 via-slate-900/60 to-slate-950/80 backdrop-blur-xl",
-        "transition-all duration-200 ease-out",
-        "hover:border-white/15 hover:shadow-[0_8px_32px_rgba(0,0,0,0.45)] hover:-translate-y-0.5",
-        isDragging && "opacity-50 rotate-1 scale-[1.02] shadow-[0_20px_50px_rgba(0,0,0,0.6)]"
+        "group/card relative mb-3 cursor-pointer select-none overflow-hidden rounded-xl border border-border",
+        "bg-card transition-all duration-200 ease-out",
+        "hover:border-kaboom-red/30 hover:shadow-md hover:-translate-y-0.5",
+        isDragging && "opacity-50 rotate-1 scale-[1.02] shadow-lg"
       )}
       data-task-id={task.id}
       data-status={task.status}
@@ -157,10 +137,15 @@ function TaskCard({ task, onTaskClick, onDragStart }: {
       onClick={() => onTaskClick?.(task)}
     >
       {/* Priority accent stripe */}
-      <div className={cn("absolute inset-y-0 left-0 w-[3px] rounded-l-xl", priorityAccent[task.priority])} />
-
-      {/* Subtle top-edge shine */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity" />
+      <div
+        className={cn(
+          "absolute inset-y-0 left-0 w-[3px] rounded-l-xl bg-kaboom-red",
+          task.priority === "LOW" && "opacity-40",
+          task.priority === "MEDIUM" && "opacity-60",
+          task.priority === "HIGH" && "opacity-85",
+          task.priority === "URGENT" && "opacity-100"
+        )}
+      />
 
       <CardContent className="p-3.5 pl-4">
         {/* Row 1: Title + Priority badge */}
@@ -305,27 +290,26 @@ function KanbanColumn({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-white/[0.08] bg-slate-950/30 backdrop-blur-xl p-3 sm:p-4 transition-all duration-200",
-        isDragOver && cn("ring-2 border-white/15", config.ring)
+        "relative overflow-hidden rounded-2xl border border-border bg-card p-3 sm:p-4 transition-all duration-200",
+        isDragOver && "ring-2 ring-kaboom-red/35 border-kaboom-red/35"
       )}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Top accent gradient bar */}
-      <div className={cn("pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r", config.accent)} />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.04),transparent_60%)]" />
+      {/* Brand accent — single flat line, no rainbow gradient */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-kaboom-red/75" />
 
       {/* Column header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="h-7 w-7 rounded-lg border border-white/[0.08] bg-white/[0.04] flex items-center justify-center shrink-0">
-            <Icon className="h-3.5 w-3.5 text-slate-300" />
+          <div className="h-7 w-7 rounded-lg border border-border bg-secondary flex items-center justify-center shrink-0">
+            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
           </div>
-          <h3 className="font-bold text-[13px] tracking-tight min-w-0 truncate text-slate-100">
+          <h3 className="font-bold text-[13px] tracking-tight min-w-0 truncate text-foreground">
             {config.title}
           </h3>
-          <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.08] text-slate-300/80 shrink-0">
+          <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded-md bg-secondary border border-border text-muted-foreground shrink-0">
             {tasks.length}
           </span>
         </div>
@@ -333,7 +317,7 @@ function KanbanColumn({
           variant="outline"
           size="sm"
           onClick={() => onCreateTask?.(status)}
-          className="h-7 w-7 p-0 border-white/[0.08] text-slate-400 hover:text-slate-200 hover:bg-white/[0.08] hover:border-white/15 transition-colors"
+          className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           title="Neue Aufgabe"
         >
           <Plus className="h-3.5 w-3.5" />

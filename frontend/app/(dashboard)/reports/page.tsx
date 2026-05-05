@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, Eye, Settings2, Mail, Check, Search, Filter, PlayCircle, FileDown } from "lucide-react"
+import { Download, RefreshCw, BarChart3, CalendarDays, Target, FileText, Activity, Eye, Settings2, Mail, Check, Search, Filter, PlayCircle, FileDown, FileBarChart } from "lucide-react"
 import Image from "next/image"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
@@ -16,7 +16,6 @@ import { useUploadsApi, useJobsApi } from "@/hooks/use-uploads-api"
 import { sync } from "@/lib/sync"
 import { ResponsiveContainer, AreaChart, Area } from "recharts"
 import { PageHeader } from "@/components/layout/page-header"
-import { FileBarChart } from "lucide-react"
 import { useModal } from "@/components/ui/modal/ModalProvider"
 import { reportsAPI } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
@@ -271,11 +270,15 @@ export default function ReportsPage() {
       }
       return arr
     }
+    const brandStroke = "#E62E3E"
+    const brandFillFrom = "rgba(230, 46, 62, 0.22)"
+    const brandFillTo = "rgba(26, 26, 26, 0.5)"
+    const brandBorder = "rgba(255, 255, 255, 0.12)"
     return [
-      { key: 'pipeline', title: 'Pipeline', value: `CHF ${Math.round(pipelineValue).toLocaleString()}`, icon: BarChart3, color: 'text-amber-500', stroke: '#f59e0b', fillFrom: 'rgba(245,158,11,0.25)', fillTo: 'rgba(245,158,11,0.06)', border: 'rgba(245,158,11,0.25)', data: mkSeries(pipelineValue || 3) },
-      { key: 'won', title: 'Won', value: `CHF ${Math.round(wonValue).toLocaleString()}`, icon: Target, color: 'text-green-500', stroke: '#22c55e', fillFrom: 'rgba(34,197,94,0.25)', fillTo: 'rgba(34,197,94,0.06)', border: 'rgba(34,197,94,0.25)', data: mkSeries(wonValue || 2) },
-      { key: 'deals', title: 'Deals', value: totalDeals, icon: FileText, color: 'text-blue-500', stroke: '#3b82f6', fillFrom: 'rgba(59,130,246,0.25)', fillTo: 'rgba(59,130,246,0.06)', border: 'rgba(59,130,246,0.25)', data: mkSeries(totalDeals || 1) },
-      { key: 'upcoming', title: 'Upcoming', value: upcomingEvents, icon: CalendarDays, color: 'text-purple-500', stroke: '#a855f7', fillFrom: 'rgba(168,85,247,0.25)', fillTo: 'rgba(168,85,247,0.06)', border: 'rgba(168,85,247,0.25)', data: mkSeries(upcomingEvents || 4) },
+      { key: 'pipeline', title: 'Pipeline', value: `CHF ${Math.round(pipelineValue).toLocaleString()}`, icon: BarChart3, color: 'text-foreground', stroke: brandStroke, fillFrom: brandFillFrom, fillTo: brandFillTo, border: brandBorder, data: mkSeries(pipelineValue || 3) },
+      { key: 'won', title: 'Won', value: `CHF ${Math.round(wonValue).toLocaleString()}`, icon: Target, color: 'text-foreground', stroke: brandStroke, fillFrom: brandFillFrom, fillTo: brandFillTo, border: brandBorder, data: mkSeries(wonValue || 2) },
+      { key: 'deals', title: 'Deals', value: totalDeals, icon: FileText, color: 'text-foreground', stroke: brandStroke, fillFrom: brandFillFrom, fillTo: brandFillTo, border: brandBorder, data: mkSeries(totalDeals || 1) },
+      { key: 'upcoming', title: 'Upcoming', value: upcomingEvents, icon: CalendarDays, color: 'text-foreground', stroke: brandStroke, fillFrom: brandFillFrom, fillTo: brandFillTo, border: brandBorder, data: mkSeries(upcomingEvents || 4) },
     ]
   }, [crmStats, events])
 
@@ -1276,10 +1279,8 @@ export default function ReportsPage() {
         {kpis.map((k, i) => (
           <Card
             key={i}
-            className="group relative overflow-hidden backdrop-blur-xl border rounded-2xl transition-all duration-300 hover:-translate-y-0.5"
-            style={{ background: `linear-gradient(180deg, ${k.fillTo}, rgba(2,6,23,0.55))`, borderColor: k.border }}
+            className="group relative overflow-hidden border border-border bg-card rounded-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-kaboom-red/25"
           >
-            <div className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" style={{ boxShadow: `0 12px 34px ${k.fillFrom}, inset 0 0 0 1px ${k.fillFrom}` }} />
             <CardHeader className="pt-3 sm:pt-4 px-3 sm:px-4 pb-1 sm:pb-2">
               <CardTitle className={`${k.color} flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm`}>
                 <k.icon className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${k.color}`} />
@@ -1319,7 +1320,7 @@ export default function ReportsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0 px-3 sm:px-4 pb-3 sm:pb-4">
-              <div className="text-lg sm:text-2xl font-semibold text-white mt-1">{k.value}</div>
+              <div className="text-lg sm:text-2xl font-semibold text-foreground mt-1">{k.value}</div>
               <div className="mt-2 sm:mt-3 h-10 sm:h-12">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={k.data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>

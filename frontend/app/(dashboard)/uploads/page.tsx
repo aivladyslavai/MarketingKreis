@@ -905,8 +905,8 @@ export default function UploadsPage() {
       <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="glass-card">
           <CardHeader className="pb-4">
-            <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-slate-300" />
+            <CardTitle className="text-base flex items-center gap-2 text-foreground">
+              <BarChart3 className="h-4 w-4 text-kaboom-red" />
               Upload Verlauf (7 Tage)
             </CardTitle>
           </CardHeader>
@@ -918,9 +918,9 @@ export default function UploadsPage() {
                 const label = d.toLocaleDateString("de-DE", { weekday: "short" })
                 return (
                   <div key={i} className="flex flex-col items-center gap-2 flex-1">
-                    <div className="w-full rounded-lg bg-white/5 border border-white/10 overflow-hidden">
+                    <div className="w-full rounded-lg bg-secondary border border-border overflow-hidden">
                       <div
-                        className="w-full bg-gradient-to-t from-rose-500/70 to-orange-400/60"
+                        className="w-full bg-kaboom-red/85"
                         style={{ height: `${h}px` }}
                         title={`${c} Uploads`}
                       />
@@ -1101,7 +1101,7 @@ export default function UploadsPage() {
               {selectedIsTabular && (
                 <div className="w-full sm:w-auto space-y-1">
                   <Button
-                    className="bg-gradient-to-r from-fuchsia-600 to-kaboom-red hover:from-fuchsia-500 hover:to-red-600 w-full sm:w-auto"
+                    className="w-full sm:w-auto"
                     onClick={() => doSmartImport()}
                     disabled={uploading || previewLoading || smartLoading || !selectedFile}
                     title="Smart Import: verteilt gemischte Tabellen automatisch auf Aktivitäten, Content und Budget"
@@ -1155,11 +1155,11 @@ export default function UploadsPage() {
           {preview && (
             <div className="mt-6 space-y-4">
               {aiResult && (
-                <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-fuchsia-500/10 via-blue-500/10 to-emerald-500/10 p-4">
+                <div className="rounded-2xl border border-border bg-card p-4">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="space-y-1">
-                      <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-fuchsia-300" />
+                      <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-kaboom-red" />
                         AI Import‑Analyse
                         <Badge className="text-[10px]">{aiResult.provider}</Badge>
                       </div>

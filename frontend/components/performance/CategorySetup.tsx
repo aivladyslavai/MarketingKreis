@@ -137,7 +137,7 @@ export default function CategorySetup({ onReady }: { onReady?: (cats: UserCatego
         <Button
           onClick={onSave}
           size="sm"
-          className="h-8 sm:h-10 gap-1.5 sm:gap-2 rounded-lg bg-gradient-to-r from-violet-600 via-fuchsia-500 to-sky-500 px-3 sm:px-4 text-xs sm:text-sm text-white shadow-lg shadow-violet-500/25 hover:from-violet-500 hover:via-fuchsia-400 hover:to-sky-400 hover:shadow-violet-500/35"
+          className="h-8 sm:h-10 gap-1.5 sm:gap-2 rounded-lg bg-kaboom-red px-3 sm:px-4 text-xs sm:text-sm text-white shadow-sm hover:bg-kaboom-red-dark"
         >
           <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           Speichern

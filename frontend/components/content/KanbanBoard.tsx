@@ -114,10 +114,10 @@ export default function KanbanBoard({ columns = [], rows, items, onItemsChange, 
                 ref={provided.innerRef}
                 {...provided.droppableProps}
                   className={`relative overflow-hidden glass-card border rounded-2xl p-3 md:p-4 backdrop-blur-xl flex flex-col gap-3 min-h-[480px] transition ${
-                    snapshot.isDraggingOver ? "ring-1 ring-blue-500/30" : ""
+                    snapshot.isDraggingOver ? "ring-1 ring-kaboom-red/35" : ""
                 }`}
               >
-                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent dark:via-white/10" />
+                  <div className="absolute inset-x-0 top-0 h-0.5 bg-kaboom-red/70" />
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                   <ColumnTitle status={col} />
@@ -126,7 +126,7 @@ export default function KanbanBoard({ columns = [], rows, items, onItemsChange, 
                   <Button
                     size="sm"
                     variant="outline"
-                      className="glass-card h-8 px-2 text-xs hover:ring-1 hover:ring-blue-500/30"
+                      className="glass-card h-8 px-2 text-xs hover:ring-1 hover:ring-kaboom-red/30"
                     onClick={() => onCreateItem?.(col)}
                   >
                     + Neue Karte
@@ -140,8 +140,8 @@ export default function KanbanBoard({ columns = [], rows, items, onItemsChange, 
                         ref={dragProvided.innerRef}
                         {...dragProvided.draggableProps}
                         {...dragProvided.dragHandleProps}
-                        className={`group rounded-xl bg-white/80 dark:bg-neutral-800/70 p-3 shadow-sm hover:shadow-md transition border border-white/10 dark:border-white/10 ${
-                          dragSnapshot.isDragging ? "ring-1 ring-blue-500/30" : ""
+                        className={`group rounded-xl bg-card p-3 shadow-sm hover:shadow-md transition border border-border ${
+                          dragSnapshot.isDragging ? "ring-1 ring-kaboom-red/35" : ""
                         }`}
                       >
                           <div className="flex items-start justify-between gap-3">

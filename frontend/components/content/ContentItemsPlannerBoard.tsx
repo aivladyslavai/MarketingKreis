@@ -144,10 +144,10 @@ export function ContentItemsPlannerBoard({
                     {...provided.droppableProps}
                     className={[
                       "relative w-[320px] glass-card border rounded-2xl p-3 backdrop-blur-xl flex flex-col gap-3 min-h-[520px] transition",
-                      snapshot.isDraggingOver ? "ring-1 ring-blue-500/30" : "",
+                      snapshot.isDraggingOver ? "ring-1 ring-kaboom-red/35" : "",
                     ].join(" ")}
                   >
-                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent dark:via-white/10" />
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-kaboom-red/70" />
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <div className="text-xs font-semibold tracking-wider text-slate-200 truncate">

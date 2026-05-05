@@ -1181,18 +1181,6 @@ function ContentPageInner() {
     return `${base} bg-white/5 text-slate-200 border-white/10`
   }
 
-  const statusAccent = (s: string) => {
-    const v = String(s || "").toUpperCase()
-    if (v === "APPROVED") return "from-emerald-400/50 via-emerald-400/15 to-transparent"
-    if (v === "REVIEW") return "from-amber-400/50 via-amber-400/15 to-transparent"
-    if (v === "DRAFT") return "from-sky-400/50 via-sky-400/15 to-transparent"
-    if (v === "PUBLISHED") return "from-emerald-400/50 via-emerald-400/15 to-transparent"
-    if (v === "BLOCKED") return "from-rose-400/50 via-rose-400/15 to-transparent"
-    if (v === "ARCHIVED") return "from-slate-400/40 via-slate-400/15 to-transparent"
-    if (v === "SCHEDULED") return "from-violet-400/50 via-violet-400/15 to-transparent"
-    return "from-white/25 via-white/10 to-transparent"
-  }
-
   const sortedItems = useMemo(() => {
     const arr = Array.isArray(contentItems) ? [...contentItems] : []
     const chKey = itemChannel && itemChannel !== "all" ? String(itemChannel).toLowerCase() : ""
@@ -1839,44 +1827,42 @@ function ContentPageInner() {
         }
       />
 
-      <Card className="glass-card overflow-hidden">
-        <CardHeader className="relative px-4 sm:px-6 pt-5 pb-4 border-b border-white/10">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-fuchsia-500/40 via-violet-400/20 to-transparent" />
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08),transparent_60%)]" />
+      <Card className="overflow-hidden border border-border bg-card">
+        <CardHeader className="relative px-4 sm:px-6 pt-5 pb-4 border-b border-border">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="relative flex items-center gap-3">
-              <div className="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center">
-                <Sparkles className="h-5 w-5 text-violet-200" />
+              <div className="h-10 w-10 rounded-2xl border border-border bg-secondary flex items-center justify-center">
+                <Sparkles className="h-5 w-5 text-kaboom-red" />
           </div>
               <div className="min-w-0">
-                <CardTitle className="text-white text-base sm:text-lg flex items-center gap-2 leading-tight">
+                <CardTitle className="text-foreground text-base sm:text-lg flex items-center gap-2 leading-tight">
                   Content Items
-                  <span className="hidden sm:inline text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-slate-200/80">
+                  <span className="hidden sm:inline text-[10px] px-2 py-0.5 rounded-full border border-border bg-secondary text-muted-foreground">
                     Workflow · Assets · Kalender · KI
                   </span>
                 </CardTitle>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-[11px] text-muted-foreground mt-1">
                   Verwalte Kampagnen/Materialien in einem sauberen Prozess — von Idee bis Publish.
                 </p>
         </div>
             </div>
-            <div className="relative flex items-center gap-2 text-[11px] text-slate-300">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+            <div className="relative flex items-center gap-2 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary px-2.5 py-1">
                 {itemsLoading ? "Lade…" : `${sortedItems.length} Items`}
               </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+              <span className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary px-2.5 py-1">
                 {tasksLoading ? "…" : `${tasks.length} Tasks`}
               </span>
-              {itemsError && <span className="ml-1 text-amber-300">· {itemsError}</span>}
+              {itemsError && <span className="ml-1 text-kaboom-red">· {itemsError}</span>}
             </div>
           </div>
         </CardHeader>
         <CardContent className="px-4 sm:px-6 py-4 space-y-4">
           <Tabs value={hubTab} onValueChange={(v) => setHubTab(v as any)} className="space-y-4">
-            <TabsList className="w-full overflow-x-auto mk-no-scrollbar rounded-2xl p-1.5 flex-nowrap justify-start sm:justify-center border border-white/10 bg-gradient-to-b from-white/10 to-white/5">
+            <TabsList className="w-full overflow-x-auto mk-no-scrollbar rounded-2xl p-1.5 flex-nowrap justify-start sm:justify-center border border-border bg-secondary">
               <TabsTrigger
                 value="items"
-                className="min-w-[132px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-slate-950/40 data-[state=active]:text-white data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-white/15"
+                className="min-w-[132px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-kaboom-red/25"
               >
                 <span className="inline-flex items-center gap-2">
                   <FileText className="h-4 w-4 text-slate-300" />
@@ -1888,7 +1874,7 @@ function ContentPageInner() {
               </TabsTrigger>
               <TabsTrigger
                 value="calendar"
-                className="min-w-[132px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-slate-950/40 data-[state=active]:text-white data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-white/15"
+                className="min-w-[132px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-kaboom-red/25"
               >
                 <span className="inline-flex items-center gap-2">
                   <CalendarDays className="h-4 w-4 text-slate-300" />
@@ -1897,7 +1883,7 @@ function ContentPageInner() {
               </TabsTrigger>
               <TabsTrigger
                 value="tasks"
-                className="min-w-[132px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-slate-950/40 data-[state=active]:text-white data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-white/15"
+                className="min-w-[132px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-kaboom-red/25"
               >
                 <span className="inline-flex items-center gap-2">
                   <ListTodo className="h-4 w-4 text-slate-300" />
@@ -1909,7 +1895,7 @@ function ContentPageInner() {
               </TabsTrigger>
               <TabsTrigger
                 value="templates"
-                className="min-w-[150px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-slate-950/40 data-[state=active]:text-white data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-white/15"
+                className="min-w-[150px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-kaboom-red/25"
               >
                 <span className="inline-flex items-center gap-2">
                   <Wand2 className="h-4 w-4 text-slate-300" />
@@ -1918,7 +1904,7 @@ function ContentPageInner() {
               </TabsTrigger>
               <TabsTrigger
                 value="notifications"
-                className="min-w-[180px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-slate-950/40 data-[state=active]:text-white data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-white/15"
+                className="min-w-[180px] text-xs sm:text-sm rounded-xl data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-kaboom-red/25"
               >
                 <span className="inline-flex items-center gap-2">
                   <Bell className="h-4 w-4 text-slate-300" />
@@ -1928,8 +1914,7 @@ function ContentPageInner() {
             </TabsList>
 
             <TabsContent value="items" className="space-y-4">
-              <div className="relative rounded-2xl border border-white/10 bg-slate-950/30 backdrop-blur-xl p-3 sm:p-4 overflow-hidden">
-                <div className="pointer-events-none absolute inset-x-0 -mt-4 h-20 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.10),transparent_60%)]" />
+              <div className="relative rounded-2xl border border-border bg-card p-3 sm:p-4 overflow-hidden">
                 <div className="relative flex flex-col gap-2 sm:gap-3">
         <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
                     <div className="relative w-full sm:max-w-[340px]">
@@ -2141,8 +2126,8 @@ function ContentPageInner() {
               {itemsLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="rounded-2xl border border-white/10 bg-slate-950/30 p-4 overflow-hidden">
-                      <div className="h-1 w-full bg-gradient-to-r from-white/10 via-white/5 to-transparent rounded-full" />
+                    <div key={i} className="rounded-2xl border border-border bg-card p-4 overflow-hidden">
+                      <div className="h-0.5 w-full bg-border rounded-full" />
                       <div className="mt-4 h-4 w-2/3 bg-white/10 rounded" />
                       <div className="mt-2 h-3 w-1/2 bg-white/5 rounded" />
                       <div className="mt-4 flex gap-2">
@@ -2184,8 +2169,8 @@ function ContentPageInner() {
                     <div
                       key={it.id}
                       className={[
-                        "group relative rounded-2xl border border-white/10 bg-slate-950/30 backdrop-blur-xl p-4 text-left overflow-hidden transition-all hover:bg-slate-950/40 hover:ring-1 hover:ring-white/10 hover:shadow-[0_14px_36px_rgba(0,0,0,0.35)]",
-                        selectMode && selectedItemIds.has(it.id) ? "ring-1 ring-white/25 bg-slate-950/45" : "",
+                        "group relative rounded-2xl border border-border bg-card p-4 text-left overflow-hidden transition-all hover:bg-secondary hover:border-kaboom-red/25 hover:shadow-sm",
+                        selectMode && selectedItemIds.has(it.id) ? "ring-1 ring-kaboom-red/30 bg-secondary" : "",
                       ].join(" ")}
                       role="button"
                       tabIndex={0}
@@ -2197,8 +2182,8 @@ function ContentPageInner() {
                         }
                       }}
                     >
-                      <div className={["pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r", statusAccent(it.status)].join(" ")} />
-                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.06),transparent_55%)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-kaboom-red/70" />
+                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.04),transparent_55%)] opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                   <div className="flex items-start gap-3">

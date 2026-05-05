@@ -414,7 +414,7 @@ function DealDetailForm({
           >
             {deleting ? "Löschen…" : "Löschen"}
           </Button>
-          <Button size="sm" onClick={submit} disabled={!canSave} className="bg-gradient-to-r from-blue-600 to-indigo-600">
+          <Button size="sm" onClick={submit} disabled={!canSave}>
             {saving ? "Speichern…" : "Speichern"}
           </Button>
         </div>
@@ -568,7 +568,7 @@ function ContactCreateDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Abbrechen
           </Button>
-          <Button onClick={submit} disabled={!canSubmit} className="bg-gradient-to-r from-blue-600 to-indigo-600">
+          <Button onClick={submit} disabled={!canSubmit}>
             {saving ? "Speichern…" : "Kontakt erstellen"}
           </Button>
         </DialogFooter>
@@ -790,7 +790,7 @@ function DealCreateDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Abbrechen
           </Button>
-          <Button onClick={submit} disabled={!canSubmit} className="bg-gradient-to-r from-blue-600 to-indigo-600">
+          <Button onClick={submit} disabled={!canSubmit}>
             {saving ? "Speichern…" : "Projekt erstellen"}
           </Button>
         </DialogFooter>
@@ -1183,50 +1183,50 @@ function CRMPageContent() {
 
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-800/10 border-blue-200/50 dark:border-blue-800/30 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300 group">
+            <Card className="border border-border bg-card hover:border-kaboom-red/25 transition-all duration-300 group">
               <CardContent className="p-3 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0">
-                    <p className="text-[10px] sm:text-sm font-medium text-blue-600 dark:text-blue-400">Total Pipeline</p>
-                    <p className="text-lg sm:text-2xl font-bold text-blue-900 dark:text-blue-100">CHF {(totalPipeline / 1000).toFixed(0)}K</p>
+                    <p className="text-[10px] sm:text-sm font-medium text-muted-foreground">Total Pipeline</p>
+                    <p className="text-lg sm:text-2xl font-bold text-foreground">CHF {(totalPipeline / 1000).toFixed(0)}K</p>
                   </div>
-                  <DollarSign className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500 dark:text-blue-400 group-hover:scale-110 transition-transform shrink-0" />
+                  <DollarSign className="h-6 w-6 sm:h-8 sm:w-8 text-kaboom-red group-hover:scale-110 transition-transform shrink-0" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-900/20 dark:to-green-800/10 border-green-200/50 dark:border-green-800/30 hover:shadow-lg hover:shadow-green-500/10 transition-all duration-300 group">
+            <Card className="border border-border bg-card hover:border-kaboom-red/25 transition-all duration-300 group">
               <CardContent className="p-3 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0">
-                    <p className="text-[10px] sm:text-sm font-medium text-green-600 dark:text-green-400">Aktive Projekte</p>
-                    <p className="text-lg sm:text-2xl font-bold text-green-900 dark:text-green-100">{activeDeals}</p>
+                    <p className="text-[10px] sm:text-sm font-medium text-muted-foreground">Aktive Projekte</p>
+                    <p className="text-lg sm:text-2xl font-bold text-foreground">{activeDeals}</p>
                   </div>
-                  <Target className="h-6 w-6 sm:h-8 sm:w-8 text-green-500 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0" />
+                  <Target className="h-6 w-6 sm:h-8 sm:w-8 text-kaboom-red group-hover:scale-110 transition-transform shrink-0" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-900/20 dark:to-purple-800/10 border-purple-200/50 dark:border-purple-800/30 hover:shadow-lg hover:shadow-purple-500/10 transition-all duration-300 group">
+            <Card className="border border-border bg-card hover:border-kaboom-red/25 transition-all duration-300 group">
               <CardContent className="p-3 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0">
-                    <p className="text-[10px] sm:text-sm font-medium text-purple-600 dark:text-purple-400">Gewonnene Projekte</p>
-                    <p className="text-lg sm:text-2xl font-bold text-purple-900 dark:text-purple-100">{wonDeals}</p>
+                    <p className="text-[10px] sm:text-sm font-medium text-muted-foreground">Gewonnene Projekte</p>
+                    <p className="text-lg sm:text-2xl font-bold text-foreground">{wonDeals}</p>
                   </div>
-                  <UserCheck className="h-6 w-6 sm:h-8 sm:w-8 text-purple-500 dark:text-purple-400 group-hover:scale-110 transition-transform shrink-0" />
+                  <UserCheck className="h-6 w-6 sm:h-8 sm:w-8 text-kaboom-red group-hover:scale-110 transition-transform shrink-0" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-900/20 dark:to-orange-800/10 border-orange-200/50 dark:border-orange-800/30 hover:shadow-lg hover:shadow-orange-500/10 transition-all duration-300 group">
+            <Card className="border border-border bg-card hover:border-kaboom-red/25 transition-all duration-300 group">
               <CardContent className="p-3 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0">
-                    <p className="text-[10px] sm:text-sm font-medium text-orange-600 dark:text-orange-400">Conversion Rate</p>
-                    <p className="text-lg sm:text-2xl font-bold text-orange-900 dark:text-orange-100">{conversionRate}%</p>
+                    <p className="text-[10px] sm:text-sm font-medium text-muted-foreground">Conversion Rate</p>
+                    <p className="text-lg sm:text-2xl font-bold text-foreground">{conversionRate}%</p>
                   </div>
-                  <Percent className="h-6 w-6 sm:h-8 sm:w-8 text-orange-500 dark:text-orange-400 group-hover:scale-110 transition-transform shrink-0" />
+                  <Percent className="h-6 w-6 sm:h-8 sm:w-8 text-kaboom-red group-hover:scale-110 transition-transform shrink-0" />
                 </div>
               </CardContent>
             </Card>
@@ -1291,7 +1291,8 @@ function CRMPageContent() {
                 <div className="flex items-center gap-2">
                   <Button
                     onClick={() => setEditingCompany({} as any)}
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20"
+
+
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Neues Unternehmen
@@ -1375,7 +1376,8 @@ function CRMPageContent() {
                   </p>
                   <Button 
                     onClick={() => setEditingCompany({} as any)}
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+
+
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     + Neues Unternehmen
@@ -1780,7 +1782,8 @@ function CRMPageContent() {
                 <div className="flex items-center gap-2">
                   <Button
                     onClick={() => setCreateContactOpen(true)}
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20"
+
+
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Neuer Kontakt
@@ -1916,7 +1919,8 @@ function CRMPageContent() {
                 <div className="flex items-center gap-2">
                   <Button
                     onClick={() => setCreateDealOpen(true)}
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md shadow-blue-500/20"
+
+
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Neues Projekt

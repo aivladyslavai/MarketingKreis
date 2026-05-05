@@ -76,7 +76,7 @@ module.exports = {
     function({ addComponents }) {
       addComponents({
         '.glass-card': {
-          '@apply backdrop-blur-md bg-white/60 dark:bg-neutral-900/40 border border-white/20 dark:border-neutral-800/40 shadow-sm hover:shadow-md transition-all duration-300 rounded-2xl': {},
+          '@apply backdrop-blur-xl bg-card/95 dark:bg-background/90 border border-border text-card-foreground shadow-sm hover:shadow-md transition-all duration-300 rounded-2xl': {},
         },
       })
     },

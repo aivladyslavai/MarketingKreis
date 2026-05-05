@@ -143,17 +143,16 @@ export default function BudgetPage() {
         transition={{ duration: 0.45, delay: 0.05 }}
         className="relative"
       >
-        <div className="pointer-events-none absolute -inset-8 rounded-[28px] bg-gradient-to-r from-blue-500/15 via-fuchsia-500/10 to-emerald-500/15 blur-2xl" />
-        <Card className="glass-card relative overflow-hidden border border-white/15 bg-slate-950/80">
+        <Card className="glass-card relative overflow-hidden border border-border bg-card">
         <CardHeader
-          className="border-b border-white/10 px-5 sm:px-6 pt-4 pb-4 cursor-pointer select-none"
+          className="border-b border-border px-5 sm:px-6 pt-4 pb-4 cursor-pointer select-none"
           onClick={() => setScenarioOpen((v) => !v)}
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <CardTitle className="text-white text-lg sm:text-xl flex items-center gap-2">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/20 border border-blue-400/40">
+                <CardTitle className="text-foreground text-lg sm:text-xl flex items-center gap-2">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-kaboom-red/15 border border-kaboom-red/25 text-kaboom-red text-sm font-bold">
                     %
                   </span>
                   Budget Scenario
@@ -161,7 +160,7 @@ export default function BudgetPage() {
                 <button
                   type="button"
                   aria-label={scenarioOpen ? "Einklappen" : "Ausklappen"}
-                  className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/70 border border-white/15 text-xs text-slate-200 hover:bg-slate-800 transition"
+                  className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary border border-border text-xs text-muted-foreground hover:bg-muted transition"
                 >
                   <span
                     className={`transition-transform duration-200 ${
@@ -172,18 +171,18 @@ export default function BudgetPage() {
                   </span>
                 </button>
               </div>
-              <p className="text-xs text-slate-400 max-w-xl">
+              <p className="text-xs text-muted-foreground max-w-xl">
                 Spiele mit Budget & Elastizität und sieh in Echtzeit, wie sich Umsatz, Conversion und Deals verändern.
               </p>
             </div>
             {scenario && !scenario.error && (
-              <div className="grid grid-cols-2 gap-3 text-xs sm:text-[11px] text-slate-300">
-                <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2">
+              <div className="grid grid-cols-2 gap-3 text-xs sm:text-[11px] text-muted-foreground">
+                <div className="rounded-xl border border-border bg-secondary px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="uppercase tracking-[0.14em] text-[10px] text-emerald-300/80">
+                    <span className="uppercase tracking-[0.14em] text-[10px] text-muted-foreground">
                       Revenue Impact
                     </span>
-                    <span className="text-emerald-200 font-semibold">
+                    <span className="text-foreground font-semibold">
                       {scenario.scenario.revenue >=
                       (budgetData?.kpiTargets?.find((k: any) => k.id === "revenue")?.current || 0)
                         ? "+↑"
@@ -192,9 +191,9 @@ export default function BudgetPage() {
                   </div>
                   <div className="mt-1 text-sm font-semibold">{chf(scenario.scenario.revenue || 0)}</div>
                 </div>
-                <div className="rounded-xl border border-blue-400/40 bg-blue-500/10 px-3 py-2">
-                  <div className="uppercase tracking-[0.14em] text-[10px] text-blue-200/80">Conversion</div>
-                  <div className="mt-1 text-sm font-semibold text-white">
+                <div className="rounded-xl border border-border bg-secondary px-3 py-2">
+                  <div className="uppercase tracking-[0.14em] text-[10px] text-muted-foreground">Conversion</div>
+                  <div className="mt-1 text-sm font-semibold text-foreground">
                     {(scenario.scenario.conversion || 0).toFixed(1)}%
                   </div>
                 </div>
@@ -227,7 +226,7 @@ export default function BudgetPage() {
                   style={
                     {
                       ["--mk-range-pct" as any]: pctFill,
-                      ["--mk-range-fill" as any]: "rgba(59, 130, 246, 0.95)",
+                      ["--mk-range-fill" as any]: "hsl(355 78% 54% / 0.95)",
                     } as any
                   }
                 />
@@ -262,7 +261,7 @@ export default function BudgetPage() {
                   style={
                     {
                       ["--mk-range-pct" as any]: elFill,
-                      ["--mk-range-fill" as any]: "rgba(16, 185, 129, 0.95)",
+                      ["--mk-range-fill" as any]: "hsl(0 0% 55% / 0.9)",
                     } as any
                   }
                 />
@@ -280,7 +279,7 @@ export default function BudgetPage() {
             </div>
             <div className="flex items-end">
               <Button
-                className="button-glow w-full h-10 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400"
+                className="w-full h-10"
                 onClick={() => runScenario(pct, elasticity)}
                 disabled={scenarioLoading}
               >
@@ -328,23 +327,23 @@ export default function BudgetPage() {
           )}
 
           {scenario && !scenario.error && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-white">
-              <div className="rounded-xl border border-white/10 bg-gradient-to-br from-slate-900/90 to-slate-800/80 p-4">
-                <div className="text-[11px] text-slate-400 uppercase tracking-[0.16em]">Total Budget</div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-foreground">
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-[0.16em]">Total Budget</div>
                 <div className="mt-1 text-2xl font-semibold">{chf(scenario.scenario.budgetTotal || 0)}</div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-gradient-to-br from-blue-600/20 to-blue-500/5 p-4">
-                <div className="text-[11px] text-slate-300 uppercase tracking-[0.16em]">Forecast Revenue</div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-[0.16em]">Forecast Revenue</div>
                 <div className="mt-1 text-2xl font-semibold">{chf(scenario.scenario.revenue || 0)}</div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-gradient-to-br from-emerald-500/20 to-emerald-400/5 p-4">
-                <div className="text-[11px] text-slate-300 uppercase tracking-[0.16em]">Conversion</div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-[0.16em]">Conversion</div>
                 <div className="mt-1 text-2xl font-semibold">
                   {(scenario.scenario.conversion || 0).toFixed(1)}%
                 </div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-gradient-to-br from-violet-500/20 to-violet-400/5 p-4">
-                <div className="text-[11px] text-slate-300 uppercase tracking-[0.16em]">Deals</div>
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-[0.16em]">Deals</div>
                 <div className="mt-1 text-2xl font-semibold">
                   {Math.round(scenario.scenario.deals || 0)}
                 </div>
@@ -365,17 +364,17 @@ export default function BudgetPage() {
             <CardContent className="p-0">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-slate-300">{kpi.metric}</p>
-                  <p className="text-2xl font-bold text-white">{kpi.unit === 'CHF' ? chf(kpi.current) : `${Math.round(kpi.current)} ${kpi.unit}`}</p>
-                  <p className={`text-[11px] ${kpi.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>{kpi.change >= 0 ? '+' : ''}{kpi.change.toFixed(1)}%</p>
-                  <p className="text-xs text-slate-400">Ziel: {kpi.unit === 'CHF' ? chf(kpi.target) : `${Math.round(kpi.target)} ${kpi.unit}`}</p>
+                  <p className="text-xs font-medium text-muted-foreground">{kpi.metric}</p>
+                  <p className="text-2xl font-bold text-foreground">{kpi.unit === 'CHF' ? chf(kpi.current) : `${Math.round(kpi.current)} ${kpi.unit}`}</p>
+                  <p className={`text-[11px] ${kpi.change >= 0 ? 'text-muted-foreground' : 'text-kaboom-red'}`}>{kpi.change >= 0 ? '+' : ''}{kpi.change.toFixed(1)}%</p>
+                  <p className="text-xs text-muted-foreground">Ziel: {kpi.unit === 'CHF' ? chf(kpi.target) : `${Math.round(kpi.target)} ${kpi.unit}`}</p>
                 </div>
-                <div className="h-12 w-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center">
-                  <Icon className="h-6 w-6 text-white" />
+                <div className="h-12 w-12 rounded-xl bg-secondary border border-border flex items-center justify-center">
+                  <Icon className="h-6 w-6 text-foreground" />
                 </div>
               </div>
               <div className="mt-3 -mx-2">
-                <Sparkline series={series} stroke="#93c5fd" from="#93c5fd" to="#1e3a8a" />
+                <Sparkline series={series} stroke="#E62E3E" from="#E62E3E" to="#1A1A1A" />
               </div>
             </CardContent>
           </Card>
@@ -387,7 +386,7 @@ export default function BudgetPage() {
         {/* Monthly trend */}
         <Card className="lg:col-span-2 glass-card">
           <CardHeader>
-            <CardTitle className="text-white">Revenue & Forecast</CardTitle>
+            <CardTitle className="text-foreground">Revenue & Forecast</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-80">
@@ -398,9 +397,9 @@ export default function BudgetPage() {
                   <YAxis stroke="transparent" tick={{ fill: "#a3b1c6" }} axisLine={false} tickLine={false} style={{ fontSize: 12, fontWeight: 500 }} />
                   <Tooltip contentStyle={{ backgroundColor: "rgba(255, 255, 255, 0.95)", border: "none", borderRadius: 12, color: "#1e293b", backdropFilter: "blur(10px)" }} />
                   <Legend wrapperStyle={{ fontSize: 12, color: "#a3b1c6" }} />
-                  <Line type="monotone" dataKey="planned" stroke="#94a3b8" strokeWidth={2} name="Planned" />
-                  <Line type="monotone" dataKey="actual" stroke="#10b981" strokeWidth={3} name="Actual" />
-                  <Line type="monotone" dataKey="forecast" stroke="#3b82f6" strokeWidth={3} strokeDasharray="8 4" name="Forecast (Scenario)" />
+                  <Line type="monotone" dataKey="planned" stroke="#737373" strokeWidth={2} name="Planned" />
+                  <Line type="monotone" dataKey="actual" stroke="#E62E3E" strokeWidth={3} name="Actual" />
+                  <Line type="monotone" dataKey="forecast" stroke="#a3a3a3" strokeWidth={3} strokeDasharray="8 4" name="Forecast (Scenario)" />
                 </LineChart>
               </ResponsiveContainer>
             </div>

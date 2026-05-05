@@ -578,8 +578,7 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
   }
 
   return (
-    <div className="relative overflow-hidden rounded-2xl p-6 space-y-6 border border-white/20 dark:border-neutral-800/40 backdrop-blur-md bg-white/70 dark:bg-neutral-900/40 shadow-[0_0_25px_rgba(59,130,246,0.12)]">
-      <div className="pointer-events-none absolute inset-px rounded-[14px] bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10" />
+    <div className="relative overflow-hidden rounded-2xl p-6 space-y-6 border border-border bg-card shadow-sm">
       <div className="relative space-y-5">
         <div className="grid gap-2">
           <RelationPicker
@@ -597,7 +596,7 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
 
         <div className="grid gap-2">
           <Label>Titel</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titel eingeben" className="focus:ring-2 focus:ring-blue-500/60 border-white/20 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60" />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titel eingeben" className="focus:ring-2 focus:ring-kaboom-red/25 border-border bg-background" />
                 </div>
         <div className="grid gap-2">
           <div className="flex items-center justify-between">
@@ -608,29 +607,21 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
                 type="button"
                 onClick={makeSuggestion}
                 disabled={aiLoading}
-                className="group relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-white transition-all duration-300 focus:outline-none disabled:opacity-60 backdrop-blur-sm border border-white/10 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 hover:from-blue-500/20 hover:via-purple-500/20 hover:to-pink-500/20"
-                style={{ 
-                  boxShadow: '0 0 20px rgba(59,130,246,0.3), 0 0 40px rgba(168,85,247,0.2), inset 0 1px 0 rgba(255,255,255,0.1)'
-                }}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium border border-border bg-secondary text-foreground transition-colors hover:bg-muted focus:outline-none disabled:opacity-60"
               >
-                <span className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
-                <span className="relative z-10">KI-Vorschlag</span>
-                <span 
-                  className="absolute -inset-[1px] rounded-lg opacity-50 blur-sm pointer-events-none"
-                  style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.4) 0%, rgba(168,85,247,0.4) 50%, rgba(236,72,153,0.4) 100%)' }}
-                />
+                <span>KI-Vorschlag</span>
               </button>
               {aiPreview && (
-                <Button variant="outline" size="sm" onClick={makeSuggestion} disabled={aiLoading} className="border-white/30 bg-white/5">Regenerieren</Button>
+                <Button variant="outline" size="sm" onClick={makeSuggestion} disabled={aiLoading} className="border-border bg-secondary">Regenerieren</Button>
               )}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Beschreibung" className="flex-1 min-h-[88px] focus:ring-2 focus:ring-blue-500/60 border-white/20 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60" />
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Beschreibung" className="flex-1 min-h-[88px] focus:ring-2 focus:ring-kaboom-red/25 border-border bg-background" />
             <Button
               type="button"
               variant="outline"
-              className="h-9 border-white/20 bg-white/5"
+              className="h-9 border-border bg-secondary"
               onClick={() => {
                 const c = companies.find((cc:any)=> String(cc.id ?? cc._id) === String(selectedCompanyId))
                 const nextDate = (() => { const d = new Date(); d.setDate(d.getDate()+1); return format(d, 'yyyy-MM-dd') })()
@@ -643,14 +634,14 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
             </Button>
           </div>
           {aiPreview && (
-            <div className="relative max-w-[560px] rounded-xl border border-blue-400/30 bg-gradient-to-br from-blue-500/5 via-purple-500/5 to-pink-500/5 p-2.5 shadow-[0_0_0_1px_rgba(59,130,246,.15)] animate-pulse">
-              <div className="flex items-center gap-2 text-[11px] text-blue-300 font-medium mb-1.5">
-                <div className="h-4 w-4 rounded-md bg-blue-500/20 text-blue-300 flex items-center justify-center">✨</div>
+            <div className="relative max-w-[560px] rounded-xl border border-kaboom-red/25 bg-kaboom-red/5 p-2.5">
+              <div className="flex items-center gap-2 text-[11px] text-kaboom-red font-medium mb-1.5">
+                <div className="h-4 w-4 rounded-md bg-kaboom-red/15 text-kaboom-red flex items-center justify-center">✨</div>
                 <span>KI‑Vorschlag (Vorschau) — отредактируйте и нажмите "Verfeinern"</span>
               </div>
               <div className="grid gap-1.5">
-                <Input value={aiPreview.title || ''} onChange={(e)=> setAiPreview(p=>({ ...(p||{}), title: e.target.value }))} placeholder="Vorschlag Titel" className="bg-transparent border border-white/15 text-sm h-8 px-2" />
-                <Textarea value={aiPreview.desc || ''} onChange={(e)=> setAiPreview(p=>({ ...(p||{}), desc: e.target.value }))} className="min-h-[72px] text-sm bg-transparent border border-white/15 px-2 py-1" placeholder="Vorschlag Beschreibung" />
+                <Input value={aiPreview.title || ''} onChange={(e)=> setAiPreview(p=>({ ...(p||{}), title: e.target.value }))} placeholder="Vorschlag Titel" className="bg-background border border-border text-sm h-8 px-2" />
+                <Textarea value={aiPreview.desc || ''} onChange={(e)=> setAiPreview(p=>({ ...(p||{}), desc: e.target.value }))} className="min-h-[72px] text-sm bg-background border border-border px-2 py-1" placeholder="Vorschlag Beschreibung" />
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Button size="sm" className="px-2.5 py-1 text-xs" onClick={()=>{ if (aiPreview?.title && (!title || title.trim().length<3)) setTitle(aiPreview.title); if (aiPreview?.desc) setDescription(aiPreview.desc); setAiPreview(null) }}>Einfügen</Button>
@@ -761,7 +752,7 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
           <Button variant="outline" className="flex-1" onClick={closeModal}>
             Abbrechen
           </Button>
-          <Button className="flex-1 bg-gradient-to-r from-red-500 to-blue-500 text-white disabled:opacity-60" disabled={loading} onClick={async () => {
+          <Button className="flex-1" disabled={loading} onClick={async () => {
             await handleSubmit()
             // success toast modal
             const ok = document.createElement('div')

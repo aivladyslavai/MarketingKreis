@@ -205,11 +205,11 @@ export default function PerformancePage() {
 
   const rawPipeline = (metrics.pipelineByStage || []) as { name: string; value: number }[]
   const stageColors: Record<string, string> = {
-    Lead: "#3b82f6",
-    Qualified: "#8b5cf6",
-    Proposal: "#ec4899",
-    Negotiation: "#f59e0b",
-    Won: "#10b981",
+    Lead: "#E62E3E",
+    Qualified: "#C42D3A",
+    Proposal: "#A8202D",
+    Negotiation: "#737373",
+    Won: "#5A5A5A",
   }
   const pipelineData = rawPipeline.map((p) => ({
     ...p,
@@ -219,10 +219,10 @@ export default function PerformancePage() {
   const totalPipelineCount = filteredPipeline.reduce((s, d) => s + d.value, 0)
 
   const kpiCards = [
-    { title: "Revenue (YTD)", value: chf(totalRevenue), icon: DollarSign, color: "text-green-600 dark:text-green-400", bgColor: "bg-green-50 dark:bg-green-900/20", change: "+12%", series: revenueData.map(d=>d.revenue), stroke:"#10b981", from:"#34d399", to:"#065f46" },
-    { title: "Forecast (YTD)", value: chf(totalForecast), icon: TrendingUp, color: "text-blue-600 dark:text-blue-400", bgColor: "bg-blue-50 dark:bg-blue-900/20", change: "+7%", series: revenueData.map(d=>d.forecast), stroke:"#3b82f6", from:"#93c5fd", to:"#1e3a8a" },
-    { title: "Open Deals", value: openDeals.toString(), icon: Handshake, color: "text-purple-600 dark:text-purple-400", bgColor: "bg-purple-50 dark:bg-purple-900/20", change: "+3", series: leadsDealsData.map(d=>d.deals), stroke:"#8b5cf6", from:"#d8b4fe", to:"#581c87" },
-    { title: "Conversion Rate", value: `${conversionRate.toFixed(1)}%`, icon: Target, color: "text-orange-600 dark:text-orange-400", bgColor: "bg-orange-50 dark:bg-orange-900/20", change: "+2.1%", series: leadsDealsData.map(d=>d.won), stroke:"#f59e0b", from:"#fbbf24", to:"#7c2d12" },
+    { title: "Revenue (YTD)", value: chf(totalRevenue), icon: DollarSign, color: "text-foreground", bgColor: "bg-kaboom-red/10 border border-kaboom-red/20", change: "+12%", series: revenueData.map(d=>d.revenue), stroke:"#E62E3E", from:"#E62E3E", to:"#1A1A1A" },
+    { title: "Forecast (YTD)", value: chf(totalForecast), icon: TrendingUp, color: "text-foreground", bgColor: "bg-secondary border border-border", change: "+7%", series: revenueData.map(d=>d.forecast), stroke:"#E62E3E", from:"#E62E3E", to:"#1A1A1A" },
+    { title: "Open Deals", value: openDeals.toString(), icon: Handshake, color: "text-foreground", bgColor: "bg-secondary border border-border", change: "+3", series: leadsDealsData.map(d=>d.deals), stroke:"#E62E3E", from:"#E62E3E", to:"#1A1A1A" },
+    { title: "Conversion Rate", value: `${conversionRate.toFixed(1)}%`, icon: Target, color: "text-foreground", bgColor: "bg-secondary border border-border", change: "+2.1%", series: leadsDealsData.map(d=>d.won), stroke:"#E62E3E", from:"#E62E3E", to:"#1A1A1A" },
   ]
 
   // Если нет сохранённых категорий — показываем мастер настройки
@@ -269,9 +269,9 @@ export default function PerformancePage() {
                 <CardContent className="p-0">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-slate-600 dark:text-slate-400">{card.title}</p>
-                      <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{card.value}</p>
-                      <p className="text-[11px] text-green-600 dark:text-green-400">{card.change}</p>
+                      <p className="text-xs font-medium text-muted-foreground">{card.title}</p>
+                      <p className="text-2xl font-bold text-foreground">{card.value}</p>
+                      <p className="text-[11px] text-muted-foreground">{card.change}</p>
                     </div>
                     <div className={`h-12 w-12 rounded-xl ${card.bgColor} flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
                       <card.icon className={`h-6 w-6 ${card.color}`} />
@@ -291,7 +291,7 @@ export default function PerformancePage() {
       <motion.div variants={itemVariants}>
         <Card className="glass-card overflow-hidden">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-slate-900 dark:text-slate-100">Budget & KPI Targets</CardTitle>
+            <CardTitle className="text-foreground">Budget & KPI Targets</CardTitle>
             <div className="flex items-center gap-2">
               <div className="w-[170px]">
                 <GlassSelect
@@ -387,8 +387,8 @@ export default function PerformancePage() {
                       <YAxis stroke="transparent" tick={{ fill: "#64748b" }} axisLine={false} tickLine={false} style={{ fontSize: 12, fontWeight: 500 }} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
                       <Tooltip contentStyle={{ backgroundColor: "rgba(255, 255, 255, 0.95)", border: "none", borderRadius: 12, color: "#1e293b", backdropFilter: "blur(10px)" }} formatter={(v: any) => chf(v)} />
                       <Legend wrapperStyle={{ fontSize: 12, color: "#64748b" }} />
-                      <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={3} name="Revenue (Won)" />
-                      <Line type="monotone" dataKey="forecast" stroke="#3b82f6" strokeWidth={3} strokeDasharray="8 4" name="Forecast (Weighted)" />
+                      <Line type="monotone" dataKey="revenue" stroke="#E62E3E" strokeWidth={3} name="Revenue (Won)" />
+                      <Line type="monotone" dataKey="forecast" stroke="#737373" strokeWidth={3} strokeDasharray="8 4" name="Forecast (Weighted)" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -442,7 +442,7 @@ export default function PerformancePage() {
           <motion.div variants={cardHoverVariants} whileHover="hover">
             <Card className="glass-card">
               <CardHeader>
-                <CardTitle className="text-slate-900 dark:text-slate-100">Leads vs. Deals (YTD)</CardTitle>
+                <CardTitle className="text-foreground">Leads vs. Deals (YTD)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px] sm:h-80">
@@ -453,9 +453,9 @@ export default function PerformancePage() {
                       <YAxis stroke="transparent" tick={{ fill: "#64748b" }} axisLine={false} tickLine={false} style={{ fontSize: 12, fontWeight: 500 }} />
                       <Tooltip contentStyle={{ backgroundColor: "rgba(255, 255, 255, 0.95)", border: "none", borderRadius: 12, color: "#1e293b", backdropFilter: "blur(10px)" }} />
                       <Legend wrapperStyle={{ fontSize: 12, color: "#64748b" }} />
-                      <Bar dataKey="leads" fill="#3b82f6" radius={[8, 8, 0, 0]} name="Leads" />
-                      <Bar dataKey="deals" fill="#8b5cf6" radius={[8, 8, 0, 0]} name="Deals" />
-                      <Line type="monotone" dataKey="won" stroke="#10b981" strokeWidth={2} name="Won" />
+                      <Bar dataKey="leads" fill="#737373" radius={[8, 8, 0, 0]} name="Leads" />
+                      <Bar dataKey="deals" fill="#E62E3E" radius={[8, 8, 0, 0]} name="Deals" />
+                      <Line type="monotone" dataKey="won" stroke="#A8202D" strokeWidth={2} name="Won" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -467,7 +467,7 @@ export default function PerformancePage() {
           <motion.div variants={cardHoverVariants} whileHover="hover">
             <Card className="glass-card">
               <CardHeader>
-                <CardTitle className="text-slate-900 dark:text-slate-100">Aktivitäten & Events (letzte 12 Wochen)</CardTitle>
+                <CardTitle className="text-foreground">Aktivitäten & Events (letzte 12 Wochen)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px] sm:h-80">
@@ -478,8 +478,8 @@ export default function PerformancePage() {
                       <YAxis stroke="transparent" tick={{ fill: "#64748b" }} axisLine={false} tickLine={false} style={{ fontSize: 12, fontWeight: 500 }} />
                       <Tooltip contentStyle={{ backgroundColor: "rgba(255, 255, 255, 0.95)", border: "none", borderRadius: 12, color: "#1e293b", backdropFilter: "blur(10px)" }} />
                       <Legend wrapperStyle={{ fontSize: 12, color: "#64748b" }} />
-                      <Area type="monotone" dataKey="events" stroke="#3b82f6" fillOpacity={0.4} fill="#3b82f6" name="Events" />
-                      <Area type="monotone" dataKey="activities" stroke="#10b981" fillOpacity={0.4} fill="#10b981" name="Aktivitäten" />
+                      <Area type="monotone" dataKey="events" stroke="#737373" fillOpacity={0.25} fill="#737373" name="Events" />
+                      <Area type="monotone" dataKey="activities" stroke="#E62E3E" fillOpacity={0.2} fill="#E62E3E" name="Aktivitäten" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>

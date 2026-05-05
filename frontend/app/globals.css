@@ -150,8 +150,8 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: linear-gradient(
     to right,
-    var(--mk-range-fill, rgba(59, 130, 246, 0.95)) 0%,
-    var(--mk-range-fill, rgba(59, 130, 246, 0.95)) calc(var(--mk-range-pct, 50) * 1%),
+    var(--mk-range-fill, hsl(var(--kaboom-red) / 0.95)) 0%,
+    var(--mk-range-fill, hsl(var(--kaboom-red) / 0.95)) calc(var(--mk-range-pct, 50) * 1%),
     rgba(148, 163, 184, 0.25) calc(var(--mk-range-pct, 50) * 1%),
     rgba(148, 163, 184, 0.25) 100%
   );
@@ -179,7 +179,7 @@
 .mk-range::-moz-range-progress {
   height: 10px;
   border-radius: 999px;
-  background: var(--mk-range-fill, rgba(59, 130, 246, 0.95));
+  background: var(--mk-range-fill, hsl(var(--kaboom-red) / 0.95));
 }
 
 .mk-range::-moz-range-thumb {
@@ -305,11 +305,12 @@
   }
 
   .dark {
+    /* Same deep black as kaboom.ch header — cards sit on identical base, separation via border only */
     --background: var(--kaboom-black);
     --foreground: 0 0% 96%;
-    --card: 0 0% 13%;
+    --card: var(--kaboom-black);
     --card-foreground: 0 0% 96%;
-    --popover: 0 0% 13%;
+    --popover: var(--kaboom-black);
     --popover-foreground: 0 0% 96%;
     --primary: var(--kaboom-red);
     --primary-foreground: 0 0% 100%;
