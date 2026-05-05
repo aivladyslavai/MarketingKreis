@@ -13,13 +13,16 @@ const BASE_CLASSES =
   "inline-flex items-center justify-center rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none min-h-11 min-w-11 sm:min-h-0 sm:min-w-0"
 
 const VARIANT_CLASSES: Record<NonNullable<ButtonProps["variant"]>, string> = {
-  default: "bg-blue-600 text-white hover:bg-blue-500 focus:ring-blue-600",
+  default:
+    "bg-primary text-primary-foreground hover:bg-kaboom-red-dark focus:ring-primary shadow-sm",
   outline:
-    "border border-slate-300 text-slate-700 hover:bg-slate-100 focus:ring-blue-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800",
-  ghost: "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800/60",
-  destructive: "bg-red-600 text-white hover:bg-red-500 focus:ring-red-600",
+    "border border-border text-foreground hover:bg-secondary focus:ring-primary",
+  ghost:
+    "text-foreground hover:bg-secondary focus:ring-primary",
+  destructive:
+    "bg-destructive text-destructive-foreground hover:bg-kaboom-red-dark focus:ring-destructive",
   secondary:
-    "bg-slate-900 text-slate-50 hover:bg-slate-800 focus:ring-slate-900 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200",
+    "bg-kaboom-black text-kaboom-white hover:bg-kaboom-black/90 focus:ring-kaboom-black dark:bg-white dark:text-kaboom-black dark:hover:bg-white/90",
 }
 
 const SIZE_CLASSES: Record<NonNullable<ButtonProps["size"]>, string> = {

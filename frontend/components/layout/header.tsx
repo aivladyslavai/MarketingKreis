@@ -36,9 +36,11 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <header
-      className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm"
+      className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-xl shadow-sm"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
+      {/* KA BOOM corporate brand stripe */}
+      <div className="kaboom-brand-band" aria-hidden="true" />
       <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Left side */}
@@ -48,16 +50,21 @@ export function Header({ onMenuClick }: HeaderProps) {
               variant="ghost"
               size="icon"
               onClick={onMenuClick}
-              className="md:hidden h-11 w-11 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="md:hidden h-11 w-11 rounded-full hover:bg-secondary transition-colors"
               aria-label="Open menu"
               data-tour="menu-button"
             >
-              <Menu className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+              <Menu className="h-5 w-5 text-foreground" />
             </Button>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white hidden sm:block">
-              KABOOM Marketing Platform
-            </h2>
-            <div className="sm:hidden text-sm font-semibold text-slate-900 dark:text-white truncate max-w-[55vw]">
+            <div className="hidden sm:flex items-center gap-2.5">
+              <span className="inline-flex items-center justify-center h-7 px-2.5 rounded-md bg-kaboom-black text-kaboom-white font-display font-extrabold tracking-tight text-sm">
+                KA<span className="text-kaboom-red">·</span>BOOM
+              </span>
+              <span className="text-sm font-semibold text-foreground/80 tracking-tight">
+                Marketing Platform
+              </span>
+            </div>
+            <div className="sm:hidden text-sm font-semibold text-foreground truncate max-w-[55vw]">
               {mobileTitle}
             </div>
           </div>
