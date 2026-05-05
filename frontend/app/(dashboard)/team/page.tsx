@@ -10,6 +10,7 @@ import {
 import { useAuth } from "@/hooks/use-auth"
 import { authFetch } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/layout/page-header"
 
 type TeamMember = {
   id: number
@@ -83,20 +84,20 @@ function RoleCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "relative flex flex-col items-start gap-1.5 rounded-2xl border p-4 text-left transition-all duration-200",
+        "relative flex flex-col items-start gap-1.5 rounded-xl border p-4 text-left transition-all duration-200",
         active
-          ? "border-violet-500 bg-violet-500/15 shadow-[0_0_20px_rgba(139,92,246,0.2)]"
-          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/8"
+          ? "border-kaboom-red bg-kaboom-red/10 shadow-[0_0_18px_hsl(var(--kaboom-red)/0.18)]"
+          : "border-border bg-card hover:border-foreground/20 hover:bg-secondary"
       )}
     >
       {active && (
-        <div className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-violet-500">
+        <div className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-kaboom-red">
           <Check className="h-3 w-3 text-white" />
         </div>
       )}
-      <span className={cn("text-xl", active ? "text-violet-300" : "text-slate-400")}>{icon}</span>
-      <span className={cn("text-sm font-semibold", active ? "text-violet-200" : "text-slate-200")}>{label}</span>
-      <span className="text-xs text-slate-500 leading-snug">{description}</span>
+      <span className={cn("text-xl", active ? "text-kaboom-red" : "text-muted-foreground")}>{icon}</span>
+      <span className={cn("text-sm font-semibold", active ? "text-foreground" : "text-foreground/85")}>{label}</span>
+      <span className="text-xs text-muted-foreground leading-snug">{description}</span>
     </button>
   )
 }
@@ -118,8 +119,8 @@ function SectionToggle({
       className={cn(
         "flex items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm transition-all duration-200",
         checked
-          ? "border-violet-500/50 bg-violet-500/10 text-violet-200"
-          : "border-white/10 bg-white/5 text-slate-500 hover:border-white/20"
+          ? "border-kaboom-red/40 bg-kaboom-red/10 text-foreground"
+          : "border-border bg-card text-muted-foreground hover:border-foreground/20"
       )}
     >
       <span className="flex items-center gap-2">
@@ -129,7 +130,7 @@ function SectionToggle({
       <span
         className={cn(
           "relative ml-3 inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200",
-          checked ? "bg-violet-500" : "bg-white/15"
+          checked ? "bg-kaboom-red" : "bg-foreground/15"
         )}
       >
         <span
@@ -448,20 +449,31 @@ export default function TeamPage() {
   const otherItems = items.filter((i) => i.status !== "active")
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8 px-1 py-2">
+    <div className="mx-auto max-w-4xl space-y-6 px-1 py-2">
 
-      {/* ── header ── */}
-      <div className="flex items-center gap-4">
-        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-[0_0_24px_rgba(139,92,246,0.4)]">
-          <Users className="h-6 w-6 text-white" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-white">Team & Einladungen</h1>
-          <p className="mt-0.5 text-sm text-slate-400">
-            Lade Mitglieder ein – sie werden automatisch deiner Organisation zugeordnet.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Team & Einladungen"
+        description="Lade Mitarbeitende ein, vergib Rollen und steuere den Zugriff auf jeden Bereich der Plattform."
+        icon={Users}
+        meta={
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-kaboom-red/10 px-2.5 py-0.5 text-xs font-medium text-kaboom-red ring-1 ring-kaboom-red/25">
+            {members.length} {members.length === 1 ? "Mitglied" : "Mitglieder"}
+            <span className="text-kaboom-red/60">·</span>
+            {items.filter((i) => i.status === "active").length} offen
+          </span>
+        }
+        actions={
+          <button
+            type="button"
+            onClick={() => loadMembers()}
+            disabled={membersLoading}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm text-foreground/70 transition-all hover:bg-secondary hover:text-foreground disabled:opacity-50"
+          >
+            <RefreshCw className={cn("h-4 w-4", membersLoading && "animate-spin")} />
+            Aktualisieren
+          </button>
+        }
+      />
 
       {/* ── global flash ── */}
       {successMsg && (
@@ -565,7 +577,7 @@ export default function TeamPage() {
                     className={cn(
                       "rounded-xl border px-3.5 py-2 text-sm font-medium transition-all",
                       expiresMinutes === o.value
-                        ? "border-violet-500 bg-violet-500/20 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                        ? "border-violet-500 bg-violet-500/20 text-violet-200 shadow-[0_0_12px_rgba(230,46,62,0.3)]"
                         : "border-white/10 bg-white/5 text-slate-400 hover:border-white/25 hover:text-slate-200"
                     )}
                   >
@@ -619,7 +631,7 @@ export default function TeamPage() {
                 className={cn(
                   "flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200",
                   !busy
-                    ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-[0_0_20px_rgba(139,92,246,0.4)] hover:shadow-[0_0_28px_rgba(139,92,246,0.6)] hover:scale-[1.02]"
+                    ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-[0_0_20px_rgba(230,46,62,0.4)] hover:shadow-[0_0_28px_rgba(230,46,62,0.6)] hover:scale-[1.02]"
                     : "bg-white/10 text-slate-500 cursor-not-allowed"
                 )}
               >

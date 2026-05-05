@@ -343,56 +343,151 @@
 }
 
 /* === Brand-wide accent overrides (apply in BOTH light and dark) ===
-   Many legacy components use Tailwind blue / indigo / purple as the
-   "primary" CTA color. We re-route those to the KA BOOM red so the entire
-   product reads as one corporate family without touching every component. */
+   Many legacy components use Tailwind blue / indigo / purple / teal /
+   emerald / cyan / sky / pink / fuchsia as accent colors. We re-route
+   those to the KA BOOM red so the entire product reads as one corporate
+   family without touching every component. */
 @layer base {
-  /* Solid CTAs */
-  .bg-blue-600,
-  .bg-blue-700,
-  .bg-indigo-600,
-  .bg-indigo-700,
-  .bg-purple-600,
-  .bg-purple-700 { background-color: hsl(var(--kaboom-red)) !important; }
-  .hover\:bg-blue-500:hover,
-  .hover\:bg-blue-600:hover,
-  .hover\:bg-blue-700:hover,
-  .hover\:bg-indigo-700:hover,
-  .hover\:bg-purple-700:hover { background-color: hsl(var(--kaboom-red-dark)) !important; }
+  /* Solid CTA backgrounds */
+  .bg-blue-500, .bg-blue-600, .bg-blue-700,
+  .bg-indigo-500, .bg-indigo-600, .bg-indigo-700,
+  .bg-purple-500, .bg-purple-600, .bg-purple-700,
+  .bg-violet-500, .bg-violet-600, .bg-violet-700,
+  .bg-fuchsia-500, .bg-fuchsia-600,
+  .bg-pink-500, .bg-pink-600,
+  .bg-sky-500, .bg-sky-600,
+  .bg-cyan-500, .bg-cyan-600,
+  .bg-teal-500, .bg-teal-600,
+  .bg-emerald-500, .bg-emerald-600 { background-color: hsl(var(--kaboom-red)) !important; }
+  .hover\:bg-blue-500:hover, .hover\:bg-blue-600:hover, .hover\:bg-blue-700:hover,
+  .hover\:bg-indigo-600:hover, .hover\:bg-indigo-700:hover,
+  .hover\:bg-purple-600:hover, .hover\:bg-purple-700:hover,
+  .hover\:bg-violet-600:hover, .hover\:bg-violet-700:hover,
+  .hover\:bg-fuchsia-500:hover, .hover\:bg-fuchsia-600:hover,
+  .hover\:bg-teal-600:hover, .hover\:bg-emerald-600:hover { background-color: hsl(var(--kaboom-red-dark)) !important; }
 
-  /* Accent text and borders */
-  .text-blue-600,
-  .text-blue-500,
-  .text-indigo-600,
-  .text-indigo-500,
-  .text-purple-600,
-  .text-purple-500 { color: hsl(var(--kaboom-red)) !important; }
-  .border-blue-600,
-  .border-blue-500,
-  .border-indigo-500,
-  .border-purple-500 { border-color: hsl(var(--kaboom-red)) !important; }
-  .ring-blue-500,
-  .ring-blue-600,
+  /* Tinted bg (e.g. /10 /20 transparent fills) — keep brand wash */
+  .bg-blue-500\/10, .bg-blue-500\/20, .bg-blue-600\/10, .bg-blue-600\/20,
+  .bg-indigo-500\/10, .bg-indigo-500\/20, .bg-indigo-600\/10, .bg-indigo-600\/20,
+  .bg-purple-500\/10, .bg-purple-500\/20, .bg-purple-600\/10, .bg-purple-600\/20,
+  .bg-violet-500\/10, .bg-violet-500\/15, .bg-violet-500\/20, .bg-violet-600\/10,
+  .bg-fuchsia-500\/10, .bg-fuchsia-500\/20,
+  .bg-pink-500\/10, .bg-pink-500\/20,
+  .bg-sky-500\/10, .bg-sky-500\/20,
+  .bg-cyan-500\/10, .bg-cyan-500\/20,
+  .bg-teal-500\/10, .bg-teal-500\/20,
+  .bg-emerald-500\/10, .bg-emerald-500\/20 { background-color: hsl(var(--kaboom-red) / 0.10) !important; }
+
+  /* Accent text */
+  .text-blue-600, .text-blue-500, .text-blue-400, .text-blue-300,
+  .text-indigo-600, .text-indigo-500, .text-indigo-400,
+  .text-purple-600, .text-purple-500, .text-purple-400, .text-purple-300,
+  .text-violet-600, .text-violet-500, .text-violet-400, .text-violet-300, .text-violet-200,
+  .text-fuchsia-500, .text-fuchsia-400, .text-fuchsia-300,
+  .text-pink-500, .text-pink-400, .text-pink-300,
+  .text-sky-500, .text-sky-400,
+  .text-cyan-500, .text-cyan-400, .text-cyan-300,
+  .text-teal-500, .text-teal-400,
+  .text-emerald-500, .text-emerald-400 { color: hsl(var(--kaboom-red)) !important; }
+  /* Keep emerald-300 / 200 (success states like "verified") slightly green-tinted
+     by NOT overriding them; restore semantic meaning only where it matters. */
+
+  /* Accent borders */
+  .border-blue-600, .border-blue-500, .border-blue-400,
+  .border-indigo-500, .border-indigo-400,
+  .border-purple-500, .border-purple-400,
+  .border-violet-500, .border-violet-400,
+  .border-fuchsia-500,
+  .border-pink-500,
+  .border-sky-500,
+  .border-cyan-500,
+  .border-teal-500,
+  .border-emerald-500 { border-color: hsl(var(--kaboom-red)) !important; }
+
+  .ring-blue-500, .ring-blue-600,
   .ring-indigo-500,
   .ring-purple-500,
-  .focus\:ring-blue-600:focus,
-  .focus\:ring-blue-500:focus { --tw-ring-color: hsl(var(--kaboom-red)) !important; }
+  .ring-violet-500,
+  .ring-cyan-500,
+  .ring-teal-500,
+  .ring-emerald-500,
+  .focus\:ring-blue-600:focus, .focus\:ring-blue-500:focus,
+  .focus\:ring-purple-500:focus, .focus\:ring-violet-500:focus { --tw-ring-color: hsl(var(--kaboom-red)) !important; }
 
-  /* CTA gradients (blue→indigo / indigo→purple / blue→purple combos) */
-  .from-blue-500,
-  .from-blue-600,
-  .from-indigo-500,
-  .from-indigo-600,
-  .from-purple-500,
-  .from-purple-600 { --tw-gradient-from: hsl(var(--kaboom-red)) !important; }
-  .to-blue-500,
-  .to-blue-600,
-  .to-indigo-500,
-  .to-indigo-600,
-  .to-purple-500,
-  .to-purple-600,
-  .to-fuchsia-500,
-  .to-fuchsia-600 { --tw-gradient-to: hsl(var(--kaboom-red-dark)) !important; }
+  /* Gradient stops */
+  .from-blue-500, .from-blue-600,
+  .from-indigo-500, .from-indigo-600,
+  .from-purple-500, .from-purple-600, .from-purple-700,
+  .from-violet-500, .from-violet-600, .from-violet-700,
+  .from-fuchsia-500, .from-fuchsia-600,
+  .from-pink-500, .from-pink-600,
+  .from-sky-500, .from-sky-600,
+  .from-cyan-500, .from-cyan-600,
+  .from-teal-500, .from-teal-600,
+  .from-emerald-500, .from-emerald-600 { --tw-gradient-from: hsl(var(--kaboom-red) / 0.85) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, hsl(var(--kaboom-red) / 0)) !important; }
+
+  .via-blue-500, .via-blue-600,
+  .via-indigo-500, .via-indigo-600,
+  .via-purple-500, .via-purple-600,
+  .via-violet-500, .via-violet-600,
+  .via-fuchsia-500, .via-fuchsia-600,
+  .via-pink-500,
+  .via-cyan-500,
+  .via-teal-500,
+  .via-emerald-500 { --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--kaboom-red) / 0.55), var(--tw-gradient-to, hsl(var(--kaboom-red) / 0)) !important; }
+
+  .to-blue-500, .to-blue-600,
+  .to-indigo-500, .to-indigo-600,
+  .to-purple-500, .to-purple-600, .to-purple-700,
+  .to-violet-500, .to-violet-600,
+  .to-fuchsia-500, .to-fuchsia-600,
+  .to-pink-500, .to-pink-600,
+  .to-sky-500, .to-sky-600,
+  .to-cyan-500, .to-cyan-600,
+  .to-teal-500, .to-teal-600,
+  .to-emerald-500, .to-emerald-600 { --tw-gradient-to: hsl(var(--kaboom-red-dark) / 0.7) !important; }
+
+  /* Same but for the /5 /10 /20 transparent gradient stops used in soft heros */
+  [class*="from-blue-500\\/"], [class*="from-blue-600\\/"],
+  [class*="from-indigo-500\\/"], [class*="from-indigo-600\\/"],
+  [class*="from-purple-500\\/"], [class*="from-purple-600\\/"],
+  [class*="from-violet-500\\/"], [class*="from-violet-600\\/"],
+  [class*="from-fuchsia-500\\/"], [class*="from-fuchsia-600\\/"],
+  [class*="from-pink-500\\/"],
+  [class*="from-cyan-500\\/"],
+  [class*="from-teal-500\\/"],
+  [class*="from-emerald-500\\/"] { --tw-gradient-from: hsl(var(--kaboom-red) / 0.18) !important; }
+  [class*="via-purple-500\\/"], [class*="via-violet-500\\/"],
+  [class*="via-fuchsia-500\\/"], [class*="via-pink-500\\/"],
+  [class*="via-cyan-500\\/"], [class*="via-teal-500\\/"],
+  [class*="via-emerald-500\\/"] { --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--kaboom-red) / 0.10), var(--tw-gradient-to) !important; }
+  [class*="to-purple-500\\/"], [class*="to-pink-500\\/"], [class*="to-fuchsia-500\\/"],
+  [class*="to-cyan-500\\/"], [class*="to-teal-500\\/"], [class*="to-emerald-500\\/"],
+  [class*="to-blue-500\\/"], [class*="to-indigo-500\\/"] { --tw-gradient-to: hsl(var(--kaboom-red) / 0.05) !important; }
+
+  /* Tailwind compiles `border-violet-500/30` and `bg-violet-500/15` to
+     classes like .border-violet-500\/30 — wildcard match catches all opacity
+     variants of accent colors that the explicit list above missed. */
+  [class*="border-violet-500\\/"], [class*="border-purple-500\\/"],
+  [class*="border-fuchsia-500\\/"], [class*="border-pink-500\\/"],
+  [class*="border-blue-500\\/"], [class*="border-indigo-500\\/"],
+  [class*="border-cyan-500\\/"], [class*="border-teal-500\\/"],
+  [class*="border-sky-500\\/"] { border-color: hsl(var(--kaboom-red) / 0.30) !important; }
+
+  [class*="bg-violet-500\\/"], [class*="bg-purple-500\\/"],
+  [class*="bg-fuchsia-500\\/"], [class*="bg-pink-500\\/"],
+  [class*="bg-blue-500\\/"], [class*="bg-indigo-500\\/"],
+  [class*="bg-cyan-500\\/"], [class*="bg-teal-500\\/"],
+  [class*="bg-sky-500\\/"] { background-color: hsl(var(--kaboom-red) / 0.10) !important; }
+
+  [class*="ring-violet-500\\/"], [class*="ring-purple-500\\/"],
+  [class*="ring-fuchsia-500\\/"], [class*="ring-blue-500\\/"],
+  [class*="ring-cyan-500\\/"], [class*="ring-teal-500\\/"] { --tw-ring-color: hsl(var(--kaboom-red) / 0.30) !important; }
+
+  /* Soft KPI/stat-card backgrounds */
+  .bg-blue-50, .bg-indigo-50, .bg-purple-50, .bg-violet-50,
+  .bg-pink-50, .bg-fuchsia-50, .bg-cyan-50, .bg-sky-50,
+  .bg-teal-50 { background-color: hsl(var(--kaboom-red) / 0.06) !important; }
 }
 
 /* === Dark-theme surface unification ===
