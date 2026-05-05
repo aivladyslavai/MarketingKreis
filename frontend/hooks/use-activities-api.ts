@@ -23,13 +23,27 @@ export interface Activity {
   updated_at?: string
 }
 
-const fetcher = async () => {
-  // Always go through the Next.js proxy so auth cookies are forwarded.
-  return requestLocal<Activity[]>("/api/activities").catch(() => [])
+type ActivityApiFilters = {
+  companyId?: string | number | null
+  projectId?: string | number | null
 }
 
-export function useActivitiesApi() {
-  const { data, error, isLoading, mutate } = useSWR("/api/activities", fetcher, {
+function activitiesPath(filters?: ActivityApiFilters) {
+  const sp = new URLSearchParams()
+  if (filters?.companyId) sp.set("company_id", String(filters.companyId))
+  if (filters?.projectId) sp.set("project_id", String(filters.projectId))
+  const qs = sp.toString()
+  return `/api/activities${qs ? `?${qs}` : ""}`
+}
+
+const fetcher = async (url: string) => {
+  // Always go through the Next.js proxy so auth cookies are forwarded.
+  return requestLocal<Activity[]>(url).catch(() => [])
+}
+
+export function useActivitiesApi(filters?: ActivityApiFilters) {
+  const key = activitiesPath(filters)
+  const { data, error, isLoading, mutate } = useSWR(key, fetcher, {
     refreshInterval: 0,
     revalidateOnFocus: false,
   })

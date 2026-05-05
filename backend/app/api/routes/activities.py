@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime, date
@@ -82,6 +83,8 @@ class ActivityFrontend(BaseModel):
 def list_activities(
     skip: int = 0,
     limit: int = 100,
+    company_id: Optional[int] = None,
+    project_id: Optional[int] = None,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -98,6 +101,16 @@ def list_activities(
             .filter(Activity.owner_id == current_user.id, Activity.organization_id == org)
             .order_by(Activity.created_at.desc())
         )
+        if project_id is not None:
+            q = q.filter(Activity.project_id == int(project_id))
+        elif company_id is not None:
+            project_ids = [
+                row[0]
+                for row in db.query(Deal.id)
+                .filter(Deal.organization_id == org, Deal.company_id == int(company_id))
+                .all()
+            ]
+            q = q.filter(or_(Activity.company_id == int(company_id), Activity.project_id.in_(project_ids)))
         activities = q.offset(skip).limit(limit).all()
 
         result: List[ActivityFrontend] = []

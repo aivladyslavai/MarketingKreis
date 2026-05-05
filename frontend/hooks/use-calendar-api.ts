@@ -16,6 +16,8 @@ export interface CalendarEvent {
   location?: string
   color?: string
   activity_id?: number | null
+  company_id?: number | null
+  project_id?: number | null
   category?: string
   category_id?: number | null
   status?: 'PLANNED' | 'DONE' | 'DELAYED' | 'CANCELLED'
@@ -29,7 +31,14 @@ export interface CalendarEvent {
 // SWR fetcher: ensure we return parsed JSON, not Response
 const fetcher = async (url: string): Promise<any> => {
   const res = await authFetch(url)
-  if (!res.ok) return []
+  if (!res.ok) {
+    let message = `Calendar request failed (${res.status})`
+    try {
+      const body = await res.json()
+      message = body?.detail || body?.error || message
+    } catch {}
+    throw new Error(message)
+  }
   try {
     return await res.json()
   } catch {
@@ -149,6 +158,7 @@ export function useCalendarApi() {
   const createEvent = async (event: Omit<CalendarEvent, 'id'>) => {
     const res = await authFetch('/calendar', { method: 'POST', body: JSON.stringify(event) })
     const newEvent = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(newEvent?.detail || newEvent?.error || `Termin konnte nicht erstellt werden (${res.status})`)
     // Save chosen color/category locally for future renders
     if (newEvent?.id && (event as any).color) setEventColor(String(newEvent.id), (event as any).color as string)
     if (newEvent?.id && (event as any).category) setEventCategory(String(newEvent.id), (event as any).category as string)
@@ -163,6 +173,7 @@ export function useCalendarApi() {
   const updateEvent = async (id: string, updates: Partial<CalendarEvent>) => {
     const res = await authFetch(`/calendar/${id}`, { method: 'PUT', body: JSON.stringify(updates) })
     const updated = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(updated?.detail || updated?.error || `Termin konnte nicht gespeichert werden (${res.status})`)
     if (updates.color) setEventColor(id, updates.color)
     if (updates.category) setEventCategory(id, updates.category)
     if ((updates as any).description) setEventDescription(id, (updates as any).description as string)
@@ -174,9 +185,10 @@ export function useCalendarApi() {
   }
 
   const deleteEvent = async (id: string) => {
-    await authFetch(`/calendar/${id}`, {
+    const res = await authFetch(`/calendar/${id}`, {
       method: 'DELETE',
     })
+    if (!res.ok) throw new Error(`Termin konnte nicht gelöscht werden (${res.status})`)
     removeEventColor(id)
     removeEventCategory(id)
     removeEventDescription(id)

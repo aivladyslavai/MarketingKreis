@@ -1531,6 +1531,9 @@ function CRMPageContent() {
                               <DropdownMenuItem onClick={() => setViewingCompany(company)}>
                                 Details anzeigen
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => router.push(`/activities?company_id=${company.id}`)}>
+                                Aktivitäten anzeigen
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => setEditingCompany(company)}>
                                 Bearbeiten
                               </DropdownMenuItem>

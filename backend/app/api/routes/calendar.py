@@ -158,21 +158,30 @@ def _resolve_company_and_project(
 @router.get("", response_model=List[CalendarEventFrontend])
 def list_calendar_events(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 500,
+    start_after: Optional[datetime] = None,
+    end_before: Optional[datetime] = None,
+    company_id: Optional[int] = None,
+    project_id: Optional[int] = None,
+    activity_id: Optional[int] = None,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ):
-    """List calendar events for the current user."""
+    """List organization calendar events with optional relation/date filters."""
     try:
         org = get_org_id(current_user)
-        events = (
-            db.query(CalendarEntry)
-            .filter(CalendarEntry.owner_id == current_user.id, CalendarEntry.organization_id == org)
-            .order_by(CalendarEntry.start_time.asc())
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        q = db.query(CalendarEntry).filter(CalendarEntry.organization_id == org)
+        if start_after is not None:
+            q = q.filter(CalendarEntry.end_time >= start_after)
+        if end_before is not None:
+            q = q.filter(CalendarEntry.start_time <= end_before)
+        if company_id is not None:
+            q = q.filter(CalendarEntry.company_id == int(company_id))
+        if project_id is not None:
+            q = q.filter(CalendarEntry.project_id == int(project_id))
+        if activity_id is not None:
+            q = q.filter(CalendarEntry.activity_id == int(activity_id))
+        events = q.order_by(CalendarEntry.start_time.desc()).offset(skip).limit(min(max(limit, 1), 1000)).all()
 
         items: List[CalendarEventFrontend] = []
         for event in events:
@@ -207,7 +216,7 @@ def list_calendar_events(
         return items
     except Exception as e:
         print(f"Error fetching calendar events: {e}")
-        return []
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("", response_model=CalendarEventFrontend)
@@ -259,7 +268,7 @@ def create_calendar_event(
         if activity_id is not None:
             activity = (
                 db.query(Activity)
-                .filter(Activity.id == int(activity_id), Activity.organization_id == org, Activity.owner_id == current_user.id)
+                .filter(Activity.id == int(activity_id), Activity.organization_id == org)
                 .first()
             )
             if not activity:
@@ -354,7 +363,6 @@ def update_calendar_event(
             db.query(CalendarEntry)
             .filter(
                 CalendarEntry.id == int(event_id),
-                CalendarEntry.owner_id == current_user.id,
                 CalendarEntry.organization_id == org,
             )
             .first()
@@ -387,7 +395,7 @@ def update_calendar_event(
             else:
                 activity = (
                     db.query(Activity)
-                    .filter(Activity.id == int(activity_id), Activity.organization_id == org, Activity.owner_id == current_user.id)
+                    .filter(Activity.id == int(activity_id), Activity.organization_id == org)
                     .first()
                 )
                 if not activity:
@@ -516,7 +524,6 @@ def delete_calendar_event(
             db.query(CalendarEntry)
             .filter(
                 CalendarEntry.id == int(event_id),
-                CalendarEntry.owner_id == current_user.id,
                 CalendarEntry.organization_id == org,
             )
             .first()

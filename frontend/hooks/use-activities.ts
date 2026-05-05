@@ -6,19 +6,33 @@ import { requestLocal } from "@/lib/api"
 import { sync } from "@/lib/sync"
 import * as React from "react"
 
-const fetcher = async () => {
+type ActivityFilters = {
+    companyId?: string | number | null
+    projectId?: string | number | null
+}
+
+function activitiesPath(filters?: ActivityFilters) {
+    const sp = new URLSearchParams()
+    if (filters?.companyId) sp.set("company_id", String(filters.companyId))
+    if (filters?.projectId) sp.set("project_id", String(filters.projectId))
+    const qs = sp.toString()
+    return `/api/activities${qs ? `?${qs}` : ""}`
+}
+
+const fetcher = async (url: string) => {
   try {
     // Всегда идём через Next.js proxy /api/activities, чтобы куки авторизации
     // корректно доходили до бекенда даже в продакшене (Vercel).
-    return await requestLocal<Activity[]>("/api/activities")
+    return await requestLocal<Activity[]>(url)
   } catch {
     console.error("Failed to load activities via /api/activities")
     return []
   }
 }
 
-export function useActivities() {
-    const { data, error, isLoading, mutate } = useSWR("/api/activities", fetcher, {
+export function useActivities(filters?: ActivityFilters) {
+    const key = activitiesPath(filters)
+    const { data, error, isLoading, mutate } = useSWR(key, fetcher, {
         refreshInterval: 0,
         revalidateOnFocus: false,
     })

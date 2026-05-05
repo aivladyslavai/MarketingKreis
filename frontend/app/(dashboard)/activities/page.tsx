@@ -24,6 +24,8 @@ import { CalendarDays, Check, Download, Pencil, Trash2, X } from "lucide-react"
 import { CategoryPicker } from "@/components/forms/category-picker"
 import { DateRangePicker } from "@/components/forms/date-range-picker"
 import { EntityFormSection } from "@/components/forms/entity-form"
+import { RelationPicker, type RelationOption } from "@/components/forms/relation-picker"
+import { companiesAPI, projectsAPI } from "@/lib/api"
 
 // Category colors (same as in RadialCircle)
 const categoryColors: Record<string, string> = {
@@ -152,8 +154,21 @@ function FancyDateInput({
 }
 
 export default function ActivitiesPage() {
-  const { activities, loading, error, addActivity, updateActivity, deleteActivity, refresh } = useActivities() as any
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(() => {
+    if (typeof window === "undefined") return ""
+    try { return new URLSearchParams(window.location.search).get("company_id") || "" } catch { return "" }
+  })
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
+    if (typeof window === "undefined") return ""
+    try { return new URLSearchParams(window.location.search).get("project_id") || "" } catch { return "" }
+  })
+  const { activities, loading, error, addActivity, updateActivity, deleteActivity, refresh } = useActivities({
+    companyId: selectedCompanyId || undefined,
+    projectId: selectedProjectId || undefined,
+  }) as any
   const [ready, setReady] = useState(false)
+  const [companies, setCompanies] = useState<any[]>([])
+  const [projects, setProjects] = useState<any[]>([])
   const [year, setYear] = useState<number>(new Date().getFullYear())
   const didAutoYearRef = useRef(false)
   const [isSmall, setIsSmall] = useState(false)
@@ -199,6 +214,28 @@ export default function ActivitiesPage() {
       return () => { mql.removeEventListener?.("change", apply) }
     } catch {}
   }, [])
+  useEffect(() => {
+    let mounted = true
+    Promise.all([
+      companiesAPI.getAll().catch(() => []),
+      projectsAPI.getAll().catch(() => []),
+    ]).then(([nextCompanies, nextProjects]) => {
+      if (!mounted) return
+      setCompanies(Array.isArray(nextCompanies) ? nextCompanies : [])
+      setProjects(Array.isArray(nextProjects) ? nextProjects : [])
+    })
+    return () => { mounted = false }
+  }, [])
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    if (selectedCompanyId) params.set("company_id", selectedCompanyId)
+    else params.delete("company_id")
+    if (selectedProjectId) params.set("project_id", selectedProjectId)
+    else params.delete("project_id")
+    const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`
+    window.history.replaceState(null, "", next)
+  }, [selectedCompanyId, selectedProjectId])
   useEffect(() => { try { localStorage.setItem("activities:preset", preset) } catch {} }, [preset])
   useEffect(() => { try { localStorage.setItem("activities:compact", compact ? "1" : "0") } catch {} }, [compact])
   useEffect(() => { try { localStorage.setItem("activities:zoom", String(zoom)) } catch {} }, [zoom])
@@ -290,6 +327,17 @@ export default function ActivitiesPage() {
   // helper: resolve color for category (user-defined first, fallback to defaults)
   const userColorMap: Record<string, string> = (categories || []).reduce((m, c) => { m[c.name] = c.color; return m }, {} as Record<string,string>)
   const getColor = (name: string) => userColorMap[name] || (categoryColors as any)[name] || '#64748b'
+  const companyOptions: RelationOption[] = [
+    { value: "", label: "Alle Kunden" },
+    ...companies.map((company: any) => ({ value: String(company.id), label: String(company.name || "Unbenannt") })),
+  ]
+  const scopedProjects = selectedCompanyId
+    ? projects.filter((project: any) => String(project.company_id ?? project.companyId ?? "") === selectedCompanyId)
+    : projects
+  const projectOptions: RelationOption[] = [
+    { value: "", label: selectedCompanyId ? "Alle Projekte dieses Kunden" : "Alle Projekte" },
+    ...scopedProjects.map((project: any) => ({ value: String(project.id), label: String(project.title || project.name || "Unbenannt") })),
+  ]
 
   const filtered = activities
     // show if the activity overlaps the selected visible period at all
@@ -425,7 +473,15 @@ export default function ActivitiesPage() {
               <Button size="sm" className="bg-white text-slate-900 hover:bg-white/90 h-8 sm:h-9 text-xs sm:text-sm ml-auto" onClick={() => openModal({
                 type: 'custom',
                 title: 'Aktivität hinzufügen',
-                content: (<AddActivityForm onCreate={async (p) => { await addActivity(p); refresh?.(); }} />)
+                content: (
+                  <AddActivityForm
+                    companies={companies}
+                    projects={projects}
+                    defaultCompanyId={selectedCompanyId}
+                    defaultProjectId={selectedProjectId}
+                    onCreate={async (p) => { await addActivity(p); refresh?.(); }}
+                  />
+                )
               })}>+ Aktivität</Button>
             </div>
           </div>
@@ -492,7 +548,26 @@ export default function ActivitiesPage() {
                   </div>
                 </div>
               )}
-              <div className="w-full sm:w-auto">
+              <div className="grid w-full grid-cols-1 gap-2 lg:grid-cols-3">
+                <RelationPicker
+                  id="activities_company_filter"
+                  label="Kunde"
+                  value={selectedCompanyId}
+                  onChange={(value) => {
+                    setSelectedCompanyId(value)
+                    setSelectedProjectId("")
+                  }}
+                  options={companyOptions}
+                  placeholder="Alle Kunden"
+                />
+                <RelationPicker
+                  id="activities_project_filter"
+                  label="Projekt"
+                  value={selectedProjectId}
+                  onChange={setSelectedProjectId}
+                  options={projectOptions}
+                  placeholder="Alle Projekte"
+                />
                 <GlassSelect
                   value={categoryFilter}
                   onChange={setCategoryFilter}
@@ -502,7 +577,7 @@ export default function ActivitiesPage() {
                       ? categories.map(c => ({ value: c.name, label: c.name }))
                       : Object.keys(categoryColors).map(k => ({ value: k, label: k })))
                   ]}
-                  className="w-full sm:w-44"
+                  className="w-full"
                 />
               </div>
             </div>
@@ -621,7 +696,12 @@ export default function ActivitiesPage() {
                               type: 'custom',
                               title: 'Aktivität bearbeiten',
                               content: (
-                                <EditActivityForm activity={a} onSave={async (updates)=>{ await updateActivity(String(a.id), updates as any); await refresh?.(); }} />
+                                <EditActivityForm
+                                  activity={a}
+                                  companies={companies}
+                                  projects={projects}
+                                  onSave={async (updates)=>{ await updateActivity(String(a.id), updates as any); await refresh?.(); }}
+                                />
                               )
                             })
                           }}
@@ -748,9 +828,23 @@ export default function ActivitiesPage() {
   )
 }
 
-function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<void> }) {
+function AddActivityForm({
+  companies,
+  projects,
+  defaultCompanyId,
+  defaultProjectId,
+  onCreate,
+}: {
+  companies: any[]
+  projects: any[]
+  defaultCompanyId?: string
+  defaultProjectId?: string
+  onCreate: (payload: any) => Promise<void>
+}) {
   const { closeModal } = useModal()
   const [title, setTitle] = useState("")
+  const [companyId, setCompanyId] = useState(defaultCompanyId || "")
+  const [projectId, setProjectId] = useState(defaultProjectId || "")
   const [dateStart, setDateStart] = useState(new Date().toISOString().slice(0,10))
   const [dateEnd, setDateEnd] = useState("")
   const [type, setType] = useState("event")
@@ -759,6 +853,17 @@ function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<voi
   const [checklist, setChecklist] = useState<string[]>([])
   const [description, setDescription] = useState("")
   const canCreate = title.trim().length > 0
+  const scopedProjects = companyId
+    ? projects.filter((project: any) => String(project.company_id ?? project.companyId ?? "") === companyId)
+    : projects
+  const companyOptions: RelationOption[] = [
+    { value: "", label: "Kein Kunde" },
+    ...companies.map((company: any) => ({ value: String(company.id), label: String(company.name || "Unbenannt") })),
+  ]
+  const projectOptions: RelationOption[] = [
+    { value: "", label: companyId ? "Kein Projekt / nur Kunde" : "Kein Projekt" },
+    ...scopedProjects.map((project: any) => ({ value: String(project.id), label: String(project.title || project.name || "Unbenannt") })),
+  ]
 
   return (
     <div className="space-y-5">
@@ -770,6 +875,29 @@ function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<voi
           </div>
 
           <DateRangePicker start={dateStart} end={dateEnd} onStartChange={setDateStart} onEndChange={setDateEnd} endLabel="Ende (optional)" />
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <RelationPicker
+              id="activity_company"
+              label="Kunde"
+              value={companyId}
+              onChange={(value) => {
+                setCompanyId(value)
+                setProjectId("")
+              }}
+              options={companyOptions}
+              placeholder="Kein Kunde"
+              hint="Optional, aber empfohlen für client-spezifische Auswertungen."
+            />
+            <RelationPicker
+              id="activity_project"
+              label="Projekt"
+              value={projectId}
+              onChange={setProjectId}
+              options={projectOptions}
+              placeholder="Kein Projekt"
+            />
+          </div>
 
           <div className="grid gap-1.5">
             <Label>Beschreibung</Label>
@@ -855,6 +983,8 @@ function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<voi
               start: `${dateStart}T09:00:00`,
               end: dateEnd ? `${dateEnd}T18:00:00` : undefined,
               category,
+              company_id: companyId ? Number(companyId) : undefined,
+              project_id: projectId ? Number(projectId) : undefined,
               status: "PLANNED",
               weight: 50,
               budgetCHF: 0,
@@ -872,9 +1002,21 @@ function AddActivityForm({ onCreate }: { onCreate: (payload: any) => Promise<voi
 }
 
 
-function EditActivityForm({ activity, onSave }: { activity: any; onSave: (updates: any) => Promise<void> }) {
+function EditActivityForm({
+  activity,
+  companies,
+  projects,
+  onSave,
+}: {
+  activity: any
+  companies: any[]
+  projects: any[]
+  onSave: (updates: any) => Promise<void>
+}) {
   const { closeModal } = useModal()
   const [title, setTitle] = useState(String(activity.title || ''))
+  const [companyId, setCompanyId] = useState(String(activity.company_id ?? activity.companyId ?? ""))
+  const [projectId, setProjectId] = useState(String(activity.project_id ?? activity.projectId ?? activity.deal_id ?? ""))
   const [dateStart, setDateStart] = useState(activity.start ? new Date(activity.start as any).toISOString().slice(0,10) : new Date().toISOString().slice(0,10))
   const [dateEnd, setDateEnd] = useState(activity.end ? new Date(activity.end as any).toISOString().slice(0,10) : '')
   const [status, setStatus] = useState(String(activity.status || 'PLANNED'))
@@ -883,6 +1025,17 @@ function EditActivityForm({ activity, onSave }: { activity: any; onSave: (update
   const [stage, setStage] = useState<string>(String(activity.stage || 'DRAFT'))
   const [checklist, setChecklist] = useState<string[]>(Array.isArray(activity.checklist)? activity.checklist: [])
   const canSave = title.trim().length > 0
+  const scopedProjects = companyId
+    ? projects.filter((project: any) => String(project.company_id ?? project.companyId ?? "") === companyId)
+    : projects
+  const companyOptions: RelationOption[] = [
+    { value: "", label: "Kein Kunde" },
+    ...companies.map((company: any) => ({ value: String(company.id), label: String(company.name || "Unbenannt") })),
+  ]
+  const projectOptions: RelationOption[] = [
+    { value: "", label: companyId ? "Kein Projekt / nur Kunde" : "Kein Projekt" },
+    ...scopedProjects.map((project: any) => ({ value: String(project.id), label: String(project.title || project.name || "Unbenannt") })),
+  ]
 
   return (
     <div className="space-y-5">
@@ -894,6 +1047,28 @@ function EditActivityForm({ activity, onSave }: { activity: any; onSave: (update
           </div>
 
           <DateRangePicker start={dateStart} end={dateEnd} onStartChange={setDateStart} onEndChange={setDateEnd} endLabel="Ende (optional)" />
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <RelationPicker
+              id="activity_company_edit"
+              label="Kunde"
+              value={companyId}
+              onChange={(value) => {
+                setCompanyId(value)
+                setProjectId("")
+              }}
+              options={companyOptions}
+              placeholder="Kein Kunde"
+            />
+            <RelationPicker
+              id="activity_project_edit"
+              label="Projekt"
+              value={projectId}
+              onChange={setProjectId}
+              options={projectOptions}
+              placeholder="Kein Projekt"
+            />
+          </div>
 
           <div className="grid gap-1.5">
             <Label>Beschreibung</Label>
@@ -988,6 +1163,8 @@ function EditActivityForm({ activity, onSave }: { activity: any; onSave: (update
               notes: description,
               status,
               category,
+              company_id: companyId ? Number(companyId) : null,
+              project_id: projectId ? Number(projectId) : null,
               start: `${dateStart}T09:00:00`,
               end: dateEnd ? `${dateEnd}T18:00:00` : undefined,
               stage,

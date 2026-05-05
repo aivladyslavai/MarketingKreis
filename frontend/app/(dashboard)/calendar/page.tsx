@@ -11,9 +11,9 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { GlassSelect } from "@/components/ui/glass-select"
+import { RelationPicker, type RelationOption } from "@/components/forms/relation-picker"
 import { type Activity } from "@/components/circle/radial-circle"
 import dynamic from 'next/dynamic'
 const SimpleCalendar = dynamic(() => import("@/components/calendar/simple-calendar"), { ssr: false })
@@ -542,6 +542,18 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
     })()
   }, [])
 
+  const scopedProjects = selectedCompanyId
+    ? projects.filter((project: any) => String(project.company_id ?? project.companyId ?? "") === selectedCompanyId)
+    : projects
+  const companyOptions: RelationOption[] = [
+    { value: "", label: "Kein Unternehmen" },
+    ...companies.map((company: any) => ({ value: String(company.id ?? company._id), label: String(company.name || company.title || "Unbenannt") })),
+  ]
+  const projectOptions: RelationOption[] = [
+    { value: "", label: selectedCompanyId ? "Kein Projekt / nur Unternehmen" : "Kein Projekt" },
+    ...scopedProjects.map((project: any) => ({ value: String(project.id ?? project._id), label: String(project.name || project.title || "Unbenannt") })),
+  ]
+
   const handleSubmit = async () => {
     const startISO = `${when}T${(startTime || '09:00')}:00`
     const endISO = endTime ? `${when}T${endTime}:00` : undefined
@@ -553,10 +565,10 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
       end: endISO,
       priority,
       owner_id: ownerId,
-      project_id: projectId,
+      project_id: projectId ? Number(projectId) : undefined,
       color, // persist chosen color
       category: activityType ? activityType : undefined,
-      company_id: selectedCompanyId,
+      company_id: selectedCompanyId ? Number(selectedCompanyId) : undefined,
       recurrence: recFreq === 'none' ? undefined : { freq: recFreq, interval: recInterval || 1, count: recCount || undefined, until: recUntil || undefined },
     })
   }
@@ -566,14 +578,18 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
       <div className="pointer-events-none absolute inset-px rounded-[14px] bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10" />
       <div className="relative space-y-5">
         <div className="grid gap-2">
-          <Label>Unternehmen auswählen</Label>
-          <GlassSelect
+          <RelationPicker
+            id="calendar_company"
+            label="Unternehmen"
             value={selectedCompanyId || ''}
-            onChange={(v) => setSelectedCompanyId(v || undefined)}
+            onChange={(v) => {
+              setSelectedCompanyId(v || undefined)
+              setProjectId(undefined)
+            }}
             placeholder="Firma auswählen"
-            options={companies.map((c: any) => ({ value: String(c.id ?? c._id), label: c.name || c.title }))}
+            options={companyOptions}
           />
-                </div>
+        </div>
 
         <div className="grid gap-2">
           <Label>Titel</Label>
@@ -674,12 +690,15 @@ Hinweis: Bitte relevante Unterlagen mitbringen.`
             ]} />
                     </div>
           <div className="grid gap-2">
-            <Label>Projekt</Label>
-            <GlassSelect value={projectId || ''} onChange={(v) => setProjectId(v || undefined)} placeholder="Kein Projekt" options={[
-              { value: '', label: 'Kein Projekt' },
-              ...projects.map((p: any) => ({ value: String(p.id ?? p._id), label: p.name || p.title }))
-            ]} />
-                    </div>
+            <RelationPicker
+              id="calendar_project"
+              label="Projekt"
+              value={projectId || ''}
+              onChange={(v) => setProjectId(v || undefined)}
+              placeholder="Kein Projekt"
+              options={projectOptions}
+            />
+          </div>
                   </div>
 
         {/* Date + time row */}

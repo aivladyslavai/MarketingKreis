@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   try {
     const backendUrl = getBackendUrl()
     const cookie = req.headers.get('cookie') || ''
-    const resp = await fetch(`${backendUrl}/activities`, {
+    const resp = await fetch(`${backendUrl}/activities${req.nextUrl.search}`, {
       headers: { 'Content-Type': 'application/json', cookie },
     })
     const text = await resp.text()

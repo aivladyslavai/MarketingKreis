@@ -182,6 +182,55 @@ def _find_duplicate_contacts(
     return q.order_by(Contact.id.asc()).all()
 
 
+def _sync_company_contact_person(db: Session, org: int, company: Company) -> Optional[Contact]:
+    """
+    Keep the quick "Kontaktperson" fields on Company mirrored as a real CRM Contact.
+    Contact is the canonical list entity; Company fields remain for compact display.
+    """
+    name = _normalize_name(getattr(company, "contact_person_name", None))
+    email = _normalize_email(getattr(company, "contact_person_email", None))
+    phone = _normalize_text(getattr(company, "contact_person_phone", None))
+    position = _normalize_text(getattr(company, "contact_person_position", None))
+    if not any([name, email, phone, position]):
+        return None
+
+    contact: Optional[Contact] = None
+    if email:
+        contact = (
+            db.query(Contact)
+            .filter(Contact.organization_id == org, Contact.email.isnot(None), _email_norm_expr(Contact.email) == email)
+            .order_by(Contact.id.asc())
+            .first()
+        )
+
+    if contact is None and name:
+        contact = (
+            db.query(Contact)
+            .filter(
+                Contact.organization_id == org,
+                Contact.company_id == company.id,
+                func.lower(func.btrim(Contact.name)) == name.lower(),
+            )
+            .order_by(Contact.id.asc())
+            .first()
+        )
+
+    if contact is None:
+        contact = Contact(
+            organization_id=org,
+            company_id=company.id,
+            name=name or email or "Kontaktperson",
+        )
+
+    contact.company_id = company.id
+    contact.name = name or contact.name or email or "Kontaktperson"
+    contact.email = email
+    contact.phone = phone
+    contact.position = position
+    db.add(contact)
+    return contact
+
+
 def _find_duplicate_projects(
     db: Session,
     org: int,
@@ -501,6 +550,10 @@ def create_company(
     db.add(db_company)
     _commit_or_conflict(db, "A company with the same name or email already exists")
     db.refresh(db_company)
+    if any(getattr(db_company, field, None) for field in ("contact_person_name", "contact_person_email", "contact_person_phone", "contact_person_position")):
+        _sync_company_contact_person(db, org, db_company)
+        _commit_or_conflict(db, "A contact with this email already exists")
+        db.refresh(db_company)
     return db_company
 
 
@@ -549,6 +602,10 @@ def update_company(
     db.add(company)
     _commit_or_conflict(db, "A company with the same name or email already exists")
     db.refresh(company)
+    if any(getattr(company, field, None) for field in ("contact_person_name", "contact_person_email", "contact_person_phone", "contact_person_position")):
+        _sync_company_contact_person(db, _org_id(current_user), company)
+        _commit_or_conflict(db, "A contact with this email already exists")
+        db.refresh(company)
     return company
 
 

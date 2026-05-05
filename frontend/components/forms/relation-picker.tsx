@@ -33,6 +33,8 @@ export function RelationPicker({
   hint,
   className,
 }: RelationPickerProps) {
+  const emptyOption = options.find((option) => option.value === "")
+  const nonEmptyOptions = options.filter((option) => option.value !== "")
   return (
     <FormField id={id} label={label} required={required} hint={hint} className={className}>
       {({ describedBy, invalid }) => (
@@ -40,7 +42,9 @@ export function RelationPicker({
           className="w-full"
           value={value}
           onChange={(next) => onChange(String(next))}
-          options={options.length > 0 ? options : [{ value: "", label: placeholder || "Keine Optionen" }]}
+          options={nonEmptyOptions.length > 0 ? nonEmptyOptions : []}
+          allowEmptyOption
+          emptyOptionLabel={emptyOption?.label || placeholder || "Keine Optionen"}
           aria-invalid={invalid || undefined}
           aria-describedby={describedBy}
         />
