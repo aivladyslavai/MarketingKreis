@@ -81,9 +81,9 @@ function ProgressDots({ step }: { step: number }) {
             className={cn(
               "transition-all duration-500 rounded-full",
               i < step
-                ? "h-2 w-6 bg-violet-500"
+                ? "h-2 w-6 bg-kaboom-red"
                 : i === step
-                ? "h-2.5 w-8 bg-gradient-to-r from-violet-500 to-fuchsia-500 shadow-[0_0_12px_rgba(139,92,246,0.7)]"
+                ? "h-2.5 w-8 bg-kaboom-red shadow-[0_0_12px_rgba(230,46,62,0.7)]"
                 : "h-2 w-2 bg-white/15"
             )}
           />
@@ -122,7 +122,7 @@ function Card({ children, className }: { children: React.ReactNode; className?: 
 function FieldLabel({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 mb-2 text-sm text-slate-300 font-medium">
-      <span className="text-violet-400">{icon}</span>
+      <span className="text-kaboom-red">{icon}</span>
       {children}
     </div>
   )
@@ -145,7 +145,7 @@ function GlassInput({
     <input
       className={cn(
         "w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 placeholder-slate-500",
-        "focus:outline-none focus:ring-2 focus:ring-violet-500/60 focus:border-violet-500/50",
+        "focus:outline-none focus:ring-2 focus:ring-kaboom-red/50 focus:border-kaboom-red/60",
         "transition-all duration-200",
         className
       )}
@@ -176,7 +176,7 @@ function PillSelect<T extends string>({
           className={cn(
             "flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-medium transition-all duration-200",
             value === o.value
-              ? "border-violet-500 bg-violet-500/20 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+              ? "border-kaboom-red bg-kaboom-red/15 text-white shadow-[0_0_12px_rgba(230,46,62,0.3)]"
               : "border-white/10 bg-white/5 text-slate-400 hover:border-white/25 hover:text-slate-200"
           )}
         >
@@ -205,7 +205,7 @@ function IndustryGrid({
           className={cn(
             "rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-all duration-200",
             value === ind
-              ? "border-violet-500 bg-violet-500/20 text-violet-200"
+              ? "border-kaboom-red bg-kaboom-red/15 text-white"
               : "border-white/10 bg-white/5 text-slate-400 hover:border-white/25 hover:text-slate-200"
           )}
         >
@@ -233,7 +233,7 @@ function PositionGrid({
           className={cn(
             "rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-all duration-200",
             value === pos
-              ? "border-violet-500 bg-violet-500/20 text-violet-200"
+              ? "border-kaboom-red bg-kaboom-red/15 text-white"
               : "border-white/10 bg-white/5 text-slate-400 hover:border-white/25 hover:text-slate-200"
           )}
         >
@@ -281,7 +281,7 @@ function NavButtons({
         className={cn(
           "flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200",
           canNext && !loading
-            ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-[0_0_20px_rgba(139,92,246,0.4)] hover:shadow-[0_0_28px_rgba(139,92,246,0.6)] hover:scale-[1.02]"
+            ? "bg-kaboom-red text-white shadow-[0_0_20px_rgba(230,46,62,0.4)] hover:shadow-[0_0_28px_rgba(230,46,62,0.6)] hover:bg-kaboom-red-dark hover:scale-[1.02]"
             : "bg-white/10 text-slate-500 cursor-not-allowed"
         )}
       >
@@ -405,8 +405,8 @@ export default function OnboardingPage() {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#060b1a]">
-        <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
+      <div className="min-h-screen flex items-center justify-center bg-kaboom-black">
+        <Loader2 className="h-6 w-6 animate-spin text-kaboom-red" />
       </div>
     )
   }
@@ -414,16 +414,16 @@ export default function OnboardingPage() {
   // ── background blobs ──
   const bg = (
     <div className="pointer-events-none fixed inset-0 overflow-hidden">
-      <div className="absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-violet-700/20 blur-[120px]" />
-      <div className="absolute -bottom-40 -right-20 h-[500px] w-[500px] rounded-full bg-fuchsia-700/20 blur-[120px]" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[300px] w-[300px] rounded-full bg-indigo-700/10 blur-[100px]" />
+      <div className="absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-kaboom-red/15 blur-[120px]" />
+      <div className="absolute -bottom-40 -right-20 h-[500px] w-[500px] rounded-full bg-kaboom-red/10 blur-[120px]" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[300px] w-[300px] rounded-full bg-kaboom-red/5 blur-[100px]" />
     </div>
   )
 
   // ─── Step 0: Firmenname ───────────────────────────────────────────────────
   if (step === 0) {
     return (
-      <div className="relative min-h-screen bg-[#060b1a] flex items-center justify-center px-4 py-16">
+      <div className="relative min-h-screen bg-kaboom-black flex items-center justify-center px-4 py-16">
         {bg}
         <div
           className="relative z-10 w-full max-w-lg transition-all duration-220"
@@ -437,12 +437,12 @@ export default function OnboardingPage() {
           }}
         >
           <div className="flex flex-col items-center mb-8">
-            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-[0_0_40px_rgba(139,92,246,0.5)]">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-kaboom-red shadow-[0_0_40px_rgba(230,46,62,0.5)]">
               <Sparkles className="h-8 w-8 text-white" />
             </div>
             <h1 className="text-3xl font-bold text-white text-center leading-tight">
               Willkommen bei<br />
-              <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+              <span className="text-kaboom-red">
                 Marketing Kreis
               </span>
             </h1>
@@ -483,7 +483,7 @@ export default function OnboardingPage() {
   // ─── Step 1: Branche & Team ───────────────────────────────────────────────
   if (step === 1) {
     return (
-      <div className="relative min-h-screen bg-[#060b1a] flex items-start justify-center px-4 py-16">
+      <div className="relative min-h-screen bg-kaboom-black flex items-start justify-center px-4 py-16">
         {bg}
         <div
           className="relative z-10 w-full max-w-xl transition-all duration-220"
@@ -497,7 +497,7 @@ export default function OnboardingPage() {
           }}
         >
           <div className="flex flex-col items-center mb-8">
-            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-[0_0_40px_rgba(139,92,246,0.5)]">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-kaboom-red shadow-[0_0_40px_rgba(230,46,62,0.5)]">
               <Briefcase className="h-8 w-8 text-white" />
             </div>
             <h1 className="text-2xl font-bold text-white text-center">
@@ -573,7 +573,7 @@ export default function OnboardingPage() {
   // ─── Step 2: Deine Rolle ──────────────────────────────────────────────────
   if (step === 2) {
     return (
-      <div className="relative min-h-screen bg-[#060b1a] flex items-start justify-center px-4 py-16">
+      <div className="relative min-h-screen bg-kaboom-black flex items-start justify-center px-4 py-16">
         {bg}
         <div
           className="relative z-10 w-full max-w-xl transition-all duration-220"
@@ -587,7 +587,7 @@ export default function OnboardingPage() {
           }}
         >
           <div className="flex flex-col items-center mb-8">
-            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-[0_0_40px_rgba(139,92,246,0.5)]">
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-kaboom-red shadow-[0_0_40px_rgba(230,46,62,0.5)]">
               <UserRound className="h-8 w-8 text-white" />
             </div>
             <h1 className="text-2xl font-bold text-white text-center">
@@ -643,7 +643,7 @@ export default function OnboardingPage() {
 
   // ─── Step 3: Fertig ───────────────────────────────────────────────────────
   return (
-    <div className="relative min-h-screen bg-[#060b1a] flex items-center justify-center px-4 py-16">
+    <div className="relative min-h-screen bg-kaboom-black flex items-center justify-center px-4 py-16">
       {bg}
       <div
         className="relative z-10 w-full max-w-lg text-center transition-all duration-220"
@@ -654,8 +654,8 @@ export default function OnboardingPage() {
       >
         {/* success ring */}
         <div className="relative mx-auto mb-8 flex h-24 w-24 items-center justify-center">
-          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600 opacity-20 blur-xl animate-pulse" />
-          <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-[0_0_60px_rgba(139,92,246,0.6)]">
+          <div className="absolute inset-0 rounded-full bg-kaboom-red opacity-25 blur-xl animate-pulse" />
+          <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-kaboom-red shadow-[0_0_60px_rgba(230,46,62,0.6)]">
             <Check className="h-11 w-11 text-white stroke-[2.5]" />
           </div>
         </div>
@@ -680,7 +680,7 @@ export default function OnboardingPage() {
               key={item.label}
               className="flex flex-col items-center gap-1.5 rounded-2xl border border-white/10 bg-white/5 px-3 py-3"
             >
-              <span className="text-violet-400">{item.icon}</span>
+              <span className="text-kaboom-red">{item.icon}</span>
               <span className="text-xs text-slate-300 text-center font-medium leading-tight line-clamp-2">
                 {item.label}
               </span>
@@ -691,7 +691,7 @@ export default function OnboardingPage() {
         <button
           type="button"
           onClick={() => router.replace("/dashboard")}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-8 py-3 text-sm font-semibold text-white shadow-[0_0_24px_rgba(139,92,246,0.5)] hover:shadow-[0_0_36px_rgba(139,92,246,0.7)] hover:scale-[1.03] transition-all duration-200"
+          className="inline-flex items-center gap-2 rounded-xl bg-kaboom-red px-8 py-3 text-sm font-semibold text-white shadow-[0_0_24px_rgba(230,46,62,0.5)] hover:bg-kaboom-red-dark hover:shadow-[0_0_36px_rgba(230,46,62,0.7)] hover:scale-[1.03] transition-all duration-200"
         >
           <Rocket className="h-4 w-4" />
           Zum Dashboard

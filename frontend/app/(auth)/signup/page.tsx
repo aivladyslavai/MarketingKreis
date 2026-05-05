@@ -392,32 +392,31 @@ function SignupInner() {
   }
 
   return (
-    <div className="relative min-h-[100dvh] w-full overflow-hidden bg-[#060b1a]">
-      {/* Animated background */}
+    <div className="relative min-h-[100dvh] w-full overflow-hidden bg-kaboom-black text-slate-100">
+      {/* KA BOOM corporate brand stripe */}
+      <div className="kaboom-brand-band absolute top-0 left-0 right-0 z-20" aria-hidden="true" />
+
+      {/* Subtle brand wash */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-40 -right-40 h-[500px] w-[500px] animate-pulse rounded-full bg-gradient-to-br from-violet-600/20 to-fuchsia-600/20 blur-3xl" />
+        <div className="absolute -top-40 -right-40 h-[500px] w-[500px] animate-pulse rounded-full bg-kaboom-red/10 blur-3xl" />
         <div
-          className="absolute -bottom-40 -left-40 h-[550px] w-[550px] animate-pulse rounded-full bg-gradient-to-tr from-cyan-600/15 to-blue-600/15 blur-3xl"
+          className="absolute -bottom-40 -left-40 h-[550px] w-[550px] animate-pulse rounded-full bg-kaboom-red/5 blur-3xl"
           style={{ animationDelay: "1s" }}
-        />
-        <div
-          className="absolute top-1/2 left-1/2 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 animate-pulse rounded-full bg-gradient-to-r from-rose-500/10 to-orange-500/10 blur-3xl"
-          style={{ animationDelay: "2s" }}
         />
       </div>
 
-      {/* Grid overlay */}
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]" />
+      {/* Subtle grid overlay */}
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:64px_64px]" />
 
       <div className="relative z-10 mx-auto flex min-h-[100dvh] max-w-4xl items-center justify-center px-4 sm:px-8 py-10 sm:py-12">
         <div className="w-full max-w-lg">
-          {/* Header */}
+          {/* Header — KA BOOM wordmark */}
           <div className="mb-8 text-center">
-            <div className="mb-4 inline-flex items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 p-3 backdrop-blur-sm">
-              <Sparkles className="h-8 w-8 text-violet-400" />
+            <div className="mb-4 inline-flex items-center justify-center rounded-md bg-kaboom-white px-3 py-1.5 font-display font-extrabold text-kaboom-black tracking-tight text-base">
+              KA<span className="text-kaboom-red">·</span>BOOM
             </div>
-            <h1 className="bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
-              Marketing Kreis
+            <h1 className="font-display text-3xl font-extrabold tracking-tight text-white">
+              Marketing<span className="text-kaboom-red">Kreis</span>
             </h1>
             <p className="mt-2 text-sm text-slate-400">
               Erstellen Sie Ihr Konto oder melden Sie sich an, um fortzufahren
@@ -425,19 +424,19 @@ function SignupInner() {
           </div>
 
           {/* Card */}
-          <Card className="w-full border-slate-800/60 bg-slate-900/75 text-slate-200 shadow-2xl shadow-violet-500/5 backdrop-blur-xl rounded-3xl">
+          <Card className="w-full border-white/10 bg-kaboom-black/75 text-slate-200 shadow-2xl shadow-kaboom-red/10 backdrop-blur-xl rounded-2xl">
             <CardHeader className="space-y-1 px-5 sm:px-7 pt-5 pb-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-xl">
                     {mode === "signup" ? (
                       <>
-                        <UserPlus className="h-5 w-5 text-violet-400" />
+                        <UserPlus className="h-5 w-5 text-kaboom-red" />
                         Registrieren
                       </>
                     ) : (
                       <>
-                        <Lock className="h-5 w-5 text-violet-400" />
+                        <Lock className="h-5 w-5 text-kaboom-red" />
                         Einloggen
                       </>
                     )}
@@ -492,7 +491,7 @@ function SignupInner() {
               {mode === "signup" ? (
                 <form onSubmit={onSubmit} className="space-y-4">
                   {token ? (
-                    <div className="rounded-xl border border-violet-500/25 bg-violet-500/10 p-3 text-sm text-slate-200">
+                    <div className="rounded-xl border border-kaboom-red/30 bg-kaboom-red/10 p-3 text-sm text-slate-200">
                       {invitePreviewLoading ? (
                         <div>Einladung wird geladen…</div>
                       ) : invitePreview?.error ? (
@@ -523,7 +522,7 @@ function SignupInner() {
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="h-11 border-slate-700/50 bg-slate-800/50 pl-10 text-slate-200 placeholder:text-slate-500 transition-colors focus:border-violet-500/50 focus:ring-violet-500/20"
+                        className="h-11 border-white/15 bg-white/5 pl-10 text-slate-100 placeholder:text-slate-500 transition-colors focus:border-kaboom-red/60 focus:ring-kaboom-red/30"
                         required
                         disabled={submitting || Boolean(token && invitePreview?.invite?.email)}
                       />
@@ -543,7 +542,7 @@ function SignupInner() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         onKeyUp={(e: any) => setCapsLock(Boolean(e.getModifierState && e.getModifierState("CapsLock")))}
-                        className="h-11 border-slate-700/50 bg-slate-800/50 pl-10 pr-10 text-slate-200 placeholder:text-slate-500 transition-colors focus:border-violet-500/50 focus:ring-violet-500/20"
+                        className="h-11 border-white/15 bg-white/5 pl-10 pr-10 text-slate-100 placeholder:text-slate-500 transition-colors focus:border-kaboom-red/60 focus:ring-kaboom-red/30"
                         required
                         disabled={submitting}
                       />
@@ -598,7 +597,7 @@ function SignupInner() {
                         type={showConfirm ? "text" : "password"}
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className={`h-11 border-slate-700/50 bg-slate-800/50 pl-10 pr-10 text-slate-200 placeholder:text-slate-500 transition-colors focus:border-violet-500/50 focus:ring-violet-500/20 ${
+                        className={`h-11 border-white/15 bg-white/5 pl-10 pr-10 text-slate-100 placeholder:text-slate-500 transition-colors focus:border-kaboom-red/60 focus:ring-kaboom-red/30 ${
                           confirmPassword && (passwordsMatch ? "border-emerald-500/50" : "border-red-500/50")
                         }`}
                         required
@@ -632,7 +631,7 @@ function SignupInner() {
                   <Button
                     type="submit"
                     disabled={submitting || !passwordsMatch}
-                    className="h-11 w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/25 transition-all hover:from-violet-500 hover:to-fuchsia-500 hover:shadow-violet-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-11 w-full bg-kaboom-red text-white shadow-lg shadow-kaboom-red/30 transition-all hover:bg-kaboom-red-dark hover:shadow-kaboom-red/50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {submitting ? (
                       <span className="inline-flex items-center gap-2">
@@ -665,7 +664,7 @@ function SignupInner() {
                       <button
                         type="button"
                         onClick={() => setMode("login")}
-                        className="font-medium text-violet-400 transition-colors hover:text-violet-300"
+                        className="font-medium text-kaboom-red transition-colors hover:text-kaboom-red-dark"
                       >
                         Jetzt anmelden
                       </button>
@@ -696,7 +695,7 @@ function SignupInner() {
                           <button
                             type="button"
                             onClick={resendVerify}
-                            className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-violet-200 underline decoration-violet-400/70 underline-offset-4 hover:text-violet-100"
+                            className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-kaboom-red underline decoration-kaboom-red/70 underline-offset-4 hover:text-white"
                           >
                             E‑Mail erneut senden
                           </button>
@@ -723,7 +722,7 @@ function SignupInner() {
                             type="email"
                             value={loginEmail}
                             onChange={(e) => setLoginEmail(e.target.value)}
-                            className="h-11 border-slate-700/50 bg-slate-800/50 pl-10 text-slate-200 placeholder:text-slate-500 transition-colors focus:border-violet-500/50 focus:ring-violet-500/20"
+                            className="h-11 border-white/15 bg-white/5 pl-10 text-slate-100 placeholder:text-slate-500 transition-colors focus:border-kaboom-red/60 focus:ring-kaboom-red/30"
                             required
                           />
                         </div>
@@ -743,7 +742,7 @@ function SignupInner() {
                             onKeyUp={(e: any) =>
                               setLoginCapsLock(Boolean(e.getModifierState && e.getModifierState("CapsLock")))
                             }
-                            className="h-11 border-slate-700/50 bg-slate-800/50 pl-10 pr-10 text-slate-200 placeholder:text-slate-500 transition-colors focus:border-violet-500/50 focus:ring-violet-500/20"
+                            className="h-11 border-white/15 bg-white/5 pl-10 pr-10 text-slate-100 placeholder:text-slate-500 transition-colors focus:border-kaboom-red/60 focus:ring-kaboom-red/30"
                             required
                           />
                           <button
@@ -765,9 +764,9 @@ function SignupInner() {
                     </>
                   ) : (
                     <div className="space-y-3">
-                      <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 p-3">
+                      <div className="rounded-xl border border-kaboom-red/25 bg-kaboom-red/10 p-3">
                         <div className="flex items-start gap-2">
-                          <Info className="h-4 w-4 mt-0.5 text-violet-300 flex-shrink-0" />
+                          <Info className="h-4 w-4 mt-0.5 text-kaboom-red flex-shrink-0" />
                           <div className="min-w-0">
                             <div className="text-sm font-semibold text-slate-100">2FA bestätigen</div>
                             <div className="mt-0.5 text-[11px] text-slate-300">
@@ -795,7 +794,7 @@ function SignupInner() {
                                 .slice(0, 20),
                             )
                           }
-                          className="h-11 border-slate-700/50 bg-slate-800/50 pl-10 text-slate-200 placeholder:text-slate-500 transition-colors focus:border-violet-500/50 focus:ring-violet-500/20"
+                          className="h-11 border-white/15 bg-white/5 pl-10 text-slate-100 placeholder:text-slate-500 transition-colors focus:border-kaboom-red/60 focus:ring-kaboom-red/30"
                           required
                           autoFocus
                         />
@@ -824,7 +823,7 @@ function SignupInner() {
                     <Button
                       type="submit"
                       disabled={loginLoading}
-                      className="h-11 w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/25 transition-all hover:from-violet-500 hover:to-fuchsia-500 hover:shadow-violet-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-11 w-full bg-kaboom-red text-white shadow-lg shadow-kaboom-red/30 transition-all hover:bg-kaboom-red-dark hover:shadow-kaboom-red/50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {loginLoading ? (
                         <span className="inline-flex items-center gap-2">
@@ -869,7 +868,7 @@ function SignupInner() {
                       <Button
                         type="button"
                         disabled={login2faLoading}
-                        className="h-11 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/25 transition-all hover:from-violet-500 hover:to-fuchsia-500 hover:shadow-violet-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="h-11 bg-kaboom-red text-white shadow-lg shadow-kaboom-red/30 transition-all hover:bg-kaboom-red-dark hover:shadow-kaboom-red/50 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={async () => {
                           setLogin2faError(null)
                           setLogin2faLoading(true)
@@ -905,7 +904,7 @@ function SignupInner() {
                       <button
                         type="button"
                         onClick={() => setMode("signup")}
-                        className="font-medium text-violet-400 transition-colors hover:text-violet-300"
+                        className="font-medium text-kaboom-red transition-colors hover:text-kaboom-red-dark"
                       >
                         Jetzt registrieren
                       </button>
@@ -935,10 +934,10 @@ function SignupInner() {
       </div>
 
       <Dialog open={postSignupOpen} onOpenChange={setPostSignupOpen}>
-        <DialogContent className="w-[min(520px,calc(100vw-1.5rem))] overflow-hidden rounded-3xl border-slate-800/60 bg-[#0c1225]/95 p-0 shadow-2xl shadow-violet-500/10 backdrop-blur-2xl">
-          {/* Decorative gradient blobs */}
-          <div className="pointer-events-none absolute -top-20 -right-20 h-40 w-40 animate-pulse rounded-full bg-gradient-to-br from-emerald-500/30 to-cyan-500/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-16 -left-16 h-36 w-36 animate-pulse rounded-full bg-gradient-to-tr from-violet-500/25 to-fuchsia-500/15 blur-3xl" style={{ animationDelay: "0.7s" }} />
+        <DialogContent className="w-[min(520px,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border-white/10 bg-kaboom-black/95 p-0 shadow-2xl shadow-kaboom-red/15 backdrop-blur-2xl">
+          {/* Decorative brand wash */}
+          <div className="pointer-events-none absolute -top-20 -right-20 h-40 w-40 animate-pulse rounded-full bg-emerald-500/15 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 -left-16 h-36 w-36 animate-pulse rounded-full bg-kaboom-red/15 blur-3xl" style={{ animationDelay: "0.7s" }} />
 
           <div className="relative z-10 px-6 pt-7 pb-6 sm:px-8">
             {/* Success icon */}
@@ -964,8 +963,8 @@ function SignupInner() {
             {/* Email card */}
             <div className="mt-5 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 ring-1 ring-violet-500/20">
-                  <Mail className="h-5 w-5 text-violet-300" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-kaboom-red/15 ring-1 ring-kaboom-red/30">
+                  <Mail className="h-5 w-5 text-kaboom-red" />
                 </div>
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-slate-100">
@@ -1049,7 +1048,7 @@ function SignupInner() {
 
             {/* Resend status */}
             {postSignupResendStatus && (
-              <div className="mt-3 rounded-xl border border-violet-500/20 bg-violet-500/[0.07] p-3 text-xs text-violet-200">
+              <div className="mt-3 rounded-xl border border-kaboom-red/25 bg-kaboom-red/10 p-3 text-xs text-kaboom-red">
                 {postSignupResendStatus}
               </div>
             )}
@@ -1059,7 +1058,7 @@ function SignupInner() {
               <button
                 type="button"
                 onClick={resendVerifyFromModal}
-                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-sm font-medium text-white shadow-lg shadow-violet-500/25 transition-all hover:from-violet-500 hover:to-fuchsia-500 hover:shadow-violet-500/40 active:scale-[0.98]"
+                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-kaboom-red text-sm font-medium text-white shadow-lg shadow-kaboom-red/30 transition-all hover:bg-kaboom-red-dark hover:shadow-kaboom-red/50 active:scale-[0.98]"
               >
                 <Mail className="h-4 w-4" />
                 E‑Mail erneut senden
@@ -1088,7 +1087,7 @@ export default function SignupPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[100dvh] items-center justify-center bg-[#060b1a] px-4">
+        <div className="flex min-h-[100dvh] items-center justify-center bg-kaboom-black px-4">
           <div className="flex items-center gap-2 text-slate-400">
             <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" opacity="0.25" />

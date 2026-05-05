@@ -9,24 +9,28 @@ export type CategoryType =
   | 'SEO'
   | 'PR'
 
+// KA BOOM brand-aligned categorical palette.
+// Anchored on brand red, extended with warm + neutral hues so the platform
+// reads as one corporate family across charts, badges and Marketing Circle.
 export const CATEGORY_COLORS: Record<CategoryType, string> = {
-  VERKAUFSFOERDERUNG: '#3b82f6', // blue
-  IMAGE: '#8b5cf6', // purple
-  EMPLOYER_BRANDING: '#10b981', // green
-  KUNDENPFLEGE: '#f59e0b', // orange
-  DIGITAL_MARKETING: '#06b6d4', // cyan
-  EVENTS: '#ec4899', // pink
-  CONTENT: '#14b8a6', // teal
-  SEO: '#f97316', // orange
-  PR: '#6366f1', // indigo
+  VERKAUFSFOERDERUNG: '#E62E3E', // kaboom red — primary brand
+  IMAGE: '#1A1A1A',              // kaboom black
+  EMPLOYER_BRANDING: '#A8202D',  // deep brand red
+  KUNDENPFLEGE: '#F2A65A',       // warm sand
+  DIGITAL_MARKETING: '#5A5A5A',  // graphite
+  EVENTS: '#F26E5A',             // coral
+  CONTENT: '#8C8C8C',            // mid grey
+  SEO: '#D9544A',                // tomato
+  PR: '#3B3B3B',                 // charcoal
 }
 
-// Default palette for performance charts and other visualizations
+// Default palette for performance charts and other visualizations.
+// Order chosen so adjacent series have strong contrast.
 export const chartColors: string[] = [
   CATEGORY_COLORS.VERKAUFSFOERDERUNG,
   CATEGORY_COLORS.IMAGE,
-  CATEGORY_COLORS.EMPLOYER_BRANDING,
   CATEGORY_COLORS.KUNDENPFLEGE,
+  CATEGORY_COLORS.EMPLOYER_BRANDING,
   CATEGORY_COLORS.DIGITAL_MARKETING,
 ]
 

@@ -53,18 +53,16 @@ function VerifyInner() {
   }, [status, countdown, router, redirectTo])
 
   return (
-    <div className="relative min-h-[100dvh] w-full overflow-hidden bg-[#060b1a] flex items-center justify-center px-4">
-      {/* Animated background blobs */}
+    <div className="relative min-h-[100dvh] w-full overflow-hidden bg-kaboom-black text-slate-100 flex items-center justify-center px-4">
+      <div className="kaboom-brand-band absolute top-0 left-0 right-0 z-20" aria-hidden="true" />
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-32 -left-32 h-[500px] w-[500px] rounded-full bg-violet-600/10 blur-[120px]" />
-        <div className="absolute -bottom-32 -right-32 h-[400px] w-[400px] rounded-full bg-cyan-500/8 blur-[100px]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[300px] w-[300px] rounded-full bg-fuchsia-500/6 blur-[80px]" />
-        {/* Grid overlay */}
+        <div className="absolute -top-32 -left-32 h-[500px] w-[500px] rounded-full bg-kaboom-red/10 blur-[120px]" />
+        <div className="absolute -bottom-32 -right-32 h-[400px] w-[400px] rounded-full bg-kaboom-red/5 blur-[100px]" />
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
             backgroundImage:
-              "linear-gradient(rgba(148,163,184,1) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,1) 1px, transparent 1px)",
+              "linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)",
             backgroundSize: "40px 40px",
           }}
         />
@@ -73,17 +71,19 @@ function VerifyInner() {
       <div className="relative z-10 w-full max-w-md">
         {/* Logo / brand */}
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-lg shadow-violet-500/30">
-            <Mail className="h-7 w-7 text-white" />
+          <div className="inline-flex items-center justify-center rounded-md bg-kaboom-white px-3 py-1.5 font-display font-extrabold text-kaboom-black tracking-tight text-base">
+            KA<span className="text-kaboom-red">·</span>BOOM
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold tracking-tight text-white">Marketing Kreis</div>
+            <div className="font-display text-2xl font-extrabold tracking-tight text-white">
+              Marketing<span className="text-kaboom-red">Kreis</span>
+            </div>
             <div className="mt-1 text-sm text-slate-500">E‑Mail Bestätigung</div>
           </div>
         </div>
 
         {/* Card */}
-        <div className="relative overflow-hidden rounded-3xl border border-slate-800/60 bg-slate-900/75 p-6 shadow-2xl shadow-violet-500/5 backdrop-blur-xl sm:p-8">
+        <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-kaboom-black/80 p-6 shadow-2xl shadow-kaboom-red/10 backdrop-blur-xl sm:p-8">
           {/* Decorative glow */}
           {status === "ok" && (
             <div className="pointer-events-none absolute -top-16 -right-16 h-32 w-32 animate-pulse rounded-full bg-emerald-500/20 blur-3xl" />
@@ -96,9 +96,9 @@ function VerifyInner() {
           {status === "pending" && (
             <div className="flex flex-col items-center gap-5 py-4">
               <div className="relative flex h-20 w-20 items-center justify-center">
-                <div className="absolute inset-0 animate-ping rounded-full bg-violet-500/15" style={{ animationDuration: "1.5s" }} />
-                <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 ring-1 ring-violet-500/30">
-                  <Loader2 className="h-9 w-9 animate-spin text-violet-400" />
+                <div className="absolute inset-0 animate-ping rounded-full bg-kaboom-red/20" style={{ animationDuration: "1.5s" }} />
+                <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-kaboom-red/15 ring-1 ring-kaboom-red/30">
+                  <Loader2 className="h-9 w-9 animate-spin text-kaboom-red" />
                 </div>
               </div>
               <div className="text-center">
@@ -118,7 +118,7 @@ function VerifyInner() {
                 </div>
               </div>
               <div className="text-center">
-                <h2 className="bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-xl font-bold text-transparent">
+                <h2 className="font-display text-xl font-extrabold tracking-tight text-white">
                   E‑Mail bestätigt!
                 </h2>
                 <p className="mt-2 text-sm text-slate-400">{msg}</p>
@@ -128,11 +128,11 @@ function VerifyInner() {
               <div className="w-full rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-400">Weiterleitung…</span>
-                  <span className="text-sm font-semibold tabular-nums text-violet-300">{countdown}s</span>
+                  <span className="text-sm font-semibold tabular-nums text-kaboom-red">{countdown}s</span>
                 </div>
-                <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+                <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-all duration-1000"
+                    className="h-full rounded-full bg-kaboom-red transition-all duration-1000"
                     style={{ width: `${((3 - countdown) / 3) * 100}%` }}
                   />
                 </div>
@@ -140,7 +140,7 @@ function VerifyInner() {
 
               <button
                 onClick={() => router.push(redirectTo)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:from-violet-500 hover:to-fuchsia-500 hover:shadow-violet-500/40 active:scale-[0.98]"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-kaboom-red py-3 text-sm font-semibold text-white shadow-lg shadow-kaboom-red/30 transition-all hover:bg-kaboom-red-dark hover:shadow-kaboom-red/50 active:scale-[0.98]"
               >
                 Jetzt einloggen
                 <ArrowRight className="h-4 w-4" />
@@ -191,7 +191,7 @@ export default function VerifyPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[100dvh] items-center justify-center bg-[#060b1a]">
+        <div className="flex min-h-[100dvh] items-center justify-center bg-kaboom-black">
           <div className="flex items-center gap-2 text-slate-400">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="text-sm">Laden…</span>
