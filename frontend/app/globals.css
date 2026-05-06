@@ -498,8 +498,57 @@
   .dark .bg-slate-900,
   .dark .bg-slate-950 { background-color: hsl(var(--background)) !important; }
   .dark .bg-slate-800 { background-color: hsl(var(--card)) !important; }
+  .dark .bg-slate-950\/95,
+  .dark .bg-slate-950\/90,
+  .dark .bg-slate-950\/80,
+  .dark .bg-slate-950\/70,
+  .dark .bg-slate-950\/60,
+  .dark .bg-slate-950\/50,
+  .dark .bg-slate-950\/40,
+  .dark .bg-slate-950\/35,
+  .dark .bg-slate-950\/30,
+  .dark .bg-slate-950\/20,
+  .dark .bg-slate-950\/10,
+  .dark .bg-slate-900\/95,
+  .dark .bg-slate-900\/90,
+  .dark .bg-slate-900\/80,
+  .dark .bg-slate-900\/70,
+  .dark .bg-slate-900\/60,
+  .dark .bg-slate-900\/50,
+  .dark .bg-slate-900\/40,
+  .dark .bg-slate-900\/30,
+  .dark .bg-slate-900\/20,
+  .dark .bg-slate-900\/10,
+  .dark .bg-neutral-900\/95,
+  .dark .bg-neutral-900\/90,
+  .dark .bg-neutral-900\/80,
+  .dark .bg-neutral-900\/70,
+  .dark .bg-neutral-900\/60,
+  .dark .bg-neutral-900\/50,
+  .dark .bg-neutral-900\/40,
+  .dark .bg-neutral-900\/30,
+  .dark .bg-neutral-900\/20,
+  .dark .bg-neutral-900\/10 { background-color: hsl(var(--background)) !important; }
   .dark .border-slate-800,
   .dark .border-slate-700 { border-color: hsl(var(--border)) !important; }
+  .dark .text-slate-100,
+  .dark .text-slate-200,
+  .dark .text-slate-300 { color: hsl(var(--foreground)) !important; }
+  .dark .text-slate-400,
+  .dark .text-slate-500 { color: hsl(var(--muted-foreground)) !important; }
+  .dark .from-blue-500, .dark .from-blue-600,
+  .dark .from-indigo-500, .dark .from-indigo-600,
+  .dark .from-purple-500, .dark .from-purple-600,
+  .dark .from-violet-500, .dark .from-violet-600,
+  .dark .from-cyan-500, .dark .from-teal-500,
+  .dark .from-emerald-500, .dark .from-fuchsia-500,
+  .dark .from-pink-500 { --tw-gradient-from: hsl(var(--kaboom-red) / 0.12) !important; }
+  .dark .via-blue-500, .dark .via-indigo-500, .dark .via-purple-500,
+  .dark .via-violet-500, .dark .via-fuchsia-500, .dark .via-cyan-500,
+  .dark .via-emerald-500 { --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--kaboom-red) / 0.08), var(--tw-gradient-to, transparent) !important; }
+  .dark .to-blue-500, .dark .to-indigo-500, .dark .to-purple-500,
+  .dark .to-violet-500, .dark .to-fuchsia-500, .dark .to-cyan-500,
+  .dark .to-emerald-500, .dark .to-pink-500 { --tw-gradient-to: hsl(var(--kaboom-red) / 0.03) !important; }
 }
 
 /* Light-theme overrides for legacy color utility classes
