@@ -22,6 +22,8 @@ function applyTheme(theme: Theme) {
   } else {
     root.classList.remove("dark")
   }
+  root.setAttribute("data-theme-mode", resolved)
+  root.style.colorScheme = resolved === "dark" ? "dark" : "light"
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -40,6 +42,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     applyTheme("system")
   }, [])
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    if (theme !== "system") return
+    const media = window.matchMedia("(prefers-color-scheme: dark)")
+    const onChange = () => applyTheme("system")
+    media.addEventListener("change", onChange)
+    return () => media.removeEventListener("change", onChange)
+  }, [theme])
 
   const setTheme = React.useCallback((next: Theme) => {
     setThemeState(next)

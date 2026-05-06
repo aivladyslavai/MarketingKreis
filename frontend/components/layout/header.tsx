@@ -7,6 +7,7 @@ import { useModal } from "@/components/ui/modal/ModalProvider"
 import { AccountDrawer } from "@/components/account/AccountDrawer"
 import { usePathname } from "next/navigation"
 import { NotificationsPanel } from "@/components/content/NotificationsPanel"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -71,6 +72,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
           {/* Right side - Actions */}
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             {/* Notifications */}
             <Button
               variant="ghost"
