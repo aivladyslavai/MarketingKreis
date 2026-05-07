@@ -184,7 +184,7 @@ function StatusBadge({ status }: { status: string }) {
 function RoleBadge({ role }: { role: string }) {
   const cfg: Record<string, { icon: React.ReactNode; cls: string }> = {
     owner: { icon: <Crown className="h-3 w-3" />, cls: "border-amber-500/30 bg-amber-500/10 text-amber-300" },
-    admin: { icon: <Shield className="h-3 w-3" />, cls: "border-violet-500/30 bg-violet-500/10 text-violet-300" },
+    admin: { icon: <Shield className="h-3 w-3" />, cls: "border-kaboom-red/30 bg-kaboom-red/10 text-kaboom-red" },
     editor: { icon: <Pencil className="h-3 w-3" />, cls: "border-blue-500/30 bg-blue-500/10 text-blue-300" },
     user: { icon: <UserRound className="h-3 w-3" />, cls: "border-white/20 bg-white/5 text-slate-400" },
   }
@@ -440,7 +440,7 @@ export default function TeamPage() {
   if (loading || !user) {
     return (
       <div className="flex items-center justify-center py-32">
-        <RefreshCw className="h-5 w-5 animate-spin text-violet-400" />
+        <RefreshCw className="h-5 w-5 animate-spin text-kaboom-red" />
       </div>
     )
   }
@@ -449,7 +449,7 @@ export default function TeamPage() {
   const otherItems = items.filter((i) => i.status !== "active")
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-1 py-2">
+    <div className="mx-auto max-w-4xl space-y-4 px-1 py-2">
 
       <PageHeader
         title="Team & Einladungen"
@@ -484,34 +484,43 @@ export default function TeamPage() {
       )}
 
       {/* ── form card ── */}
-      <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl overflow-hidden">
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        {/* corner brand accent */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rotate-12 rounded-2xl bg-kaboom-red/10 blur-2xl"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute left-0 top-0 h-full w-[3px] bg-kaboom-red"
+        />
         {/* card header / toggle */}
         <button
           type="button"
           onClick={() => setFormOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-7 py-5 hover:bg-white/5 transition-colors"
+          className="relative flex w-full items-center justify-between px-4 py-3 transition-colors hover:bg-secondary"
         >
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-500/20">
-              <Plus className="h-4 w-4 text-violet-400" />
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-kaboom-red/15 ring-1 ring-kaboom-red/30">
+              <Plus className="h-3.5 w-3.5 text-kaboom-red" />
             </div>
-            <span className="text-base font-semibold text-white">Neue Einladung</span>
+            <span className="font-display text-[15px] font-bold tracking-tight text-foreground">Neue Einladung</span>
           </div>
           <ChevronDown
             className={cn(
-              "h-4 w-4 text-slate-400 transition-transform duration-300",
+              "h-4 w-4 text-muted-foreground transition-transform duration-300",
               formOpen ? "rotate-180" : "rotate-0"
             )}
           />
         </button>
 
         {formOpen && (
-          <form onSubmit={createInvite} className="border-t border-white/10 px-7 pb-7 pt-6 space-y-7">
+          <form onSubmit={createInvite} className="relative space-y-5 border-t border-border px-4 pb-5 pt-4 sm:px-5">
 
             {/* email */}
             <div>
-              <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
-                <Mail className="h-4 w-4 text-violet-400" />
+              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Mail className="h-3.5 w-3.5 text-kaboom-red" />
                 E-Mail-Adresse
               </label>
               <input
@@ -520,17 +529,17 @@ export default function TeamPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@firma.ch"
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/60 focus:border-violet-500/50 transition-all"
+                className="w-full rounded-xl border border-border bg-background/40 px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground/70 transition-all focus:border-kaboom-red/50 focus:outline-none focus:ring-2 focus:ring-kaboom-red/30"
               />
             </div>
 
             {/* role */}
             <div>
-              <label className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-300">
-                <Shield className="h-4 w-4 text-violet-400" />
+              <label className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Shield className="h-3.5 w-3.5 text-kaboom-red" />
                 Rolle
               </label>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <RoleCard value="owner" role={role} label="Owner" icon={<Crown className="h-5 w-5" />} description="Voller Zugriff" available={isOwner} onClick={() => setRole("owner")} />
                 <RoleCard value="admin" role={role} label="Admin" icon={<Shield className="h-5 w-5" />} description="Team verwalten" available={isOwner} onClick={() => setRole("admin")} />
                 <RoleCard value="editor" role={role} label="Editor" icon={<Pencil className="h-5 w-5" />} description="Inhalte bearbeiten" available={true} onClick={() => setRole("editor")} />
@@ -540,17 +549,17 @@ export default function TeamPage() {
 
             {/* section permissions */}
             <div>
-              <div className="mb-3 flex items-center justify-between">
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-300">
-                  <span className="text-violet-400">🔒</span>
+              <div className="mb-2 flex items-center justify-between">
+                <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <span className="text-kaboom-red">🔒</span>
                   Bereichszugriff
                 </label>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => toggleAll(true)} className={cn("text-xs px-2.5 py-1 rounded-lg border transition-all", allEnabled ? "border-violet-500/50 bg-violet-500/15 text-violet-300" : "border-white/10 text-slate-500 hover:text-slate-300")}>Alle</button>
-                  <button type="button" onClick={() => toggleAll(false)} className={cn("text-xs px-2.5 py-1 rounded-lg border transition-all", noneEnabled ? "border-rose-500/40 bg-rose-500/10 text-rose-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>Keine</button>
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => toggleAll(true)} className={cn("rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-all", allEnabled ? "border-kaboom-red/40 bg-kaboom-red/10 text-kaboom-red" : "border-border text-muted-foreground hover:text-foreground")}>Alle</button>
+                  <button type="button" onClick={() => toggleAll(false)} className={cn("rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-all", noneEnabled ? "border-rose-500/40 bg-rose-500/10 text-rose-400" : "border-border text-muted-foreground hover:text-foreground")}>Keine</button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                 {SECTION_KEYS.map((k) => (
                   <SectionToggle
                     key={k}
@@ -564,21 +573,21 @@ export default function TeamPage() {
 
             {/* expires */}
             <div>
-              <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
-                <Clock className="h-4 w-4 text-violet-400" />
+              <label className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Clock className="h-3.5 w-3.5 text-kaboom-red" />
                 Link gültig für
               </label>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {EXPIRES_OPTIONS.map((o) => (
                   <button
                     key={o.value}
                     type="button"
                     onClick={() => setExpiresMinutes(o.value)}
                     className={cn(
-                      "rounded-xl border px-3.5 py-2 text-sm font-medium transition-all",
+                      "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all",
                       expiresMinutes === o.value
-                        ? "border-violet-500 bg-violet-500/20 text-violet-200 shadow-[0_0_12px_rgba(230,46,62,0.3)]"
-                        : "border-white/10 bg-white/5 text-slate-400 hover:border-white/25 hover:text-slate-200"
+                        ? "border-kaboom-red bg-kaboom-red/15 text-foreground shadow-[0_0_10px_hsl(var(--kaboom-red)/0.25)]"
+                        : "border-border bg-card text-muted-foreground hover:border-foreground/20 hover:text-foreground"
                     )}
                   >
                     {o.label}
@@ -624,20 +633,20 @@ export default function TeamPage() {
               </div>
             )}
 
-            <div className="flex justify-end">
+            <div className="flex justify-end pt-1">
               <button
                 type="submit"
                 disabled={busy}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200",
+                  "group inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold uppercase tracking-wider transition-all duration-200",
                   !busy
-                    ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-[0_0_20px_rgba(230,46,62,0.4)] hover:shadow-[0_0_28px_rgba(230,46,62,0.6)] hover:scale-[1.02]"
-                    : "bg-white/10 text-slate-500 cursor-not-allowed"
+                    ? "bg-kaboom-red text-white shadow-[0_0_18px_hsl(var(--kaboom-red)/0.45)] hover:shadow-[0_0_28px_hsl(var(--kaboom-red)/0.7)] hover:-translate-y-0.5"
+                    : "cursor-not-allowed bg-secondary text-muted-foreground"
                 )}
               >
                 {busy
                   ? <RefreshCw className="h-4 w-4 animate-spin" />
-                  : <Send className="h-4 w-4" />
+                  : <Send className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 }
                 Einladung erstellen
               </button>
@@ -647,23 +656,24 @@ export default function TeamPage() {
       </div>
 
       {/* ── invite list ── */}
-      <div className="space-y-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-slate-500">
-          <span className="h-px flex-1 bg-white/10" />
-          Einladungen ({items.length})
-          <span className="h-px flex-1 bg-white/10" />
+      <div className="space-y-2">
+        <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="h-2 w-2 rounded-sm bg-kaboom-red" />
+          Einladungen
+          <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[10px] text-foreground/70">{items.length}</span>
+          <span className="ml-1 h-px flex-1 bg-border" />
         </h2>
 
         {items.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-3xl border border-white/10 bg-white/5 py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 text-3xl">📭</div>
-            <p className="text-sm text-slate-400">Noch keine Einladungen erstellt.</p>
+          <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border bg-card py-10 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary text-2xl">📭</div>
+            <p className="text-sm text-muted-foreground">Noch keine Einladungen erstellt.</p>
           </div>
         ) : (
           <>
             {/* active */}
             {activeItems.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {activeItems.map((item) => (
                   <InviteRow key={item.id} item={item} busy={busy} onRevoke={revokeInvite} onResend={resendInvite} />
                 ))}
@@ -671,7 +681,7 @@ export default function TeamPage() {
             )}
             {/* others */}
             {otherItems.length > 0 && (
-              <div className="space-y-2 opacity-60">
+              <div className="space-y-1.5 opacity-60">
                 {otherItems.map((item) => (
                   <InviteRow key={item.id} item={item} busy={busy} onRevoke={revokeInvite} onResend={resendInvite} />
                 ))}
@@ -682,23 +692,28 @@ export default function TeamPage() {
       </div>
 
       {/* ── members ── */}
-      <div className="space-y-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-slate-500">
-          <span className="h-px flex-1 bg-white/10" />
-          Team-Mitglieder ({members.length})
-          <span className="h-px flex-1 bg-white/10" />
+      <div className="space-y-2">
+        <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="h-2 w-2 rounded-sm bg-kaboom-red" />
+          Team-Mitglieder
+          <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[10px] text-foreground/70">{members.length}</span>
+          <span className="ml-1 h-px flex-1 bg-border" />
         </h2>
 
-        <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-5 sm:p-6">
-          <div className="mb-5 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-500/15">
-                <UserCog className="h-5 w-5 text-violet-300" />
+        <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-4 sm:p-5">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-0 h-full w-[3px] bg-kaboom-red/70"
+          />
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-kaboom-red/10 ring-1 ring-kaboom-red/25">
+                <UserCog className="h-4 w-4 text-kaboom-red" />
               </div>
               <div>
-                <div className="text-base font-semibold text-white">Mitglieder deiner Firma</div>
-                <div className="text-sm text-slate-400">
-                  Hier siehst du alle Mitarbeiter im Workspace und kannst Rollen oder Zugriff anpassen.
+                <div className="font-display text-sm font-bold tracking-tight text-foreground">Mitglieder deiner Firma</div>
+                <div className="text-xs text-muted-foreground">
+                  Rollen anpassen, Zugriff steuern, Mitglieder verwalten.
                 </div>
               </div>
             </div>
@@ -706,35 +721,35 @@ export default function TeamPage() {
               type="button"
               onClick={() => loadMembers()}
               disabled={membersLoading}
-              className="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-slate-300 transition-all hover:border-white/20 hover:text-white disabled:opacity-50"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-foreground/80 transition-all hover:bg-secondary disabled:opacity-50"
             >
-              <RefreshCw className={cn("h-4 w-4", membersLoading && "animate-spin")} />
+              <RefreshCw className={cn("h-3.5 w-3.5", membersLoading && "animate-spin")} />
               Neu laden
             </button>
           </div>
 
           {membersLoading && members.length === 0 ? (
-            <div className="flex items-center justify-center py-12 text-slate-400">
+            <div className="flex items-center justify-center py-10 text-muted-foreground">
               <RefreshCw className="h-4 w-4 animate-spin" />
             </div>
           ) : members.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 py-10 text-center text-sm text-slate-400">
+            <div className="rounded-xl border border-dashed border-border bg-secondary/40 py-8 text-center text-sm text-muted-foreground">
               Keine Mitglieder gefunden.
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {members.map((member) => {
                 const memberBusy = memberActionId === member.id
                 const isOwnerMember = member.role === "owner"
                 return (
                   <div
                     key={member.id}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-4 transition-all hover:border-white/20 hover:bg-white/[0.06]"
+                    className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 transition-all hover:border-kaboom-red/30 hover:shadow-[0_0_0_1px_hsl(var(--kaboom-red)/0.15)]"
                   >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-600/30 to-fuchsia-600/30 text-sm font-semibold text-violet-300">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-kaboom-red/30 to-kaboom-red/10 text-sm font-semibold text-kaboom-red">
                             {(member.email?.[0] ?? "?").toUpperCase()}
                           </div>
                           <span className="truncate text-sm font-medium text-slate-100">{member.email}</span>
@@ -776,7 +791,7 @@ export default function TeamPage() {
                                   className={cn(
                                     "rounded-xl border px-3 py-2 text-xs font-medium transition-all",
                                     member.role === r
-                                      ? "border-violet-500 bg-violet-500/20 text-violet-200"
+                                      ? "border-kaboom-red bg-kaboom-red/20 text-white"
                                       : "border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200"
                                   )}
                                 >
@@ -868,11 +883,15 @@ function InviteRow({
     : null
 
   return (
-    <div className="group flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 transition-all hover:border-white/20 hover:bg-white/8 md:flex-row md:items-center md:justify-between">
+    <div className="group relative flex flex-col gap-2.5 overflow-hidden rounded-xl border border-border bg-card p-3 transition-all hover:border-kaboom-red/30 hover:shadow-[0_0_0_1px_hsl(var(--kaboom-red)/0.15)] md:flex-row md:items-center md:justify-between">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute left-0 top-0 h-full w-[2px] bg-kaboom-red/0 transition-colors group-hover:bg-kaboom-red"
+      />
       {/* left */}
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-600/30 to-fuchsia-600/30 text-sm font-semibold text-violet-300">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-kaboom-red/30 to-kaboom-red/10 text-sm font-semibold text-kaboom-red">
             {(item.email[0] ?? "?").toUpperCase()}
           </div>
           <span className="font-medium text-slate-200 text-sm">{item.email}</span>
@@ -891,7 +910,7 @@ function InviteRow({
             <span className="flex items-center gap-1 flex-wrap">
               <span className="text-slate-600">Zugriff:</span>
               {sections.length === SECTION_KEYS.length
-                ? <span className="text-violet-400">Alle</span>
+                ? <span className="text-kaboom-red">Alle</span>
                 : sections.length === 0
                 ? <span className="text-rose-400">Keiner</span>
                 : sections.map((k) => (
@@ -933,7 +952,7 @@ function InviteRow({
             title="Erneut senden"
             disabled={busy}
             onClick={() => onResend(item.id)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-violet-300 transition-all disabled:opacity-40"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:border-kaboom-red/40 hover:bg-kaboom-red/10 hover:text-kaboom-red transition-all disabled:opacity-40"
           >
             <RefreshCw className="h-3.5 w-3.5" />
           </button>

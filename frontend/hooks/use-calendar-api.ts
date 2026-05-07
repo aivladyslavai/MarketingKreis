@@ -50,12 +50,17 @@ export function useCalendarApi() {
   const { data, error, isLoading, mutate } = useSWR('/calendar', fetcher, {
     refreshInterval: 0,
     revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    shouldRetryOnError: false,
+    dedupingInterval: 10_000,
+    keepPreviousData: true,
   })
 
   // subscribe to global sync events (with cleanup)
   useEffect(() => {
-    const u1 = sync.on('global:refresh', () => mutate())
-    const u2 = sync.on('calendar:changed', () => mutate())
+    const revalidate = () => { void mutate() }
+    const u1 = sync.on('global:refresh', revalidate)
+    const u2 = sync.on('calendar:changed', revalidate)
     return () => { u1(); u2() }
   }, [mutate])
 

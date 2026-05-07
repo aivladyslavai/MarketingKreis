@@ -106,31 +106,54 @@ export function useCrmOverview() {
   const [projects, setProjects] = React.useState<any[]>([])
   const [crmStats, setCrmStats] = React.useState<any>({})
   const [tasks, setTasks] = React.useState<TaskDTO[]>([])
-  const [crmLoading, setCrmLoading] = React.useState(true)
+  const [crmLoaded, setCrmLoaded] = React.useState(false)
+  const [tasksLoaded, setTasksLoaded] = React.useState(false)
+  const crmRefreshRef = React.useRef<Promise<void> | null>(null)
+  const tasksRefreshRef = React.useRef<Promise<void> | null>(null)
+  const crmLoadedRef = React.useRef(false)
   const { activities, isLoading: activitiesLoading, refresh: refreshActivities } = useActivitiesApi()
   const { events, isLoading: eventsLoading, refresh: refreshCalendar, updateEvent } = useCalendarApi() as any
 
   const refreshTasks = React.useCallback(async () => {
-    const nextTasks = await tasksAPI.list().catch(() => [])
-    setTasks(Array.isArray(nextTasks) ? nextTasks : [])
+    if (tasksRefreshRef.current) return tasksRefreshRef.current
+
+    tasksRefreshRef.current = (async () => {
+      const nextTasks = await tasksAPI.list().catch(() => [])
+      setTasks(Array.isArray(nextTasks) ? nextTasks : [])
+      setTasksLoaded(true)
+    })().finally(() => {
+      tasksRefreshRef.current = null
+    })
+
+    return tasksRefreshRef.current
   }, [])
 
   const refreshCrm = React.useCallback(async () => {
-    setCrmLoading(true)
-    try {
-      const [nextCompanies, nextContacts, nextProjects, nextStats] = await Promise.all([
-        companiesAPI.getAll().catch(() => []),
-        contactsAPI.getAll().catch(() => []),
-        projectsAPI.getAll().catch(() => []),
-        crmAPI.getStats().catch(() => ({})),
-      ])
-      setCompanies(Array.isArray(nextCompanies) ? nextCompanies : [])
-      setContacts(Array.isArray(nextContacts) ? nextContacts : [])
-      setProjects(Array.isArray(nextProjects) ? nextProjects : [])
-      setCrmStats(nextStats || {})
-    } finally {
-      setCrmLoading(false)
-    }
+    if (crmRefreshRef.current) return crmRefreshRef.current
+
+    crmRefreshRef.current = (async () => {
+      try {
+        const [nextCompanies, nextContacts, nextProjects, nextStats] = await Promise.all([
+          companiesAPI.getAll().catch(() => []),
+          contactsAPI.getAll().catch(() => []),
+          projectsAPI.getAll().catch(() => []),
+          crmAPI.getStats().catch(() => ({})),
+        ])
+        setCompanies(Array.isArray(nextCompanies) ? nextCompanies : [])
+        setContacts(Array.isArray(nextContacts) ? nextContacts : [])
+        setProjects(Array.isArray(nextProjects) ? nextProjects : [])
+        setCrmStats(nextStats || {})
+        crmLoadedRef.current = true
+        setCrmLoaded(true)
+      } catch {
+        crmLoadedRef.current = true
+        setCrmLoaded(true)
+      }
+    })().finally(() => {
+      crmRefreshRef.current = null
+    })
+
+    return crmRefreshRef.current
   }, [])
 
   const refresh = React.useCallback(async () => {
@@ -193,7 +216,7 @@ export function useCrmOverview() {
     tasks,
     companyGraph,
     stats,
-    loading: crmLoading || activitiesLoading || eventsLoading,
+    loading: !crmLoaded || !tasksLoaded || (activitiesLoading && !activities?.length) || (eventsLoading && !events?.length),
     refresh,
     refreshCrm,
     updateCalendarEvent: updateEvent,

@@ -116,25 +116,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => { if (id) clearInterval(id) }
   }, [flags.autoRefresh])
 
-  // Render free tier can cold-start; wake backend from the browser to avoid Vercel function timeouts.
+  // Best-effort backend warm-up. Do not trigger a global data refresh here:
+  // the pages already load their own data, and forcing another refresh on mount
+  // makes the dashboard look like it is reloading.
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        await wakeBackend({ force: true, maxWaitMs: 25_000 })
-      } catch {
-        // ignore
-      } finally {
-        if (!cancelled) {
-          try {
-            sync.refreshAll()
-          } catch {}
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
+    wakeBackend({ force: true, maxWaitMs: 25_000 }).catch(() => {})
   }, [])
 
   useEffect(() => {

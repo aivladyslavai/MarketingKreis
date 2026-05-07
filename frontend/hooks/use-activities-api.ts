@@ -46,6 +46,10 @@ export function useActivitiesApi(filters?: ActivityApiFilters) {
   const { data, error, isLoading, mutate } = useSWR(key, fetcher, {
     refreshInterval: 0,
     revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    shouldRetryOnError: false,
+    dedupingInterval: 10_000,
+    keepPreviousData: true,
   })
 
   const createActivity = async (activity: Omit<Activity, "id">) => {
