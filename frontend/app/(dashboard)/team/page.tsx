@@ -40,14 +40,14 @@ type InviteItem = {
 const SECTION_KEYS = ["crm", "calendar", "activities", "performance", "budget", "content", "reports", "uploads"]
 
 const SECTION_META: Record<string, { label: string; icon: string }> = {
-  crm: { label: "CRM", icon: "🏢" },
-  calendar: { label: "Kalender", icon: "📅" },
-  activities: { label: "Aktivitäten", icon: "⚡" },
-  performance: { label: "Performance", icon: "📈" },
-  budget: { label: "Budget", icon: "💰" },
-  content: { label: "Content", icon: "✍️" },
-  reports: { label: "Reports", icon: "📊" },
-  uploads: { label: "Uploads", icon: "📁" },
+  crm: { label: "CRM", icon: "CR" },
+  calendar: { label: "Kalender", icon: "KA" },
+  activities: { label: "Aktivitäten", icon: "AK" },
+  performance: { label: "Performance", icon: "PF" },
+  budget: { label: "Budget", icon: "BU" },
+  content: { label: "Content", icon: "CO" },
+  reports: { label: "Reports", icon: "RE" },
+  uploads: { label: "Uploads", icon: "UP" },
 }
 
 const EXPIRES_OPTIONS = [
@@ -84,20 +84,22 @@ function RoleCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "relative flex flex-col items-start gap-1.5 rounded-xl border p-4 text-left transition-all duration-200",
+        "relative inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all duration-200",
         active
           ? "border-kaboom-red bg-kaboom-red/10 shadow-[0_0_18px_hsl(var(--kaboom-red)/0.18)]"
           : "border-border bg-card hover:border-foreground/20 hover:bg-secondary"
       )}
     >
       {active && (
-        <div className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-kaboom-red">
+        <div className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-kaboom-red">
           <Check className="h-3 w-3 text-white" />
         </div>
       )}
-      <span className={cn("text-xl", active ? "text-kaboom-red" : "text-muted-foreground")}>{icon}</span>
-      <span className={cn("text-sm font-semibold", active ? "text-foreground" : "text-foreground/85")}>{label}</span>
-      <span className="text-xs text-muted-foreground leading-snug">{description}</span>
+      <span className={cn("shrink-0", active ? "text-kaboom-red" : "text-muted-foreground")}>{icon}</span>
+      <span className="min-w-0">
+        <span className={cn("block text-sm font-semibold leading-none", active ? "text-foreground" : "text-foreground/85")}>{label}</span>
+        <span className="mt-1 block truncate text-[11px] leading-none text-muted-foreground">{description}</span>
+      </span>
     </button>
   )
 }
@@ -117,28 +119,33 @@ function SectionToggle({
       type="button"
       onClick={() => onChange(!checked)}
       className={cn(
-        "flex items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm transition-all duration-200",
+        "flex items-center justify-between rounded-lg border px-2.5 py-1.5 text-xs transition-all duration-200",
         checked
           ? "border-kaboom-red/40 bg-kaboom-red/10 text-foreground"
           : "border-border bg-card text-muted-foreground hover:border-foreground/20"
       )}
     >
-      <span className="flex items-center gap-2">
-        <span className="text-base">{meta.icon}</span>
-        <span className="font-medium">{meta.label}</span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className={cn(
+          "flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[9px] font-black tracking-tight",
+          checked ? "bg-kaboom-red text-white" : "bg-secondary text-muted-foreground"
+        )}>
+          {meta.icon}
+        </span>
+        <span className="truncate font-semibold">{meta.label}</span>
       </span>
       <span
         className={cn(
-          "relative ml-3 inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200",
+          "relative ml-2 inline-flex h-4 w-7 flex-shrink-0 rounded-full transition-colors duration-200",
           checked ? "bg-kaboom-red" : "bg-foreground/15"
         )}
       >
         <span
           className={cn(
-            "inline-block h-4 w-4 translate-y-0.5 rounded-full bg-white shadow transition-transform duration-200",
+            "inline-block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200",
             checked ? "translate-x-4.5" : "translate-x-0.5"
           )}
-          style={{ transform: `translateX(${checked ? "18px" : "2px"}) translateY(2px)` }}
+          style={{ transform: `translateX(${checked ? "14px" : "2px"}) translateY(2px)` }}
         />
       </span>
     </button>
@@ -238,6 +245,7 @@ export default function TeamPage() {
   const [expiresMinutes, setExpiresMinutes] = React.useState("10080")
   const [sectionPermissions, setSectionPermissions] = React.useState<Record<string, boolean>>({})
   const [formOpen, setFormOpen] = React.useState(true)
+  const [advancedOpen, setAdvancedOpen] = React.useState(false)
 
   const isOwner = user?.role === "owner"
   const isCompanyAdmin = user?.role === "owner" || user?.role === "admin"
@@ -449,7 +457,7 @@ export default function TeamPage() {
   const otherItems = items.filter((i) => i.status !== "active")
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 px-1 py-2">
+    <div className="mx-auto max-w-6xl space-y-4 px-1 py-2">
 
       <PageHeader
         title="Team & Einladungen"
@@ -483,6 +491,8 @@ export default function TeamPage() {
         </div>
       )}
 
+      <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start">
+        <aside className="lg:sticky lg:top-20">
       {/* ── form card ── */}
       <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         {/* corner brand accent */}
@@ -539,7 +549,7 @@ export default function TeamPage() {
                 <Shield className="h-3.5 w-3.5 text-kaboom-red" />
                 Rolle
               </label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-1">
                 <RoleCard value="owner" role={role} label="Owner" icon={<Crown className="h-5 w-5" />} description="Voller Zugriff" available={isOwner} onClick={() => setRole("owner")} />
                 <RoleCard value="admin" role={role} label="Admin" icon={<Shield className="h-5 w-5" />} description="Team verwalten" available={isOwner} onClick={() => setRole("admin")} />
                 <RoleCard value="editor" role={role} label="Editor" icon={<Pencil className="h-5 w-5" />} description="Inhalte bearbeiten" available={true} onClick={() => setRole("editor")} />
@@ -547,28 +557,37 @@ export default function TeamPage() {
               </div>
             </div>
 
-            {/* section permissions */}
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <span className="text-kaboom-red">🔒</span>
-                  Bereichszugriff
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <button type="button" onClick={() => toggleAll(true)} className={cn("rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-all", allEnabled ? "border-kaboom-red/40 bg-kaboom-red/10 text-kaboom-red" : "border-border text-muted-foreground hover:text-foreground")}>Alle</button>
-                  <button type="button" onClick={() => toggleAll(false)} className={cn("rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-all", noneEnabled ? "border-rose-500/40 bg-rose-500/10 text-rose-400" : "border-border text-muted-foreground hover:text-foreground")}>Keine</button>
+            {/* advanced permissions */}
+            <div className="rounded-xl border border-border bg-background/30 p-2.5">
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen((v) => !v)}
+                className="flex w-full items-center justify-between rounded-lg px-1 py-0.5 text-left"
+              >
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Shield className="h-3.5 w-3.5 text-kaboom-red" />
+                  Erweitert: Bereichszugriff
+                </span>
+                <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", advancedOpen && "rotate-180")} />
+              </button>
+              {advancedOpen && (
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => toggleAll(true)} className={cn("rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-all", allEnabled ? "border-kaboom-red/40 bg-kaboom-red/10 text-kaboom-red" : "border-border text-muted-foreground hover:text-foreground")}>Alle</button>
+                    <button type="button" onClick={() => toggleAll(false)} className={cn("rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-all", noneEnabled ? "border-rose-500/40 bg-rose-500/10 text-rose-400" : "border-border text-muted-foreground hover:text-foreground")}>Keine</button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                    {SECTION_KEYS.map((k) => (
+                      <SectionToggle
+                        key={k}
+                        sectionKey={k}
+                        checked={sectionPermissions[k] !== false}
+                        onChange={(v) => toggleSection(k, v)}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                {SECTION_KEYS.map((k) => (
-                  <SectionToggle
-                    key={k}
-                    sectionKey={k}
-                    checked={sectionPermissions[k] !== false}
-                    onChange={(v) => toggleSection(k, v)}
-                  />
-                ))}
-              </div>
+              )}
             </div>
 
             {/* expires */}
@@ -655,8 +674,11 @@ export default function TeamPage() {
         )}
       </div>
 
+        </aside>
+
+        <section className="flex flex-col gap-4">
       {/* ── invite list ── */}
-      <div className="space-y-2">
+      <div className="order-2 space-y-2">
         <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
           <span className="h-2 w-2 rounded-sm bg-kaboom-red" />
           Einladungen
@@ -666,7 +688,9 @@ export default function TeamPage() {
 
         {items.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border bg-card py-10 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary text-2xl">📭</div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary text-kaboom-red">
+              <Mail className="h-5 w-5" />
+            </div>
             <p className="text-sm text-muted-foreground">Noch keine Einladungen erstellt.</p>
           </div>
         ) : (
@@ -692,7 +716,7 @@ export default function TeamPage() {
       </div>
 
       {/* ── members ── */}
-      <div className="space-y-2">
+      <div className="order-1 space-y-2">
         <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
           <span className="h-2 w-2 rounded-sm bg-kaboom-red" />
           Team-Mitglieder
@@ -859,6 +883,8 @@ export default function TeamPage() {
             </div>
           )}
         </div>
+      </div>
+        </section>
       </div>
     </div>
   )
